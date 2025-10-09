@@ -1,0 +1,6 @@
+# Build artifacts
+target/
+
+# macOS system files
+.DS_Store
+Thumbs.db
