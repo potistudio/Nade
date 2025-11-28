@@ -1,0 +1,9 @@
+[package]
+name = "status_bar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+egui = { version = "0.33.2", features = ["rayon"] }

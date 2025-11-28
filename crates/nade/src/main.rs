@@ -1,7 +1,3 @@
-mod core;
-mod encoder;
-mod renderer;
-
 use eframe::{
 	egui::{self, Vec2},
 	egui_wgpu, wgpu,
@@ -32,6 +28,7 @@ struct MyApp {
 	pixels: Vec<Color32>,
 	texture: Option<TextureHandle>,
 	time: f32,
+	status_bar: status_bar::StatusBar,
 }
 
 impl MyApp {
@@ -46,6 +43,7 @@ impl MyApp {
 			pixels,
 			texture: None,
 			time: 0.0,
+			status_bar: status_bar::StatusBar::default(),
 		}
 	}
 
@@ -77,6 +75,27 @@ impl MyApp {
 
 impl eframe::App for MyApp {
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+		let mut fonts = egui::FontDefinitions::default();
+		let font_data = egui::FontData::from_static(include_bytes!(
+			"../../../assets/fonts/Inter/Inter_regular.otf"
+		));
+
+		fonts
+			.font_data
+			.insert("rubik".to_string(), font_data.into());
+
+		fonts
+			.families
+			.entry(egui::FontFamily::Proportional)
+			.or_default()
+			.insert(0, "rubik".to_string());
+
+		ctx.set_fonts(fonts);
+
+		egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+			self.status_bar.ui(ui);
+		});
+
 		// Δt をざっくり計算（タイミング厳密でなくてよければこれで十分）
 		let dt = ctx.input(|i| i.stable_dt).max(0.001); // 0 に潰れないように
 		self.update_pixels(dt);
