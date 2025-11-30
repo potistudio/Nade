@@ -3,18 +3,6 @@
 version = 4
 
 [[package]]
-name = "Nade"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "eframe",
- "env_logger",
- "image",
- "log",
- "status_bar",
-]
-
-[[package]]
 name = "ab_glyph"
 version = "0.2.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1450,6 +1438,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gizmos"
+version = "0.0.1"
+dependencies = [
+ "eframe",
+ "egui",
+ "env_logger",
+ "log",
+]
+
+[[package]]
 name = "gl_generator"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2077,6 +2075,18 @@ checksum = "0fbdd3d7436f8b5e892b8b7ea114271ff0fa00bc5acae845d53b07d498616ef6"
 dependencies = [
  "num-traits",
  "pxfm",
+]
+
+[[package]]
+name = "nade"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "eframe",
+ "env_logger",
+ "image",
+ "log",
+ "status_bar",
 ]
 
 [[package]]
@@ -3566,6 +3576,13 @@ dependencies = [
  "memoffset",
  "tempfile",
  "winapi",
+]
+
+[[package]]
+name = "ui"
+version = "0.0.1"
+dependencies = [
+ "egui",
 ]
 
 [[package]]

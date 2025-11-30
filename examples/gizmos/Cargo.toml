@@ -1,14 +1,12 @@
 [package]
-name = "nade"
+name = "gizmos"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
 [dependencies]
-anyhow = "1.0.100"
-eframe = { version = "0.33.2", features = ["wgpu"] }
+eframe = "0.33.2"
+egui = { version = "0.33.2", features = ["rayon"] }
 env_logger = "0.11.8"
-image = "0.25.8"
 log = "0.4.28"
-status_bar = { path = "../status_bar" }
