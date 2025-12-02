@@ -680,6 +680,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "canvas_panel"
+version = "0.0.1"
+dependencies = [
+ "egui",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1441,6 +1448,7 @@ dependencies = [
 name = "gizmos"
 version = "0.0.1"
 dependencies = [
+ "canvas_panel",
  "eframe",
  "egui",
  "env_logger",
