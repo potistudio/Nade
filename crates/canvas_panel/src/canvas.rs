@@ -82,9 +82,9 @@ impl CanvasContext<'_> {
 	// =========================================================================
 
 	/// 線分を描画（ローカル座標）
-	pub fn line(&self, p1: Vec2, p2: Vec2, stroke: Stroke) {
-		let sp1 = self.local_to_screen(p1.to_pos2());
-		let sp2 = self.local_to_screen(p2.to_pos2());
+	pub fn line(&self, p1: Pos2, p2: Pos2, stroke: Stroke) {
+		let sp1 = self.local_to_screen(p1);
+		let sp2 = self.local_to_screen(p2);
 		self.painter.line_segment([sp1, sp2], stroke);
 	}
 
@@ -179,14 +179,14 @@ impl CanvasContext<'_> {
 	}
 
 	/// 複数の線分を描画（ローカル座標）
-	pub fn line_segments(&self, points: &[Vec2], stroke: Stroke) {
+	pub fn line_segments(&self, points: &[Pos2], stroke: Stroke) {
 		for window in points.windows(2) {
 			self.line(window[0], window[1], stroke);
 		}
 	}
 
 	/// 閉じた多角形を描画（ローカル座標）
-	pub fn polygon_stroke(&self, points: &[Vec2], stroke: Stroke) {
+	pub fn polygon_stroke(&self, points: &[Pos2], stroke: Stroke) {
 		if points.len() < 2 {
 			return;
 		}
