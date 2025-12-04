@@ -1,0 +1,14 @@
+[package]
+name = "playground_font"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+eframe = { version = "0.33.2", features = ["wgpu"] }
+egui = { version = "0.33.2", features = ["rayon"] }
+canvas_panel = { path = "../../crates/canvas_panel" }
+env_logger = "0.11.8"
+log = "0.4.28"
+swash = "0.2.6"

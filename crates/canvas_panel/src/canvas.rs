@@ -82,9 +82,9 @@ impl CanvasContext<'_> {
 	// =========================================================================
 
 	/// 線分を描画（ローカル座標）
-	pub fn line(&self, p1: Pos2, p2: Pos2, stroke: Stroke) {
-		let sp1 = self.local_to_screen(p1);
-		let sp2 = self.local_to_screen(p2);
+	pub fn line(&self, p1: Vec2, p2: Vec2, stroke: Stroke) {
+		let sp1 = self.local_to_screen(p1.to_pos2());
+		let sp2 = self.local_to_screen(p2.to_pos2());
 		self.painter.line_segment([sp1, sp2], stroke);
 	}
 
@@ -179,14 +179,14 @@ impl CanvasContext<'_> {
 	}
 
 	/// 複数の線分を描画（ローカル座標）
-	pub fn line_segments(&self, points: &[Pos2], stroke: Stroke) {
+	pub fn line_segments(&self, points: &[Vec2], stroke: Stroke) {
 		for window in points.windows(2) {
 			self.line(window[0], window[1], stroke);
 		}
 	}
 
 	/// 閉じた多角形を描画（ローカル座標）
-	pub fn polygon_stroke(&self, points: &[Pos2], stroke: Stroke) {
+	pub fn polygon_stroke(&self, points: &[Vec2], stroke: Stroke) {
 		if points.len() < 2 {
 			return;
 		}
@@ -194,6 +194,169 @@ impl CanvasContext<'_> {
 		if points.len() >= 3 {
 			self.line(points[points.len() - 1], points[0], stroke);
 		}
+	}
+
+	// =========================================================================
+	// SVG-like path drawing methods
+	// =========================================================================
+
+	/// Move to a position (starts a new path segment)
+	pub fn move_to(&self, pos: Pos2) -> Pos2 {
+		pos
+	}
+
+	/// Draw a line from current position to target position
+	pub fn line_to(&self, from: Pos2, to: Pos2, stroke: Stroke) {
+		let sp1 = self.local_to_screen(from);
+		let sp2 = self.local_to_screen(to);
+		self.painter.line_segment([sp1, sp2], stroke);
+	}
+
+	/// Draw a quadratic Bézier curve
+	pub fn quad_to(&self, from: Pos2, control: Pos2, to: Pos2, stroke: Stroke) {
+		let points = self.subdivide_quadratic(from, control, to, 20);
+		for window in points.windows(2) {
+			let sp1 = self.local_to_screen(window[0]);
+			let sp2 = self.local_to_screen(window[1]);
+			self.painter.line_segment([sp1, sp2], stroke);
+		}
+	}
+
+	/// Draw a cubic Bézier curve
+	pub fn curve_to(&self, from: Pos2, control1: Pos2, control2: Pos2, to: Pos2, stroke: Stroke) {
+		let points = self.subdivide_cubic(from, control1, control2, to, 30);
+		for window in points.windows(2) {
+			let sp1 = self.local_to_screen(window[0]);
+			let sp2 = self.local_to_screen(window[1]);
+			self.painter.line_segment([sp1, sp2], stroke);
+		}
+	}
+
+	/// Draw a horizontal line
+	pub fn horizontal_line_to(&self, from: Pos2, x: f32, stroke: Stroke) {
+		let to = Pos2::new(x, from.y);
+		self.line_to(from, to, stroke);
+	}
+
+	/// Draw a vertical line
+	pub fn vertical_line_to(&self, from: Pos2, y: f32, stroke: Stroke) {
+		let to = Pos2::new(from.x, y);
+		self.line_to(from, to, stroke);
+	}
+
+	/// Draw an arc (approximated with cubic Bézier curves)
+	pub fn arc_to(
+		&self,
+		center: Pos2,
+		radius: f32,
+		start_angle: f32,
+		end_angle: f32,
+		stroke: Stroke,
+	) {
+		let segments =
+			((end_angle - start_angle).abs() / std::f32::consts::FRAC_PI_4).ceil() as usize;
+		let segments = segments.max(1);
+		let angle_step = (end_angle - start_angle) / segments as f32;
+
+		for i in 0..segments {
+			let a1 = start_angle + angle_step * i as f32;
+			let a2 = start_angle + angle_step * (i + 1) as f32;
+
+			let p1 = Pos2::new(center.x + radius * a1.cos(), center.y + radius * a1.sin());
+			let p2 = Pos2::new(center.x + radius * a2.cos(), center.y + radius * a2.sin());
+
+			// Approximate arc segment with line
+			self.line_to(p1, p2, stroke);
+		}
+	}
+
+	/// Close path by drawing line back to start
+	pub fn close_path(&self, current: Pos2, start: Pos2, stroke: Stroke) {
+		self.line_to(current, start, stroke);
+	}
+
+	/// Draw an ellipse
+	pub fn ellipse(&self, center: Pos2, rx: f32, ry: f32, stroke: Stroke) {
+		let segments = 32;
+		let angle_step = std::f32::consts::TAU / segments as f32;
+
+		for i in 0..segments {
+			let a1 = angle_step * i as f32;
+			let a2 = angle_step * (i + 1) as f32;
+
+			let p1 = Pos2::new(center.x + rx * a1.cos(), center.y + ry * a1.sin());
+			let p2 = Pos2::new(center.x + rx * a2.cos(), center.y + ry * a2.sin());
+
+			self.line_to(p1, p2, stroke);
+		}
+	}
+
+	/// Draw a filled ellipse
+	pub fn ellipse_filled(&self, center: Pos2, rx: f32, ry: f32, color: Color32) {
+		let screen_center = self.local_to_screen(center);
+		let screen_rx = rx * self.scale;
+		let screen_ry = ry * self.scale;
+
+		// Approximate with a circle using average radius
+		let avg_radius = (screen_rx + screen_ry) / 2.0;
+		self.painter.circle_filled(screen_center, avg_radius, color);
+	}
+
+	/// Draw a polyline (open path through multiple points)
+	pub fn polyline(&self, points: &[Pos2], stroke: Stroke) {
+		for window in points.windows(2) {
+			self.line_to(window[0], window[1], stroke);
+		}
+	}
+
+	/// Draw a filled polygon
+	pub fn polygon_filled(&self, points: &[Pos2], color: Color32) {
+		if points.len() < 3 {
+			return;
+		}
+		let screen_points: Vec<Pos2> = points.iter().map(|p| self.local_to_screen(*p)).collect();
+		self.painter.add(egui::Shape::convex_polygon(
+			screen_points,
+			color,
+			Stroke::NONE,
+		));
+	}
+
+	// Helper: subdivide quadratic Bézier curve
+	fn subdivide_quadratic(&self, p0: Pos2, p1: Pos2, p2: Pos2, segments: usize) -> Vec<Pos2> {
+		let mut points = Vec::with_capacity(segments + 1);
+		for i in 0..=segments {
+			let t = i as f32 / segments as f32;
+			let mt = 1.0 - t;
+			let x = mt * mt * p0.x + 2.0 * mt * t * p1.x + t * t * p2.x;
+			let y = mt * mt * p0.y + 2.0 * mt * t * p1.y + t * t * p2.y;
+			points.push(Pos2::new(x, y));
+		}
+		points
+	}
+
+	// Helper: subdivide cubic Bézier curve
+	fn subdivide_cubic(
+		&self,
+		p0: Pos2,
+		p1: Pos2,
+		p2: Pos2,
+		p3: Pos2,
+		segments: usize,
+	) -> Vec<Pos2> {
+		let mut points = Vec::with_capacity(segments + 1);
+		for i in 0..=segments {
+			let t = i as f32 / segments as f32;
+			let mt = 1.0 - t;
+			let mt2 = mt * mt;
+			let mt3 = mt2 * mt;
+			let t2 = t * t;
+			let t3 = t2 * t;
+			let x = mt3 * p0.x + 3.0 * mt2 * t * p1.x + 3.0 * mt * t2 * p2.x + t3 * p3.x;
+			let y = mt3 * p0.y + 3.0 * mt2 * t * p1.y + 3.0 * mt * t2 * p2.y + t3 * p3.y;
+			points.push(Pos2::new(x, y));
+		}
+		points
 	}
 }
 
