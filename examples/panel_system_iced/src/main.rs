@@ -4,6 +4,10 @@ use iced::{Element, Size, Subscription, Task, Theme, application, event, window}
 use panel_system::{PanelSystem, PanelSystemMessage};
 
 fn main() -> iced::Result {
+	unsafe {
+		std::env::set_var("LOG_LEVEL", "debug");
+		std::env::set_var("ICED_PRESENT_MODE", "immediate");
+	}
 	env_logger::init();
 
 	application("Panel System Demo", App::update, App::view)
