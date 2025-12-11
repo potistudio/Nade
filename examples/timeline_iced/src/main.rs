@@ -12,7 +12,7 @@ fn main() -> iced::Result {
 	log::debug!("Starting Timeline Demo (Iced)");
 
 	iced::application("Timeline Demo", App::update, App::view)
-		.theme(|_| Theme::Dark)
+		.theme(|_| Theme::Dracula)
 		.window_size((1200.0, 400.0))
 		.run()
 }

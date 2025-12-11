@@ -202,7 +202,9 @@ impl PreviewCanvas {
 				let v1 = (fx * freq * std::f32::consts::PI + time).sin();
 				let v2 = (fy * freq * std::f32::consts::PI + time * 0.7).sin();
 				let v3 = ((fx + fy) * freq * 0.5 * std::f32::consts::PI + time * 1.3).sin();
-				let v4 = (((fx - 0.5).powi(2) + (fy - 0.5).powi(2)).sqrt() * freq * complexity + time).sin();
+				let v4 = (((fx - 0.5).powi(2) + (fy - 0.5).powi(2)).sqrt() * freq * complexity
+					+ time)
+					.sin();
 
 				let v = (v1 + v2 + v3 + v4) / 4.0;
 				let t = (v + 1.0) / 2.0;
@@ -211,7 +213,14 @@ impl PreviewCanvas {
 				let g = self.params.color1.g * (1.0 - t) + self.params.color2.g * t;
 				let b = self.params.color1.b * (1.0 - t) + self.params.color2.b * t;
 
-				self.buffer.set_pixel_rgba(x, y, (r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8, 255);
+				self.buffer.set_pixel_rgba(
+					x,
+					y,
+					(r * 255.0) as u8,
+					(g * 255.0) as u8,
+					(b * 255.0) as u8,
+					255,
+				);
 			}
 		}
 	}
@@ -238,7 +247,14 @@ impl PreviewCanvas {
 				let g = self.params.color1.g * (1.0 - v) + self.params.color2.g * v;
 				let b = self.params.color1.b * (1.0 - v) + self.params.color2.b * v;
 
-				self.buffer.set_pixel_rgba(x, y, (r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8, 255);
+				self.buffer.set_pixel_rgba(
+					x,
+					y,
+					(r * 255.0) as u8,
+					(g * 255.0) as u8,
+					(b * 255.0) as u8,
+					255,
+				);
 			}
 		}
 	}
@@ -258,15 +274,23 @@ impl PreviewCanvas {
 		// 下から上へ炎を伝播（最下行は除く）
 		for y in 1..height {
 			let current_y = height - 1 - y; // 上から見たインデックス
-			let below_y = current_y + 1;    // 一つ下の行
+			let below_y = current_y + 1; // 一つ下の行
 
 			for x in 0..width {
 				let idx = current_y * width + x;
 				let below_idx = below_y * width;
 
-				let left = if x > 0 { self.fire_buffer[below_idx + x - 1] as u16 } else { 0 };
+				let left = if x > 0 {
+					self.fire_buffer[below_idx + x - 1] as u16
+				} else {
+					0
+				};
 				let center = self.fire_buffer[below_idx + x] as u16;
-				let right = if x < width - 1 { self.fire_buffer[below_idx + x + 1] as u16 } else { 0 };
+				let right = if x < width - 1 {
+					self.fire_buffer[below_idx + x + 1] as u16
+				} else {
+					0
+				};
 
 				let avg = ((left + center + right) as f32 / 3.0 * spread) as u16;
 				let cooled = avg.saturating_sub(cooling as u16);
@@ -338,7 +362,14 @@ impl PreviewCanvas {
 				let g = self.params.color1.g * (1.0 - v) + self.params.color2.g * v;
 				let b = self.params.color1.b * (1.0 - v) + self.params.color2.b * v;
 
-				self.buffer.set_pixel_rgba(x, y, (r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8, 255);
+				self.buffer.set_pixel_rgba(
+					x,
+					y,
+					(r * 255.0) as u8,
+					(g * 255.0) as u8,
+					(b * 255.0) as u8,
+					255,
+				);
 			}
 		}
 	}
@@ -362,7 +393,14 @@ impl PreviewCanvas {
 				let g = self.params.color1.g * (1.0 - v) + self.params.color2.g * v;
 				let b = self.params.color1.b * (1.0 - v) + self.params.color2.b * v;
 
-				self.buffer.set_pixel_rgba(x, y, (r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8, 255);
+				self.buffer.set_pixel_rgba(
+					x,
+					y,
+					(r * 255.0) as u8,
+					(g * 255.0) as u8,
+					(b * 255.0) as u8,
+					255,
+				);
 			}
 		}
 	}
