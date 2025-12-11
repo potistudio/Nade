@@ -1,12 +1,30 @@
 [workspace]
 resolver = "3"
 members = [
-	"./crates/*",
-	"./examples/*",
+	"crates/*",
+	"examples/*",
 ]
+default-members = ["crates/nade"]
 
 [workspace.package]
 version = "0.0.1"
 edition = "2024"
 license = "MIT"
 authors = ["POTI <potistudio@proton.me>"]
+publish = false
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+
+[workspace.dependencies]
+anyhow = "1.0.100"
+env_logger = "0.11.8"
+log = "0.4.28"
+
+[profile.release]
+lto = true
+codegen-units = 1

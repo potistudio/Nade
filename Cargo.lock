@@ -3384,7 +3384,9 @@ name = "nade"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "canvas_panel",
  "eframe",
+ "egui",
  "env_logger",
  "image 0.25.8",
  "log",

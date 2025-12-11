@@ -1,3 +1,5 @@
+//! Entry point of Nade
+
 use eframe::{
 	egui::{self, Vec2},
 	egui_wgpu, wgpu,

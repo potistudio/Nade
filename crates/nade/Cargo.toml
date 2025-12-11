@@ -1,14 +1,28 @@
 [package]
 name = "nade"
+description = "Built to Create. Programmed to Kill Adobe."
+repository = "https://github.com/potistudio/Nade"
+keywords = ["audio", "composition", "effect", "graphics", "linux", "macos", "video", "windows"]
+categories = ["multimedia::video", "gui"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "nade"
+path = "src/main.rs"
 
 [dependencies]
-anyhow = "1.0.100"
+anyhow.workspace = true
 eframe = { version = "0.33.2", features = ["wgpu"] }
-env_logger = "0.11.8"
+egui = { version = "0.33.2", features = ["rayon"] }
+env_logger.workspace = true
+log.workspace = true
 image = "0.25.8"
-log = "0.4.28"
+canvas_panel = { path = "../canvas_panel" }
 status_bar = { path = "../status_bar" }
