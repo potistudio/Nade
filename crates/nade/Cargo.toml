@@ -19,10 +19,8 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
-eframe = { version = "0.33.2", features = ["wgpu"] }
-egui = { version = "0.33.2", features = ["rayon"] }
 env_logger.workspace = true
 log.workspace = true
 image = "0.25.8"
-canvas_panel = { path = "../canvas_panel" }
+iced = { version = "0.14", features = ["image", "debug", "tokio"] }
 status_bar = { path = "../status_bar" }

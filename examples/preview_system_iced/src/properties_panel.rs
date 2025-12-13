@@ -1,8 +1,8 @@
 use iced::{
 	Color, Element, Length, Padding,
 	widget::{
-		Column, Row, Space, button, column, container, horizontal_rule, pick_list, row, scrollable,
-		slider, text,
+		Column, Row, Space, column, container, horizontal_rule, pick_list, row, scrollable, slider,
+		text,
 	},
 };
 

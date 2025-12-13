@@ -1,13 +1,10 @@
-use iced::advanced::graphics::geometry::Renderer as _;
 use iced::advanced::{
 	Widget,
 	layout::{self, Layout},
 	mouse, renderer,
 	widget::Tree,
 };
-use iced::application::BootFn;
-use iced::overlay::menu::State;
-use iced::{Element, Size, Task, widget::text};
+use iced::{Element, Size};
 
 struct CustomSlider;
 
@@ -96,14 +93,10 @@ where
 }
 
 #[derive(Debug, Clone)]
-enum Message {
-	Increment,
-}
+enum Message {}
 
 #[derive(Default)]
-struct App {
-	counter: f32,
-}
+struct App {}
 
 impl App {
 	fn update(&mut self, _message: Message) {}

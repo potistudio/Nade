@@ -6,4 +6,4 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-egui = { version = "0.33.2", features = ["rayon"] }
+iced = "0.14"

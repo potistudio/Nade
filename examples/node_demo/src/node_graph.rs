@@ -23,9 +23,7 @@ mod consts {
 	pub const NODE_PORT_HEIGHT: f32 = 24.0;
 	pub const NODE_PORT_RADIUS: f32 = 6.0;
 	pub const NODE_PORT_PADDING: f32 = 12.0;
-	pub const NODE_CORNER_RADIUS: f32 = 8.0;
 	pub const NODE_SHADOW_OFFSET: f32 = 4.0;
-	pub const NODE_SHADOW_BLUR: f32 = 8.0;
 
 	// グリッド
 	pub const GRID_SIZE: f32 = 20.0;
@@ -33,15 +31,11 @@ mod consts {
 
 	// 接続
 	pub const CONNECTION_THICKNESS: f32 = 2.5;
-	pub const CONNECTION_HOVER_THICKNESS: f32 = 4.0;
 
 	// ズーム
 	pub const MIN_ZOOM: f32 = 0.25;
 	pub const MAX_ZOOM: f32 = 2.0;
 	pub const ZOOM_STEP: f32 = 0.1;
-
-	// 選択
-	pub const SELECTION_PADDING: f32 = 4.0;
 
 	// 色
 	pub mod colors {
@@ -59,7 +53,6 @@ mod consts {
 		pub const NODE_SHADOW: Color = Color::from_rgba(0.0, 0.0, 0.0, 0.4);
 
 		pub const PORT_INPUT: Color = Color::from_rgb(0.3, 0.7, 0.4);
-		pub const PORT_OUTPUT: Color = Color::from_rgb(0.7, 0.5, 0.3);
 		pub const PORT_FLOAT: Color = Color::from_rgb(0.5, 0.7, 0.9);
 		pub const PORT_COLOR: Color = Color::from_rgb(0.9, 0.7, 0.3);
 		pub const PORT_BOOL: Color = Color::from_rgb(0.9, 0.4, 0.5);
@@ -690,9 +683,6 @@ impl NodeGraph {
 
 		// カラー入力
 		let color = self.create_node(NodeType::ColorInput, Point::new(550.0, 100.0));
-
-		// 出力ノード
-		let output = self.create_node(NodeType::Output, Point::new(950.0, 200.0));
 
 		// サンプル接続
 		self.connections.push(Connection::new(float1, 0, add, 0));

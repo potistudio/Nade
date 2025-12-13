@@ -5,7 +5,7 @@ use iced::widget::{container, row};
 use iced::{Element, Length, Subscription, Task, Theme};
 use preview_canvas::PreviewCanvas;
 use properties_panel::{PropertiesPanel, PropertiesPanelMessage};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 fn main() -> iced::Result {
 	env_logger::init();

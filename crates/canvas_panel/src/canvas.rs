@@ -1,563 +1,116 @@
-//! 汎用的なパン・ズーム対応キャンバスウィジェット
+//! Generic pan/zoom canvas widget for Iced
+//!
+//! Provides a canvas with:
+//! - Pan (scroll) and zoom (Ctrl+scroll) functionality
+//! - Optional grid drawing with origin axes
+//! - Coordinate transformation between local and screen space
 
-use egui::{self, Color32, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
+use iced::mouse;
+use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path, Stroke};
+use iced::{Color, Element, Length, Point, Rectangle, Renderer, Size, Theme, Vector};
 
 const SCROLL_MULTIPLIER: f32 = 1.0;
+const ZOOM_SPEED: f32 = 0.1;
+const MIN_SCALE: f32 = 0.1;
+const MAX_SCALE: f32 = 10.0;
 
-/// グリッド描画設定
+/// Grid drawing configuration
 #[derive(Clone, Copy, Debug)]
 pub struct GridConfig {
+	/// Spacing between grid lines
 	pub spacing: f32,
-	pub stroke: Stroke,
+	/// Grid line color
+	pub line_color: Color,
+	/// Grid line width
+	pub line_width: f32,
+	/// Whether to show origin axes
 	pub show_origin_axes: bool,
-	pub origin_axis_color: Color32,
+	/// Origin axis color
+	pub origin_axis_color: Color,
 }
 
 impl Default for GridConfig {
 	fn default() -> Self {
 		Self {
 			spacing: 20.0,
-			stroke: Stroke {
-				width: 1.0,
-				color: Color32::from_gray(26),
-			},
+			line_color: Color::from_rgb(0.1, 0.1, 0.1),
+			line_width: 1.0,
 			show_origin_axes: true,
-			origin_axis_color: Color32::from_rgb(120, 200, 255),
+			origin_axis_color: Color::from_rgb(0.47, 0.78, 1.0),
 		}
 	}
 }
 
-/// キャンバスの描画コンテキスト
-/// 描画コールバック内で使用される
-#[allow(dead_code)]
-pub struct CanvasContext<'a> {
-	pub painter: &'a egui::Painter,
-	pub rect: Rect,
-	pub origin: Pos2,
+/// Canvas state for pan/zoom operations
+#[derive(Debug)]
+pub struct CanvasState {
+	/// Current zoom scale
 	pub scale: f32,
-	pub offset: Vec2,
-}
-
-#[allow(dead_code)]
-impl CanvasContext<'_> {
-	/// ローカル座標をスクリーン座標に変換
-	pub fn local_to_screen(&self, local: Pos2) -> Pos2 {
-		let screen_local = Pos2::new(
-			local.x * self.scale + self.offset.x,
-			local.y * self.scale + self.offset.y,
-		);
-		self.origin + screen_local.to_vec2()
-	}
-
-	/// スケールを適用せずにローカル座標をスクリーン座標に変換（テキスト描画用）
-	pub fn local_to_screen_unscaled(&self, local: Pos2) -> Pos2 {
-		let screen_local = Pos2::new(local.x + self.offset.x, local.y + self.offset.y);
-		self.origin + screen_local.to_vec2()
-	}
-
-	/// スクリーン座標をローカル座標に変換
-	pub fn screen_to_local(&self, screen: Pos2) -> Pos2 {
-		let local = screen - self.origin;
-		Pos2::new(
-			(local.x - self.offset.x) / self.scale,
-			(local.y - self.offset.y) / self.scale,
-		)
-	}
-
-	/// 可視領域のローカル座標での範囲を取得
-	pub fn visible_bounds(&self) -> (f32, f32, f32, f32) {
-		let top_left = self.screen_to_local(self.rect.left_top());
-		let bottom_right = self.screen_to_local(self.rect.right_bottom());
-
-		let min_x = top_left.x.min(bottom_right.x).floor();
-		let max_x = top_left.x.max(bottom_right.x).ceil();
-		let min_y = top_left.y.min(bottom_right.y).floor();
-		let max_y = top_left.y.max(bottom_right.y).ceil();
-
-		(min_x, max_x, min_y, max_y)
-	}
-
-	// =========================================================================
-	// 描画メソッド（ローカル座標系で描画）
-	// =========================================================================
-
-	/// 線分を描画（ローカル座標）
-	pub fn line(&self, p1: Pos2, p2: Pos2, stroke: Stroke) {
-		let sp1 = self.local_to_screen(p1);
-		let sp2 = self.local_to_screen(p2);
-		self.painter.line_segment([sp1, sp2], stroke);
-	}
-
-	/// 塗りつぶし円を描画（ローカル座標）
-	pub fn circle_filled(&self, center: Pos2, radius: f32, color: Color32) {
-		let screen_center = self.local_to_screen(center);
-		let screen_radius = radius * self.scale;
-		self.painter
-			.circle_filled(screen_center, screen_radius, color);
-	}
-
-	/// 円のストロークを描画（ローカル座標）
-	pub fn circle_stroke(&self, center: Pos2, radius: f32, stroke: Stroke) {
-		let screen_center = self.local_to_screen(center);
-		let screen_radius = radius * self.scale;
-		self.painter
-			.circle_stroke(screen_center, screen_radius, stroke);
-	}
-
-	/// 円を描画（ローカル座標、塗りつぶし＋ストローク）
-	pub fn circle(&self, center: Pos2, radius: f32, fill: Color32, stroke: Stroke) {
-		let screen_center = self.local_to_screen(center);
-		let screen_radius = radius * self.scale;
-		self.painter
-			.circle(screen_center, screen_radius, fill, stroke);
-	}
-
-	/// 塗りつぶし矩形を描画（ローカル座標）
-	pub fn rect_filled(&self, rect: Rect, rounding: impl Into<egui::CornerRadius>, color: Color32) {
-		let screen_rect = Rect::from_two_pos(
-			self.local_to_screen(rect.left_top()),
-			self.local_to_screen(rect.right_bottom()),
-		);
-		self.painter.rect_filled(screen_rect, rounding, color);
-	}
-
-	/// 矩形のストロークを描画（ローカル座標）
-	pub fn rect_stroke(
-		&self,
-		rect: Rect,
-		rounding: impl Into<egui::CornerRadius>,
-		stroke: impl Into<Stroke>,
-	) {
-		let screen_rect = Rect::from_two_pos(
-			self.local_to_screen(rect.left_top()),
-			self.local_to_screen(rect.right_bottom()),
-		);
-		self.painter
-			.rect_stroke(screen_rect, rounding, stroke, StrokeKind::Outside);
-	}
-
-	/// 矩形を描画（ローカル座標、塗りつぶし＋ストローク）
-	pub fn rect(
-		&self,
-		rect: Rect,
-		rounding: impl Into<egui::CornerRadius>,
-		fill: Color32,
-		stroke: impl Into<Stroke>,
-	) {
-		let screen_rect = Rect::from_two_pos(
-			self.local_to_screen(rect.left_top()),
-			self.local_to_screen(rect.right_bottom()),
-		);
-		self.painter
-			.rect(screen_rect, rounding, fill, stroke, StrokeKind::Outside);
-	}
-
-	/// テキストを描画（ローカル座標、スケール適用）
-	pub fn text(
-		&self,
-		pos: Pos2,
-		anchor: egui::Align2,
-		text: impl ToString,
-		font_id: egui::FontId,
-		color: Color32,
-	) {
-		let screen_pos = self.local_to_screen(pos);
-		self.painter.text(screen_pos, anchor, text, font_id, color);
-	}
-
-	/// テキストを描画（ローカル座標、スケール非適用 - 常に同じサイズ）
-	pub fn text_unscaled(
-		&self,
-		pos: Pos2,
-		anchor: egui::Align2,
-		text: impl ToString,
-		font_id: egui::FontId,
-		color: Color32,
-	) {
-		let screen_pos = self.local_to_screen_unscaled(pos);
-		self.painter.text(screen_pos, anchor, text, font_id, color);
-	}
-
-	/// 複数の線分を描画（ローカル座標）
-	pub fn line_segments(&self, points: &[Pos2], stroke: Stroke) {
-		for window in points.windows(2) {
-			self.line(window[0], window[1], stroke);
-		}
-	}
-
-	/// 閉じた多角形を描画（ローカル座標）
-	pub fn polygon_stroke(&self, points: &[Pos2], stroke: Stroke) {
-		if points.len() < 2 {
-			return;
-		}
-		self.line_segments(points, stroke);
-		if points.len() >= 3 {
-			self.line(points[points.len() - 1], points[0], stroke);
-		}
-	}
-
-	// =========================================================================
-	// SVG-like path drawing methods
-	// =========================================================================
-
-	/// Move to a position (starts a new path segment)
-	pub fn move_to(&self, pos: Pos2) -> Pos2 {
-		pos
-	}
-
-	/// Draw a line from current position to target position
-	pub fn line_to(&self, from: Pos2, to: Pos2, stroke: Stroke) {
-		let sp1 = self.local_to_screen(from);
-		let sp2 = self.local_to_screen(to);
-		self.painter.line_segment([sp1, sp2], stroke);
-	}
-
-	/// Draw a quadratic Bézier curve
-	pub fn quad_to(&self, from: Pos2, control: Pos2, to: Pos2, stroke: Stroke) {
-		let points = self.subdivide_quadratic(from, control, to, 20);
-		for window in points.windows(2) {
-			let sp1 = self.local_to_screen(window[0]);
-			let sp2 = self.local_to_screen(window[1]);
-			self.painter.line_segment([sp1, sp2], stroke);
-		}
-	}
-
-	/// Draw a cubic Bézier curve
-	pub fn curve_to(&self, from: Pos2, control1: Pos2, control2: Pos2, to: Pos2, stroke: Stroke) {
-		let points = self.subdivide_cubic(from, control1, control2, to, 30);
-		for window in points.windows(2) {
-			let sp1 = self.local_to_screen(window[0]);
-			let sp2 = self.local_to_screen(window[1]);
-			self.painter.line_segment([sp1, sp2], stroke);
-		}
-	}
-
-	/// Draw a horizontal line
-	pub fn horizontal_line_to(&self, from: Pos2, x: f32, stroke: Stroke) {
-		let to = Pos2::new(x, from.y);
-		self.line_to(from, to, stroke);
-	}
-
-	/// Draw a vertical line
-	pub fn vertical_line_to(&self, from: Pos2, y: f32, stroke: Stroke) {
-		let to = Pos2::new(from.x, y);
-		self.line_to(from, to, stroke);
-	}
-
-	/// Draw an arc (approximated with cubic Bézier curves)
-	pub fn arc_to(
-		&self,
-		center: Pos2,
-		radius: f32,
-		start_angle: f32,
-		end_angle: f32,
-		stroke: Stroke,
-	) {
-		let segments =
-			((end_angle - start_angle).abs() / std::f32::consts::FRAC_PI_4).ceil() as usize;
-		let segments = segments.max(1);
-		let angle_step = (end_angle - start_angle) / segments as f32;
-
-		for i in 0..segments {
-			let a1 = start_angle + angle_step * i as f32;
-			let a2 = start_angle + angle_step * (i + 1) as f32;
-
-			let p1 = Pos2::new(center.x + radius * a1.cos(), center.y + radius * a1.sin());
-			let p2 = Pos2::new(center.x + radius * a2.cos(), center.y + radius * a2.sin());
-
-			// Approximate arc segment with line
-			self.line_to(p1, p2, stroke);
-		}
-	}
-
-	/// Close path by drawing line back to start
-	pub fn close_path(&self, current: Pos2, start: Pos2, stroke: Stroke) {
-		self.line_to(current, start, stroke);
-	}
-
-	/// Draw an ellipse
-	pub fn ellipse(&self, center: Pos2, rx: f32, ry: f32, stroke: Stroke) {
-		let segments = 32;
-		let angle_step = std::f32::consts::TAU / segments as f32;
-
-		for i in 0..segments {
-			let a1 = angle_step * i as f32;
-			let a2 = angle_step * (i + 1) as f32;
-
-			let p1 = Pos2::new(center.x + rx * a1.cos(), center.y + ry * a1.sin());
-			let p2 = Pos2::new(center.x + rx * a2.cos(), center.y + ry * a2.sin());
-
-			self.line_to(p1, p2, stroke);
-		}
-	}
-
-	/// Draw a filled ellipse
-	pub fn ellipse_filled(&self, center: Pos2, rx: f32, ry: f32, color: Color32) {
-		let screen_center = self.local_to_screen(center);
-		let screen_rx = rx * self.scale;
-		let screen_ry = ry * self.scale;
-
-		// Approximate with a circle using average radius
-		let avg_radius = (screen_rx + screen_ry) / 2.0;
-		self.painter.circle_filled(screen_center, avg_radius, color);
-	}
-
-	/// Draw a polyline (open path through multiple points)
-	pub fn polyline(&self, points: &[Pos2], stroke: Stroke) {
-		for window in points.windows(2) {
-			self.line_to(window[0], window[1], stroke);
-		}
-	}
-
-	/// Draw a filled polygon
-	pub fn polygon_filled(&self, points: &[Pos2], color: Color32) {
-		if points.len() < 3 {
-			return;
-		}
-		let screen_points: Vec<Pos2> = points.iter().map(|p| self.local_to_screen(*p)).collect();
-		self.painter.add(egui::Shape::convex_polygon(
-			screen_points,
-			color,
-			Stroke::NONE,
-		));
-	}
-
-	// Helper: subdivide quadratic Bézier curve
-	fn subdivide_quadratic(&self, p0: Pos2, p1: Pos2, p2: Pos2, segments: usize) -> Vec<Pos2> {
-		let mut points = Vec::with_capacity(segments + 1);
-		for i in 0..=segments {
-			let t = i as f32 / segments as f32;
-			let mt = 1.0 - t;
-			let x = mt * mt * p0.x + 2.0 * mt * t * p1.x + t * t * p2.x;
-			let y = mt * mt * p0.y + 2.0 * mt * t * p1.y + t * t * p2.y;
-			points.push(Pos2::new(x, y));
-		}
-		points
-	}
-
-	// Helper: subdivide cubic Bézier curve
-	fn subdivide_cubic(
-		&self,
-		p0: Pos2,
-		p1: Pos2,
-		p2: Pos2,
-		p3: Pos2,
-		segments: usize,
-	) -> Vec<Pos2> {
-		let mut points = Vec::with_capacity(segments + 1);
-		for i in 0..=segments {
-			let t = i as f32 / segments as f32;
-			let mt = 1.0 - t;
-			let mt2 = mt * mt;
-			let mt3 = mt2 * mt;
-			let t2 = t * t;
-			let t3 = t2 * t;
-			let x = mt3 * p0.x + 3.0 * mt2 * t * p1.x + 3.0 * mt * t2 * p2.x + t3 * p3.x;
-			let y = mt3 * p0.y + 3.0 * mt2 * t * p1.y + 3.0 * mt * t2 * p2.y + t3 * p3.y;
-			points.push(Pos2::new(x, y));
-		}
-		points
-	}
-}
-
-/// 汎用的なキャンバスウィジェット
-/// パン・ズーム機能とグリッド描画を提供
-#[allow(dead_code)]
-pub struct CanvasWidget {
-	pub scale: f32,
-	pub offset: Vec2,
-	pub background_color: Color32,
+	/// Current pan offset
+	pub offset: Vector,
+	/// Background color
+	pub background_color: Color,
+	/// Optional grid configuration
 	pub grid_config: Option<GridConfig>,
-	pub desired_size: Option<Vec2>,
+	/// Cache for the grid geometry
+	cache: canvas::Cache,
 }
 
-impl Default for CanvasWidget {
+impl Default for CanvasState {
 	fn default() -> Self {
 		Self {
 			scale: 1.0,
-			offset: Vec2::ZERO,
-			background_color: Color32::from_gray(48),
+			offset: Vector::ZERO,
+			background_color: Color::from_rgb(0.19, 0.19, 0.19),
 			grid_config: Some(GridConfig::default()),
-			desired_size: None,
+			cache: canvas::Cache::default(),
 		}
 	}
 }
 
-#[allow(dead_code)]
-impl CanvasWidget {
-	/// 新しいキャンバスを作成
+impl CanvasState {
+	/// Create a new canvas state
 	pub fn new() -> Self {
 		Self::default()
 	}
 
-	/// 背景色を設定
-	pub fn with_background_color(mut self, color: Color32) -> Self {
+	/// Set the background color
+	pub fn with_background_color(mut self, color: Color) -> Self {
 		self.background_color = color;
 		self
 	}
 
-	/// グリッド設定を設定（Noneでグリッドを無効化）
+	/// Set the grid configuration (None to disable grid)
 	pub fn with_grid(mut self, config: Option<GridConfig>) -> Self {
 		self.grid_config = config;
 		self
 	}
 
-	/// キャンバスのサイズを設定（Noneで利用可能なサイズ全体を使用）
-	pub fn with_size(mut self, size: Option<Vec2>) -> Self {
-		self.desired_size = size;
-		self
-	}
-
-	/// キャンバスを描画し、描画コールバックを呼び出す
-	/// サイズは `desired_size` が設定されていればそれを使用、なければ利用可能なサイズ全体
-	pub fn show<F>(&mut self, ui: &mut Ui, draw_content: F) -> Response
-	where
-		F: FnOnce(&CanvasContext, &Response),
-	{
-		let size = self.desired_size.unwrap_or_else(|| ui.available_size());
-		self.show_with_size(ui, size, draw_content)
-	}
-
-	/// 指定されたサイズでキャンバスを描画
-	pub fn show_sized<F>(&mut self, ui: &mut Ui, size: Vec2, draw_content: F) -> Response
-	where
-		F: FnOnce(&CanvasContext, &Response),
-	{
-		self.show_with_size(ui, size, draw_content)
-	}
-
-	/// 内部実装：指定サイズでキャンバスを描画
-	fn show_with_size<F>(&mut self, ui: &mut Ui, size: Vec2, draw_content: F) -> Response
-	where
-		F: FnOnce(&CanvasContext, &Response),
-	{
-		let (response, painter) = ui.allocate_painter(size, Sense::click_and_drag());
-
-		let rect = response.rect;
-		let origin = rect.left_top();
-
-		// 背景描画
-		painter.rect_filled(rect, 0.0, self.background_color);
-
-		// グリッド描画
-		if let Some(ref grid_config) = self.grid_config {
-			self.draw_grid(&painter, rect, origin, grid_config);
-		}
-
-		// 描画コンテキストを作成
-		let ctx = CanvasContext {
-			painter: &painter,
-			rect,
-			origin,
-			scale: self.scale,
-			offset: self.offset,
-		};
-
-		// ユーザーのコンテンツを描画
-		draw_content(&ctx, &response);
-
-		// パン・ズーム処理
-		self.handle_pan_zoom(ui, &response, origin);
-
-		response
-	}
-
-	/// グリッドを描画
-	fn draw_grid(&self, painter: &egui::Painter, rect: Rect, origin: Pos2, config: &GridConfig) {
-		let (min_x, max_x, min_y, max_y) = self.visible_bounds(rect, origin);
-
-		// 縦線
-		let start_x = (min_x / config.spacing).floor() * config.spacing;
-		let end_x = (max_x / config.spacing).ceil() * config.spacing;
-		let mut x = start_x;
-		while x <= end_x {
-			let p1 = self.local_to_screen(Pos2::new(x, min_y), origin);
-			let p2 = self.local_to_screen(Pos2::new(x, max_y), origin);
-			painter.line_segment([p1, p2], config.stroke);
-			x += config.spacing;
-		}
-
-		// 横線
-		let start_y = (min_y / config.spacing).floor() * config.spacing;
-		let end_y = (max_y / config.spacing).ceil() * config.spacing;
-		let mut y = start_y;
-		while y <= end_y {
-			let p1 = self.local_to_screen(Pos2::new(min_x, y), origin);
-			let p2 = self.local_to_screen(Pos2::new(max_x, y), origin);
-			painter.line_segment([p1, p2], config.stroke);
-			y += config.spacing;
-		}
-
-		// 原点軸
-		if config.show_origin_axes {
-			let axis_stroke = Stroke::new(1.0, config.origin_axis_color);
-
-			// X軸 (y = 0)
-			if 0.0 >= min_y && 0.0 <= max_y {
-				let p1 = self.local_to_screen(Pos2::new(min_x, 0.0), origin);
-				let p2 = self.local_to_screen(Pos2::new(max_x, 0.0), origin);
-				painter.line_segment([p1, p2], axis_stroke);
-			}
-
-			// Y軸 (x = 0)
-			if 0.0 >= min_x && 0.0 <= max_x {
-				let p1 = self.local_to_screen(Pos2::new(0.0, min_y), origin);
-				let p2 = self.local_to_screen(Pos2::new(0.0, max_y), origin);
-				painter.line_segment([p1, p2], axis_stroke);
-			}
-		}
-	}
-
-	/// パン・ズーム処理
-	fn handle_pan_zoom(&mut self, ui: &mut Ui, response: &Response, origin: Pos2) {
-		if response.hovered() {
-			// ズーム処理（ピンチまたはCtrl+スクロール）
-			if let Some(pointer) = ui.input(|i| i.pointer.hover_pos()) {
-				let pointer_local_before = self.screen_to_local(pointer, origin);
-
-				let zoom = ui.input(|i| i.zoom_delta());
-				if zoom != 1.0 {
-					let old_scale = self.scale;
-					self.scale *= zoom;
-
-					// ポインタ位置を基準にズーム
-					let local_before = pointer_local_before.to_vec2() * old_scale + self.offset;
-					let local_after = pointer_local_before.to_vec2() * self.scale + self.offset;
-
-					self.offset += local_before - local_after;
-				}
-			}
-
-			// パン処理（スクロール）
-			let scroll = ui.input(|i| i.smooth_scroll_delta);
-			if scroll != Vec2::ZERO {
-				self.offset += scroll * SCROLL_MULTIPLIER;
-			}
-		}
-	}
-
-	/// ローカル座標をスクリーン座標に変換
-	fn local_to_screen(&self, local: Pos2, origin: Pos2) -> Pos2 {
-		let screen_local = Pos2::new(
-			local.x * self.scale + self.offset.x,
-			local.y * self.scale + self.offset.y,
-		);
-		origin + screen_local.to_vec2()
-	}
-
-	/// スクリーン座標をローカル座標に変換
-	fn screen_to_local(&self, screen: Pos2, origin: Pos2) -> Pos2 {
-		let local = screen - origin;
-		Pos2::new(
-			(local.x - self.offset.x) / self.scale,
-			(local.y - self.offset.y) / self.scale,
+	/// Convert local coordinates to screen coordinates
+	pub fn local_to_screen(&self, local: Point, bounds: Rectangle) -> Point {
+		let origin = bounds.position();
+		Point::new(
+			origin.x + local.x * self.scale + self.offset.x,
+			origin.y + local.y * self.scale + self.offset.y,
 		)
 	}
 
-	/// 可視領域のローカル座標での範囲を取得
-	fn visible_bounds(&self, rect: Rect, origin: Pos2) -> (f32, f32, f32, f32) {
-		let top_left = self.screen_to_local(rect.left_top(), origin);
-		let bottom_right = self.screen_to_local(rect.right_bottom(), origin);
+	/// Convert screen coordinates to local coordinates
+	pub fn screen_to_local(&self, screen: Point, bounds: Rectangle) -> Point {
+		let origin = bounds.position();
+		Point::new(
+			(screen.x - origin.x - self.offset.x) / self.scale,
+			(screen.y - origin.y - self.offset.y) / self.scale,
+		)
+	}
+
+	/// Get the visible bounds in local coordinates
+	pub fn visible_bounds(&self, bounds: Rectangle) -> (f32, f32, f32, f32) {
+		let top_left = self.screen_to_local(bounds.position(), bounds);
+		let bottom_right = self.screen_to_local(
+			Point::new(bounds.x + bounds.width, bounds.y + bounds.height),
+			bounds,
+		);
 
 		let min_x = top_left.x.min(bottom_right.x).floor();
 		let max_x = top_left.x.max(bottom_right.x).ceil();
@@ -566,4 +119,263 @@ impl CanvasWidget {
 
 		(min_x, max_x, min_y, max_y)
 	}
+
+	/// Handle scroll/zoom events
+	pub fn handle_scroll(
+		&mut self,
+		delta: Vector,
+		_cursor_position: Option<Point>,
+		_bounds: Rectangle,
+	) {
+		// Pan with scroll
+		self.offset.x += delta.x * SCROLL_MULTIPLIER;
+		self.offset.y += delta.y * SCROLL_MULTIPLIER;
+		self.cache.clear();
+	}
+
+	/// Handle zoom events
+	pub fn handle_zoom(
+		&mut self,
+		zoom_delta: f32,
+		cursor_position: Option<Point>,
+		bounds: Rectangle,
+	) {
+		if let Some(cursor) = cursor_position {
+			let old_scale = self.scale;
+			let zoom_factor = 1.0 + zoom_delta * ZOOM_SPEED;
+			self.scale = (self.scale * zoom_factor).clamp(MIN_SCALE, MAX_SCALE);
+
+			// Zoom around cursor position
+			let cursor_local = self.screen_to_local(cursor, bounds);
+			let local_before = Vector::new(
+				cursor_local.x * old_scale + self.offset.x,
+				cursor_local.y * old_scale + self.offset.y,
+			);
+			let local_after = Vector::new(
+				cursor_local.x * self.scale + self.offset.x,
+				cursor_local.y * self.scale + self.offset.y,
+			);
+
+			self.offset.x += local_before.x - local_after.x;
+			self.offset.y += local_before.y - local_after.y;
+			self.cache.clear();
+		}
+	}
+
+	/// Clear the geometry cache (call when content changes)
+	pub fn request_redraw(&mut self) {
+		self.cache.clear();
+	}
+}
+
+/// Trait for custom canvas drawing
+///
+/// Implement this trait to draw custom content on the canvas.
+/// The draw method receives a CanvasContext for coordinate-aware drawing.
+pub trait CanvasProgram {
+	/// The message type for canvas events
+	type Message: Clone;
+
+	/// Draw custom content on the canvas
+	fn draw_content(&self, frame: &mut Frame, bounds: Rectangle, state: &CanvasState);
+
+	/// Handle canvas events (optional)
+	fn update(
+		&mut self,
+		_event: canvas::Event,
+		_bounds: Rectangle,
+		_cursor: mouse::Cursor,
+		_state: &mut CanvasState,
+	) -> Option<Self::Message> {
+		None
+	}
+}
+
+/// Internal canvas program wrapper
+struct CanvasWrapper<'a, P: CanvasProgram> {
+	program: &'a P,
+	state: &'a CanvasState,
+}
+
+impl<P: CanvasProgram> canvas::Program<P::Message> for CanvasWrapper<'_, P> {
+	type State = ();
+
+	fn draw(
+		&self,
+		_internal_state: &Self::State,
+		renderer: &Renderer,
+		_theme: &Theme,
+		bounds: Rectangle,
+		_cursor: mouse::Cursor,
+	) -> Vec<Geometry> {
+		let geometry = self.state.cache.draw(renderer, bounds.size(), |frame| {
+			// Draw background
+			frame.fill_rectangle(Point::ORIGIN, bounds.size(), self.state.background_color);
+
+			// Draw grid if configured
+			if let Some(ref grid) = self.state.grid_config {
+				self.draw_grid(frame, bounds, grid);
+			}
+
+			// Draw custom content
+			self.program.draw_content(frame, bounds, self.state);
+		});
+
+		vec![geometry]
+	}
+}
+
+impl<P: CanvasProgram> CanvasWrapper<'_, P> {
+	fn draw_grid(&self, frame: &mut Frame, bounds: Rectangle, grid: &GridConfig) {
+		let (min_x, max_x, min_y, max_y) = self.state.visible_bounds(bounds);
+
+		let grid_stroke = Stroke::default()
+			.with_width(grid.line_width)
+			.with_color(grid.line_color);
+
+		// Draw vertical lines
+		let start_x = (min_x / grid.spacing).floor() * grid.spacing;
+		let mut x = start_x;
+		while x <= max_x {
+			let p1 = self.local_to_frame(Point::new(x, min_y), bounds);
+			let p2 = self.local_to_frame(Point::new(x, max_y), bounds);
+			frame.stroke(&Path::line(p1, p2), grid_stroke.clone());
+			x += grid.spacing;
+		}
+
+		// Draw horizontal lines
+		let start_y = (min_y / grid.spacing).floor() * grid.spacing;
+		let mut y = start_y;
+		while y <= max_y {
+			let p1 = self.local_to_frame(Point::new(min_x, y), bounds);
+			let p2 = self.local_to_frame(Point::new(max_x, y), bounds);
+			frame.stroke(&Path::line(p1, p2), grid_stroke.clone());
+			y += grid.spacing;
+		}
+
+		// Draw origin axes
+		if grid.show_origin_axes {
+			let axis_stroke = Stroke::default()
+				.with_width(1.5)
+				.with_color(grid.origin_axis_color);
+
+			// X axis (y = 0)
+			if 0.0 >= min_y && 0.0 <= max_y {
+				let p1 = self.local_to_frame(Point::new(min_x, 0.0), bounds);
+				let p2 = self.local_to_frame(Point::new(max_x, 0.0), bounds);
+				frame.stroke(&Path::line(p1, p2), axis_stroke.clone());
+			}
+
+			// Y axis (x = 0)
+			if 0.0 >= min_x && 0.0 <= max_x {
+				let p1 = self.local_to_frame(Point::new(0.0, min_y), bounds);
+				let p2 = self.local_to_frame(Point::new(0.0, max_y), bounds);
+				frame.stroke(&Path::line(p1, p2), axis_stroke);
+			}
+		}
+	}
+
+	/// Convert local coordinates to frame coordinates (relative to frame origin)
+	fn local_to_frame(&self, local: Point, _bounds: Rectangle) -> Point {
+		Point::new(
+			local.x * self.state.scale + self.state.offset.x,
+			local.y * self.state.scale + self.state.offset.y,
+		)
+	}
+}
+
+/// Create a canvas element from a CanvasProgram
+pub fn canvas_view<'a, P: CanvasProgram + 'a>(
+	program: &'a P,
+	state: &'a CanvasState,
+) -> Element<'a, P::Message>
+where
+	P::Message: 'a,
+{
+	let wrapper = CanvasWrapper { program, state };
+	Canvas::new(wrapper)
+		.width(Length::Fill)
+		.height(Length::Fill)
+		.into()
+}
+
+// ============================================================================
+// Drawing helper functions for use in CanvasProgram::draw_content
+// ============================================================================
+
+/// Draw a line in local coordinates
+pub fn draw_line(
+	frame: &mut Frame,
+	state: &CanvasState,
+	_bounds: Rectangle,
+	p1: Point,
+	p2: Point,
+	stroke: Stroke,
+) {
+	let sp1 = local_to_frame(state, p1);
+	let sp2 = local_to_frame(state, p2);
+	frame.stroke(&Path::line(sp1, sp2), stroke);
+}
+
+/// Draw a filled circle in local coordinates
+pub fn draw_circle_filled(
+	frame: &mut Frame,
+	state: &CanvasState,
+	_bounds: Rectangle,
+	center: Point,
+	radius: f32,
+	color: Color,
+) {
+	let screen_center = local_to_frame(state, center);
+	let screen_radius = radius * state.scale;
+	frame.fill(&Path::circle(screen_center, screen_radius), color);
+}
+
+/// Draw a circle stroke in local coordinates
+pub fn draw_circle_stroke(
+	frame: &mut Frame,
+	state: &CanvasState,
+	_bounds: Rectangle,
+	center: Point,
+	radius: f32,
+	stroke: Stroke,
+) {
+	let screen_center = local_to_frame(state, center);
+	let screen_radius = radius * state.scale;
+	frame.stroke(&Path::circle(screen_center, screen_radius), stroke);
+}
+
+/// Draw a filled rectangle in local coordinates
+pub fn draw_rect_filled(
+	frame: &mut Frame,
+	state: &CanvasState,
+	_bounds: Rectangle,
+	rect: Rectangle,
+	color: Color,
+) {
+	let top_left = local_to_frame(state, rect.position());
+	let size = Size::new(rect.width * state.scale, rect.height * state.scale);
+	frame.fill_rectangle(top_left, size, color);
+}
+
+/// Draw a rectangle stroke in local coordinates
+pub fn draw_rect_stroke(
+	frame: &mut Frame,
+	state: &CanvasState,
+	_bounds: Rectangle,
+	rect: Rectangle,
+	stroke: Stroke,
+) {
+	let top_left = local_to_frame(state, rect.position());
+	let size = Size::new(rect.width * state.scale, rect.height * state.scale);
+	let path = Path::rectangle(top_left, size);
+	frame.stroke(&path, stroke);
+}
+
+/// Convert local coordinates to frame coordinates
+fn local_to_frame(state: &CanvasState, local: Point) -> Point {
+	Point::new(
+		local.x * state.scale + state.offset.x,
+		local.y * state.scale + state.offset.y,
+	)
 }

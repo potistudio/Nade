@@ -597,6 +597,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bit-set"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -807,7 +816,7 @@ dependencies = [
 name = "canvas_panel"
 version = "0.0.1"
 dependencies = [
- "egui",
+ "iced 0.14.0",
 ]
 
 [[package]]
@@ -2038,10 +2047,8 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 name = "gizmos"
 version = "0.0.1"
 dependencies = [
- "canvas_panel",
- "eframe",
- "egui",
  "env_logger",
+ "iced 0.14.0",
  "log",
 ]
 
@@ -2379,12 +2386,30 @@ checksum = "000e01026c93ba643f8357a3db3ada0e6555265a377f6f9291c472f6dd701fb3"
 dependencies = [
  "iced_core 0.14.0",
  "iced_debug",
+ "iced_devtools",
  "iced_futures 0.14.0",
  "iced_renderer 0.14.0",
  "iced_runtime 0.14.0",
  "iced_widget 0.14.0",
  "iced_winit 0.14.0",
+ "image 0.25.8",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "iced_beacon"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02a48f970444257a5e8b19def673f14f0d79c159fa851055e2a861683c3f8845"
+dependencies = [
+ "bincode",
+ "futures",
+ "iced_core 0.14.0",
+ "log",
+ "semver",
+ "serde",
+ "thiserror 2.0.17",
+ "tokio",
 ]
 
 [[package]]
@@ -2420,6 +2445,7 @@ dependencies = [
  "log",
  "num-traits",
  "rustc-hash 2.1.1",
+ "serde",
  "smol_str",
  "thiserror 2.0.17",
  "web-time",
@@ -2431,8 +2457,21 @@ version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25035ab0215a620e53f4103e36fc4e59a1fb2817e4bfc38a30ad27b4202ea0be"
 dependencies = [
+ "iced_beacon",
  "iced_core 0.14.0",
  "iced_futures 0.14.0",
+ "log",
+]
+
+[[package]]
+name = "iced_devtools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59b8e2a306ac5c583234b02f5404afdb7b7467c8f72a4a44ad3e7be30fc4b339"
+dependencies = [
+ "iced_debug",
+ "iced_program",
+ "iced_widget 0.14.0",
  "log",
 ]
 
@@ -2461,6 +2500,7 @@ dependencies = [
  "iced_core 0.14.0",
  "log",
  "rustc-hash 2.1.1",
+ "tokio",
  "wasm-bindgen-futures",
  "wasmtimer",
 ]
@@ -2491,7 +2531,7 @@ dependencies = [
  "iced_core 0.13.2",
  "iced_futures 0.13.2",
  "image 0.24.9",
- "kamadak-exif",
+ "kamadak-exif 0.5.5",
  "log",
  "lyon_path",
  "once_cell",
@@ -2513,6 +2553,8 @@ dependencies = [
  "half",
  "iced_core 0.14.0",
  "iced_futures 0.14.0",
+ "image 0.25.8",
+ "kamadak-exif 0.6.1",
  "log",
  "lyon_path",
  "raw-window-handle",
@@ -2652,6 +2694,7 @@ dependencies = [
  "iced_debug",
  "iced_graphics 0.14.0",
  "log",
+ "lyon",
  "rustc-hash 2.1.1",
  "thiserror 2.0.17",
  "wgpu 27.0.1",
@@ -3026,6 +3069,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kamadak-exif"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1130d80c7374efad55a117d715a3af9368f0fa7a2c54573afc15a188cd984837"
+dependencies = [
+ "mutate_once",
+]
+
+[[package]]
 name = "khronos-egl"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3384,10 +3436,8 @@ name = "nade"
 version = "0.0.1"
 dependencies = [
  "anyhow",
- "canvas_panel",
- "eframe",
- "egui",
  "env_logger",
+ "iced 0.14.0",
  "image 0.25.8",
  "log",
  "status_bar",
@@ -4796,6 +4846,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16c2f82143577edb4921b71ede051dac62ca3c16084e918bf7b40c96ae10eb33"
 
 [[package]]
+name = "semver"
+version = "1.0.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d767eb0aabc880b29956c35734170f26ed551a859dbd361d140cdbeca61ab1e2"
+dependencies = [
+ "serde",
+ "serde_core",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5006,6 +5066,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "socket2"
+version = "0.5.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e22376abed350d73dd1cd119b57ffccad95b4e585a7cda43e286245ce23c0678"
+dependencies = [
+ "libc",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
 name = "softbuffer"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5062,7 +5132,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "status_bar"
 version = "0.0.1"
 dependencies = [
- "egui",
+ "iced 0.14.0",
 ]
 
 [[package]]
@@ -5337,11 +5407,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc3a2344dafbe23a245241fe8b09735b521110d30fcefbbd5feb1797ca35d17"
 dependencies = [
  "backtrace",
+ "bytes",
  "io-uring",
  "libc",
  "mio",
  "pin-project-lite",
  "slab",
+ "socket2",
+ "tokio-macros",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e06d43f1345a3bcd39f6a56dbb7dcab2ba47e68e8ac134855e7e2bdbaf8cab8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.108",
 ]
 
 [[package]]

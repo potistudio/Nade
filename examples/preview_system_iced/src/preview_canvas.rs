@@ -173,10 +173,6 @@ impl PreviewCanvas {
 		self.params.param3 = value;
 	}
 
-	pub fn update(&mut self, _message: PreviewCanvasMessage) {
-		// 現在は特に処理なし
-	}
-
 	/// フレームを更新（リアルタイム描画）
 	pub fn tick(&mut self) {
 		let time = self.start_time.elapsed().as_secs_f32() * self.params.time_scale;
@@ -483,6 +479,4 @@ impl PreviewCanvas {
 // =============================================================================
 
 #[derive(Debug, Clone)]
-pub enum PreviewCanvasMessage {
-	Tick,
-}
+pub enum PreviewCanvasMessage {}

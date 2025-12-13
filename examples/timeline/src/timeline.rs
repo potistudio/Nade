@@ -6,7 +6,6 @@ use egui::{
 // タイムラインの定数
 // =============================================================================
 
-const HEADER_HEIGHT: f32 = 28.0;
 const TRACK_HEIGHT: f32 = 40.0;
 const TRACK_PADDING: f32 = 4.0;
 const TRACK_LABEL_WIDTH: f32 = 120.0;
@@ -50,21 +49,17 @@ impl TimelineClip {
 
 #[derive(Clone, Debug)]
 pub struct TimelineTrack {
-	pub id: usize,
 	pub name: String,
 	pub clips: Vec<TimelineClip>,
 	pub muted: bool,
-	pub locked: bool,
 }
 
 impl TimelineTrack {
-	pub fn new(id: usize, name: &str) -> Self {
+	pub fn new(name: &str) -> Self {
 		Self {
-			id,
 			name: name.to_string(),
 			clips: Vec::new(),
 			muted: false,
-			locked: false,
 		}
 	}
 
@@ -80,7 +75,7 @@ impl TimelineTrack {
 #[derive(Clone, Debug)]
 enum DragState {
 	None,
-	Playhead(f32),
+	Playhead,
 	Clip {
 		track_id: usize,
 		clip_id: usize,
@@ -90,12 +85,10 @@ enum DragState {
 		track_id: usize,
 		clip_id: usize,
 		original_start: f32,
-		original_duration: f32,
 	},
 	ClipResizeRight {
 		track_id: usize,
 		clip_id: usize,
-		original_duration: f32,
 	},
 	Panning(Vec2),
 }
@@ -135,7 +128,7 @@ impl Default for TimelineWidget {
 impl TimelineWidget {
 	fn add_sample_content(&mut self) {
 		// トラック1: Video
-		let mut track1 = TimelineTrack::new(0, "Video");
+		let mut track1 = TimelineTrack::new("Video");
 		track1.add_clip(TimelineClip::new(
 			self.next_clip_id(),
 			"Intro",
@@ -160,7 +153,7 @@ impl TimelineWidget {
 		self.tracks.push(track1);
 
 		// トラック2: Audio
-		let mut track2 = TimelineTrack::new(1, "Audio");
+		let mut track2 = TimelineTrack::new("Audio");
 		track2.add_clip(TimelineClip::new(
 			self.next_clip_id(),
 			"BGM",
@@ -171,7 +164,7 @@ impl TimelineWidget {
 		self.tracks.push(track2);
 
 		// トラック3: Effects
-		let mut track3 = TimelineTrack::new(2, "Effects");
+		let mut track3 = TimelineTrack::new("Effects");
 		track3.add_clip(TimelineClip::new(
 			self.next_clip_id(),
 			"Fade In",
@@ -196,7 +189,7 @@ impl TimelineWidget {
 		self.tracks.push(track3);
 
 		// トラック4: Subtitles
-		let mut track4 = TimelineTrack::new(3, "Subtitles");
+		let mut track4 = TimelineTrack::new("Subtitles");
 		track4.add_clip(TimelineClip::new(
 			self.next_clip_id(),
 			"Title",
@@ -627,7 +620,7 @@ impl TimelineWidget {
 		if ruler_rect.contains(pos) {
 			let time = self.x_to_time(pos.x, timeline_rect).max(0.0);
 			self.playhead_time = time;
-			return DragState::Playhead(time);
+			return DragState::Playhead;
 		}
 
 		// タイムライン上のドラッグ
@@ -647,14 +640,9 @@ impl TimelineWidget {
 							track_id,
 							clip_id,
 							original_start: clip.start_time,
-							original_duration: clip.duration,
 						};
 					} else if pos.x > x_end - handle_width {
-						return DragState::ClipResizeRight {
-							track_id,
-							clip_id,
-							original_duration: clip.duration,
-						};
+						return DragState::ClipResizeRight { track_id, clip_id };
 					}
 				}
 
@@ -678,7 +666,7 @@ impl TimelineWidget {
 
 	fn handle_drag(&mut self, pos: Pos2, timeline_rect: Rect) {
 		match self.drag_state.clone() {
-			DragState::Playhead(_) => {
+			DragState::Playhead => {
 				self.playhead_time = self.x_to_time(pos.x, timeline_rect).max(0.0);
 			}
 			DragState::Clip {
@@ -695,21 +683,16 @@ impl TimelineWidget {
 				track_id,
 				clip_id,
 				original_start,
-				original_duration,
 			} => {
 				let time = self.x_to_time(pos.x, timeline_rect).max(0.0);
 				if let Some(clip) = self.find_clip_mut(track_id, clip_id) {
 					let delta = time - original_start;
-					let new_duration = (original_duration - delta).max(0.1);
-					clip.start_time = original_start + original_duration - new_duration;
+					let new_duration = (clip.duration - delta).max(0.1);
+					clip.start_time = original_start + new_duration;
 					clip.duration = new_duration;
 				}
 			}
-			DragState::ClipResizeRight {
-				track_id,
-				clip_id,
-				original_duration: _,
-			} => {
+			DragState::ClipResizeRight { track_id, clip_id } => {
 				let end_time = self.x_to_time(pos.x, timeline_rect);
 				if let Some(clip) = self.find_clip_mut(track_id, clip_id) {
 					let new_duration = (end_time - clip.start_time).max(0.1);
