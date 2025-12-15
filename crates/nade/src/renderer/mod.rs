@@ -1,9 +1,19 @@
+//! # Renderer Module
+//!
+//! エフェクトベースのレンダリングシステムを提供します。
+
+pub mod effects;
+
 use crate::encoder::Encoder;
 use anyhow::Result;
-use core::FrameBuffer;
+use core::{Effect, FrameBuffer, RenderContext, RgbColor};
+use effects::WaveEffect;
 use image::{ImageBuffer, Rgb};
+use rayon::prelude::*;
 
 /// 指定されたフレーム番号に対応する画像を生成
+///
+/// rayon を使用して行単位で並列処理を行います。
 ///
 /// # 引数
 ///
@@ -15,30 +25,67 @@ use image::{ImageBuffer, Rgb};
 ///
 /// RGB フォーマットの `ImageBuffer`
 pub fn render_frame(frame_num: u32, width: u32, height: u32) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
-	let mut img = ImageBuffer::new(width, height);
-
-	// フレーム番号を時間パラメータに変換
-	let t = frame_num as f32 / 100.0;
-
-	// 各ピクセルのカラーを計算
-	for (x, y, pixel) in img.enumerate_pixels_mut() {
-		// x座標に基づく赤チャンネル（sin波でアニメーション）
-		let r = ((x as f32 / width as f32 * 255.0) * t.sin().abs()) as u8;
-		// y座標に基づく緑チャンネル（cos波でアニメーション）
-		let g = ((y as f32 / height as f32 * 255.0) * t.cos().abs()) as u8;
-		// 固定の青チャンネル
-		let b = 128;
-		*pixel = Rgb([r, g, b]);
-	}
-
-	img
+	// デフォルトのエフェクトを使用
+	let effect = WaveEffect::default();
+	render_frame_with_effect(&effect, frame_num, width, height)
 }
 
+/// エフェクトを指定してフレームを生成
+///
+/// 任意の `Effect` 実装を使用してレンダリングを行います。
+///
+/// # 引数
+///
+/// * `effect` - 適用するエフェクト
+/// * `frame_num` - フレーム番号
+/// * `width` - 出力幅
+/// * `height` - 出力高さ
+///
+/// # 戻り値
+///
+/// RGB フォーマットの `ImageBuffer`
+pub fn render_frame_with_effect(
+	effect: &dyn Effect,
+	frame_num: u32,
+	width: u32,
+	height: u32,
+) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
+	// レンダリングコンテキストを作成
+	let ctx = RenderContext {
+		width,
+		height,
+		time: frame_num as f32 / 60.0,
+		frame: frame_num,
+	};
+
+	// 並列処理で各行のピクセルを計算
+	let pixels: Vec<u8> = (0..height)
+		.into_par_iter()
+		.flat_map(|y| {
+			(0..width)
+				.flat_map(|x| {
+					let color = effect.apply(RgbColor::BLACK, x, y, &ctx);
+					[color.r, color.g, color.b]
+				})
+				.collect::<Vec<u8>>()
+		})
+		.collect();
+
+	ImageBuffer::from_raw(width, height, pixels).expect("Buffer size mismatch")
+}
+
+/// レンダラー構造体
+///
+/// エンコーダーと連携してフレームをレンダリング・エンコードします。
 pub struct Renderer<E: Encoder> {
+	/// エンコーダー
 	pub encoder: E,
 }
 
 impl<E: Encoder> Renderer<E> {
+	/// 全フレームをレンダリング
+	///
+	/// 600フレーム（10秒 @ 60fps）をレンダリングしてエンコードします。
 	pub fn render(&mut self) -> Result<()> {
 		self.encoder.prepare()?;
 
@@ -46,8 +93,11 @@ impl<E: Encoder> Renderer<E> {
 		let height = 1080;
 		let total_frames = 600;
 
+		// デフォルトエフェクトを使用
+		let effect = WaveEffect::default();
+
 		for frame_num in 0..total_frames {
-			let frame_image = render_frame(frame_num, width, height); // composition.render_frame();
+			let frame_image = render_frame_with_effect(&effect, frame_num, width, height);
 
 			let frame_buffer = FrameBuffer {
 				width,

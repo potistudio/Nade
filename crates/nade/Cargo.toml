@@ -25,3 +25,4 @@ image = "0.25.8"
 iced = { version = "0.14", features = ["image", "debug", "tokio"] }
 status_bar = { path = "../status_bar" }
 core = { path = "../core" }
+rayon = "1.10"
