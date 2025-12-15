@@ -1,5 +1,6 @@
-use super::*;
+use crate::encoder::Encoder;
 use anyhow::Result;
+use core::FrameBuffer;
 use std::{
 	io::Write,
 	process::{Command, Stdio},

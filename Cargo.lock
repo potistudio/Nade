@@ -3436,6 +3436,7 @@ name = "nade"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "core",
  "env_logger",
  "iced 0.14.0",
  "image 0.25.8",

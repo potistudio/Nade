@@ -1,7 +1,7 @@
 pub mod ffmpeg_encoder;
 
-use crate::core::FrameBuffer;
 use anyhow::Result;
+use core::FrameBuffer;
 
 pub trait Encoder {
 	fn prepare(&mut self) -> Result<()>;
