@@ -26,3 +26,4 @@ iced = { version = "0.14", features = ["image", "debug", "tokio"] }
 status_bar = { path = "../status_bar" }
 core = { path = "../core" }
 rayon = "1.10"
+aexlo-rs = { git = "https://github.com/potistudio/aexlo-rs.git", branch = "master" }

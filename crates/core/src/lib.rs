@@ -93,6 +93,44 @@ pub struct RenderContext {
 /// }
 /// ```
 pub trait Effect: Send + Sync {
+	/// エフェクトを初期化
+	///
+	/// エフェクトが使用される前に呼び出されます。
+	/// 外部ファイルの読み込みやリソースの確保などを行います。
+	///
+	/// # Returns
+	///
+	/// 初期化に成功した場合は `Ok(())`、失敗した場合はエラーメッセージを含む `Err`
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// fn init(&mut self) -> Result<(), String> {
+	///     self.texture = load_texture("path/to/texture.png")?;
+	///     Ok(())
+	/// }
+	/// ```
+	fn init(&mut self) -> Result<(), String> {
+		Ok(())
+	}
+
+	/// リソースを解放
+	///
+	/// エフェクトが不要になった際に呼び出されます。
+	/// 読み込んだファイルやリソースの解放を行います。
+	fn dispose(&mut self) {
+		// デフォルトでは何もしない
+	}
+
+	/// 初期化済みかどうかを確認
+	///
+	/// # Returns
+	///
+	/// 初期化済みの場合は `true`
+	fn is_initialized(&self) -> bool {
+		true
+	}
+
 	/// ピクセルにエフェクトを適用
 	///
 	/// # Arguments
