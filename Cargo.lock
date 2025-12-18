@@ -3599,8 +3599,10 @@ dependencies = [
  "iced 0.14.0",
  "image 0.25.8",
  "log",
+ "panel_system",
  "rayon",
  "status_bar",
+ "timeline_widget",
 ]
 
 [[package]]
@@ -4301,6 +4303,13 @@ dependencies = [
  "proc-macro2 1.0.103",
  "quote 1.0.41",
  "syn 2.0.108",
+]
+
+[[package]]
+name = "panel_system"
+version = "0.0.1"
+dependencies = [
+ "iced 0.14.0",
 ]
 
 [[package]]
@@ -5543,6 +5552,13 @@ dependencies = [
  "env_logger",
  "iced 0.13.1",
  "log",
+]
+
+[[package]]
+name = "timeline_widget"
+version = "0.0.1"
+dependencies = [
+ "iced 0.14.0",
 ]
 
 [[package]]
