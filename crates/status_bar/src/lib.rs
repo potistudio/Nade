@@ -1,4 +1,4 @@
-//! Status bar component for Iced
+//! Status bar component
 //!
 //! Provides a simple status bar widget that displays version information.
 

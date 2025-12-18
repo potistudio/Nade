@@ -19,6 +19,7 @@ pub struct TimelineClip {
 }
 
 impl TimelineClip {
+	/// 新しいタイムラインクリップを作成
 	pub fn new(id: usize, name: &str, start_time: f32, duration: f32, color: Color) -> Self {
 		Self {
 			id,
@@ -29,6 +30,7 @@ impl TimelineClip {
 		}
 	}
 
+	/// クリップの終了時間
 	#[inline]
 	pub fn end_time(&self) -> f32 {
 		self.start_time + self.duration

@@ -1,5 +1,5 @@
 [package]
-name = "timeline_widget"
+name = "timeline_panel"
 description = "Timeline widget for Iced applications"
 version.workspace = true
 edition.workspace = true
