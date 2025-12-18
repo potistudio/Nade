@@ -11,7 +11,7 @@ use iced::widget::{Image, column, container, image, row, text};
 use iced::{Color, Element, Length, Subscription, Theme};
 use panel_system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
 use std::time::Instant;
-use timeline_widget::{TimelineMessage, TimelineWidget};
+use timeline_panel::{TimelineMessage, TimelineWidget};
 
 // =============================================================================
 // テーマ設定
@@ -58,6 +58,13 @@ impl PanelContent {
 // メッセージ定義
 // =============================================================================
 
+/// アプリケーションパネルメッセージ（ラッパー）
+#[derive(Debug, Clone)]
+pub enum AppPanelMessage {
+	Timeline(TimelineMessage),
+	// 将来的に Properties(PropertiesMessage) などを追加可能
+}
+
 /// アプリケーションメッセージ
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -66,9 +73,7 @@ pub enum Message {
 	/// タイムスライダー変更
 	TimeChanged(f32),
 	/// パネルシステムメッセージ
-	PanelSystem(PanelSystemMessage<PanelContent>),
-	/// タイムラインメッセージ
-	Timeline(TimelineMessage),
+	PanelSystem(PanelSystemMessage<PanelContent, AppPanelMessage>),
 }
 
 // =============================================================================
@@ -213,10 +218,16 @@ impl NadeApp {
 				self.preview.set_time(value);
 			}
 			Message::PanelSystem(msg) => {
+				// アプリケーションメッセージのルーティング
+				if let PanelSystemMessage::AppMessage(app_msg) = &msg {
+					match app_msg {
+						AppPanelMessage::Timeline(timeline_msg) => {
+							self.timeline.update(timeline_msg.clone());
+						}
+					}
+				}
+				// システムメッセージはパネルシステムへ
 				self.panel_system.update(msg);
-			}
-			Message::Timeline(msg) => {
-				self.timeline.update(msg);
 			}
 		}
 	}
@@ -246,9 +257,9 @@ impl NadeApp {
 
 	/// パネルコンテンツをレンダリング
 	fn view_panel_content<'a>(
-		&self,
+		&'a self,
 		content: &PanelContent,
-	) -> Element<'a, PanelSystemMessage<PanelContent>> {
+	) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
 		match content {
 			PanelContent::MainPreview => self.view_preview(),
 			PanelContent::Timeline => self.view_timeline(),
@@ -259,7 +270,7 @@ impl NadeApp {
 	}
 
 	/// プレビューパネルのビュー
-	fn view_preview<'a>(&self) -> Element<'a, PanelSystemMessage<PanelContent>> {
+	fn view_preview<'a>(&self) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
 		let handle = image::Handle::from_rgba(
 			self.preview.width,
 			self.preview.height,
@@ -289,30 +300,21 @@ impl NadeApp {
 	}
 
 	/// タイムラインパネルのビュー
-	fn view_timeline<'a>(&self) -> Element<'a, PanelSystemMessage<PanelContent>> {
-		// Note: For now, show a placeholder since Timeline widget needs its own message handling
-		// A full integration would require a more complex message routing system
-		let content = column![
-			text("Timeline").size(14).color(Color::WHITE),
-			text("🎬 Video  |  🎵 Audio  |  ✨ Effects")
-				.size(11)
-				.color(Color::from_rgb(0.7, 0.7, 0.7)),
-		]
-		.spacing(5)
-		.padding(10);
-
-		container(content)
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.style(|_| container::Style {
-				background: Some(PanelContent::Timeline.color().into()),
-				..Default::default()
-			})
-			.into()
+	fn view_timeline<'a>(
+		&'a self,
+	) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
+		// タイムラインウィジェットを描画
+		// TimelineMessageをAppPanelMessageでラップしてルーティング
+		self.timeline
+			.view()
+			.map(AppPanelMessage::Timeline)
+			.map(PanelSystemMessage::AppMessage)
 	}
 
 	/// プロパティパネルのビュー
-	fn view_properties<'a>(&self) -> Element<'a, PanelSystemMessage<PanelContent>> {
+	fn view_properties<'a>(
+		&self,
+	) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
 		let content = column![
 			text("Properties").size(14).color(Color::WHITE),
 			text("No selection")
@@ -333,7 +335,9 @@ impl NadeApp {
 	}
 
 	/// コンポジションパネルのビュー
-	fn view_composition<'a>(&self) -> Element<'a, PanelSystemMessage<PanelContent>> {
+	fn view_composition<'a>(
+		&self,
+	) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
 		let content = column![
 			text("Composition").size(14).color(Color::WHITE),
 			text("└─ Layer 1")
@@ -357,7 +361,7 @@ impl NadeApp {
 	}
 
 	/// コンソールパネルのビュー
-	fn view_console<'a>(&self) -> Element<'a, PanelSystemMessage<PanelContent>> {
+	fn view_console<'a>(&self) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
 		let content = column![
 			text("Console").size(14).color(Color::WHITE),
 			text("[INFO] Application started")

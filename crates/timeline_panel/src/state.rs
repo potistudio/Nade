@@ -169,6 +169,7 @@ pub struct TimelineState {
 	pub time_scale: f32,
 	pub selected_clip: Option<(usize, usize)>,
 	pub(crate) drag_state: DragState,
+	pub(crate) ctrl_pressed: bool,
 	next_clip_id: usize,
 }
 
@@ -181,6 +182,7 @@ impl Default for TimelineState {
 			time_scale: 1.0,
 			selected_clip: None,
 			drag_state: DragState::None,
+			ctrl_pressed: false,
 			next_clip_id: 0,
 		};
 		state.add_sample_content();
@@ -198,6 +200,7 @@ impl TimelineState {
 			time_scale: 1.0,
 			selected_clip: None,
 			drag_state: DragState::None,
+			ctrl_pressed: false,
 			next_clip_id: 0,
 		}
 	}

@@ -20,7 +20,11 @@ use crate::{
 
 /// パネルシステムのメッセージ
 #[derive(Debug, Clone)]
-pub enum PanelSystemMessage<C: Clone + std::fmt::Debug> {
+pub enum PanelSystemMessage<C, M = ()>
+where
+	C: Clone + std::fmt::Debug,
+	M: Clone + std::fmt::Debug,
+{
 	TabClicked(usize, usize),
 	TabDragStart(usize, usize),
 	MouseMove(Point),
@@ -31,8 +35,10 @@ pub enum PanelSystemMessage<C: Clone + std::fmt::Debug> {
 	DropZoneHover(Option<DropZone>),
 	ResizeHandleHover(Option<(Vec<usize>, SplitDirection)>),
 	WindowResized(Size),
-	/// パネルコンテンツからのカスタムメッセージ
+	/// パネルコンテンツ識別子
 	Content(C),
+	/// アプリケーション固有のメッセージ
+	AppMessage(M),
 }
 
 // =============================================================================
@@ -95,7 +101,10 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 	}
 
 	/// メッセージを処理
-	pub fn update(&mut self, message: PanelSystemMessage<C>) {
+	pub fn update<M>(&mut self, message: PanelSystemMessage<C, M>)
+	where
+		M: Clone + std::fmt::Debug,
+	{
 		match message {
 			PanelSystemMessage::TabClicked(container_id, tab_index) => {
 				self.set_active_tab(container_id, tab_index);
@@ -218,6 +227,10 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 				self.drag_state = DragState::None;
 			}
 
+			PanelSystemMessage::Content(_) => {}
+
+			PanelSystemMessage::AppMessage(_) => {}
+
 			PanelSystemMessage::DropZoneHover(zone) => {
 				self.hover_drop_zone = zone;
 			}
@@ -230,10 +243,6 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 
 			PanelSystemMessage::WindowResized(size) => {
 				self.window_size = size;
-			}
-
-			PanelSystemMessage::Content(_) => {
-				// コンテンツメッセージはアプリケーション側で処理
 			}
 		}
 	}
@@ -257,9 +266,10 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 	}
 
 	/// ビューを生成
-	pub fn view<'a, F>(&'a self, content_view: F) -> Element<'a, PanelSystemMessage<C>>
+	pub fn view<'a, F, M>(&'a self, content_view: F) -> Element<'a, PanelSystemMessage<C, M>>
 	where
-		F: Fn(&C) -> Element<'a, PanelSystemMessage<C>> + Copy,
+		F: Fn(&C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
+		M: Clone + std::fmt::Debug + 'static,
 		C: 'a,
 	{
 		let main_content = self.view_node(&self.root, vec![], content_view);
@@ -298,10 +308,13 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 		}
 	}
 
-	fn view_main_container<'a>(
+	fn view_main_container<'a, M>(
 		&self,
-		content: Element<'a, PanelSystemMessage<C>>,
-	) -> Element<'a, PanelSystemMessage<C>> {
+		content: Element<'a, PanelSystemMessage<C, M>>,
+	) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
 		if let DragState::Resizing { .. } = &self.drag_state {
 			mouse_area(
 				container(content)
@@ -330,14 +343,15 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 		}
 	}
 
-	fn view_node<'a, F>(
+	fn view_node<'a, F, M>(
 		&'a self,
 		node: &'a DockNode<C>,
 		path: Vec<usize>,
 		content_view: F,
-	) -> Element<'a, PanelSystemMessage<C>>
+	) -> Element<'a, PanelSystemMessage<C, M>>
 	where
-		F: Fn(&C) -> Element<'a, PanelSystemMessage<C>> + Copy,
+		F: Fn(&C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
+		M: Clone + std::fmt::Debug + 'static,
 	{
 		match node {
 			DockNode::Empty => Space::new().width(Length::Fill).height(Length::Fill).into(),
@@ -390,18 +404,19 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 		}
 	}
 
-	fn view_tab_container<'a, F>(
+	fn view_tab_container<'a, F, M>(
 		&'a self,
 		tab_container: &'a TabContainer<C>,
 		content_view: F,
-	) -> Element<'a, PanelSystemMessage<C>>
+	) -> Element<'a, PanelSystemMessage<C, M>>
 	where
-		F: Fn(&C) -> Element<'a, PanelSystemMessage<C>> + Copy,
+		F: Fn(&C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
+		M: Clone + std::fmt::Debug + 'static,
 	{
 		let container_id = tab_container.id;
 		let dragging_panel = self.drag_state.dragging_panel_id();
 
-		let tabs: Vec<Element<PanelSystemMessage<C>>> = tab_container
+		let tabs: Vec<Element<PanelSystemMessage<C, M>>> = tab_container
 			.panels
 			.iter()
 			.enumerate()
@@ -457,14 +472,17 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 			.into()
 	}
 
-	fn view_tab<'a>(
+	fn view_tab<'a, M>(
 		&self,
 		container_id: usize,
 		index: usize,
 		panel: &Panel<C>,
 		is_active: bool,
 		is_being_dragged: bool,
-	) -> Element<'a, PanelSystemMessage<C>> {
+	) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
 		let bg_color = if is_active {
 			colors::TAB_ACTIVE
 		} else {
@@ -539,11 +557,14 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 			.into()
 	}
 
-	fn view_floating_panel<'a>(
+	fn view_floating_panel<'a, M>(
 		&self,
 		panel: &Panel<C>,
 		pos: Point,
-	) -> Element<'a, PanelSystemMessage<C>> {
+	) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
 		let title = panel.title.clone();
 
 		let floating_content =
@@ -575,7 +596,10 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 			.into()
 	}
 
-	fn view_drop_zone_overlay<'a>(&self) -> Element<'a, PanelSystemMessage<C>> {
+	fn view_drop_zone_overlay<'a, M>(&self) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
 		if let Some(drop_zone) = &self.hover_drop_zone {
 			let position_text = match drop_zone.position {
 				DropPosition::Center => "タブとして追加",
@@ -608,11 +632,14 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 		}
 	}
 
-	fn view_content_with_drop_zones<'a>(
+	fn view_content_with_drop_zones<'a, M>(
 		&'a self,
 		container_id: usize,
-		content: Element<'a, PanelSystemMessage<C>>,
-	) -> Element<'a, PanelSystemMessage<C>> {
+		content: Element<'a, PanelSystemMessage<C, M>>,
+	) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
 		let center_zone = self.view_drop_zone_indicator(container_id, DropPosition::Center);
 		let left_zone = self.view_drop_zone_indicator(container_id, DropPosition::Left);
 		let right_zone = self.view_drop_zone_indicator(container_id, DropPosition::Right);
@@ -658,11 +685,14 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 			.into()
 	}
 
-	fn view_drop_zone_indicator<'a>(
+	fn view_drop_zone_indicator<'a, M>(
 		&self,
 		container_id: usize,
 		position: DropPosition,
-	) -> Element<'a, PanelSystemMessage<C>> {
+	) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
 		let is_hovered = self
 			.hover_drop_zone
 			.as_ref()
@@ -720,7 +750,10 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 			.into()
 	}
 
-	fn view_empty_content<'a>(&self) -> Element<'a, PanelSystemMessage<C>> {
+	fn view_empty_content<'a, M>(&self) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
 		container(
 			text("Drop a tab here")
 				.color(colors::TEXT_SECONDARY)
@@ -733,11 +766,14 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 		.into()
 	}
 
-	fn view_resize_handle<'a>(
+	fn view_resize_handle<'a, M>(
 		&self,
 		direction: SplitDirection,
 		path: Vec<usize>,
-	) -> Element<'a, PanelSystemMessage<C>> {
+	) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
 		let is_any_resizing = matches!(&self.drag_state, DragState::Resizing { .. });
 
 		let is_active = match &self.drag_state {

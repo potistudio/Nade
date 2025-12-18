@@ -3602,7 +3602,7 @@ dependencies = [
  "panel_system",
  "rayon",
  "status_bar",
- "timeline_widget",
+ "timeline_panel",
 ]
 
 [[package]]
@@ -5551,7 +5551,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "timeline_widget"
+name = "timeline_panel"
 version = "0.0.1"
 dependencies = [
  "iced 0.14.0",

@@ -219,9 +219,17 @@ impl canvas::Program<TimelineMessage> for TimelineProgram {
 					}
 					_ => false,
 				},
-				Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
-					state.handle_keyboard(key.clone(), *modifiers)
-				}
+				Event::Keyboard(event) => match event {
+					keyboard::Event::KeyPressed { key, modifiers, .. } => {
+						state.update_modifiers(*modifiers);
+						state.handle_keyboard(key.clone(), *modifiers)
+					}
+					keyboard::Event::KeyReleased { modifiers, .. } => {
+						state.update_modifiers(*modifiers);
+						false
+					}
+					_ => false,
+				},
 				_ => false,
 			}
 		};
@@ -700,15 +708,32 @@ impl TimelineState {
 	}
 
 	pub(crate) fn handle_scroll(&mut self, delta: mouse::ScrollDelta) -> bool {
-		match delta {
-			mouse::ScrollDelta::Lines { x, y } => {
-				self.apply_scroll_delta(x * SCROLL_MULTIPLIER, y * SCROLL_MULTIPLIER);
+		if self.ctrl_pressed {
+			let dy = match delta {
+				mouse::ScrollDelta::Lines { y, .. } => y * SCROLL_MULTIPLIER,
+				mouse::ScrollDelta::Pixels { y, .. } => y,
+			};
+
+			if dy > 0.0 {
+				self.zoom_in();
+			} else if dy < 0.0 {
+				self.zoom_out();
 			}
-			mouse::ScrollDelta::Pixels { x, y } => {
-				self.apply_scroll_delta(x, y);
+		} else {
+			match delta {
+				mouse::ScrollDelta::Lines { x, y } => {
+					self.apply_scroll_delta(x * SCROLL_MULTIPLIER, y * SCROLL_MULTIPLIER);
+				}
+				mouse::ScrollDelta::Pixels { x, y } => {
+					self.apply_scroll_delta(x, y);
+				}
 			}
 		}
 		true
+	}
+
+	pub(crate) fn update_modifiers(&mut self, modifiers: keyboard::Modifiers) {
+		self.ctrl_pressed = modifiers.command();
 	}
 
 	pub(crate) fn handle_keyboard(&mut self, key: Key, modifiers: keyboard::Modifiers) -> bool {

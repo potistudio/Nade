@@ -26,6 +26,6 @@ iced = { version = "0.14", features = ["image", "debug", "tokio", "canvas"] }
 status_bar = { path = "../status_bar" }
 core = { path = "../core" }
 panel_system = { path = "../panel_system" }
-timeline_widget = { path = "../timeline" }
+timeline_panel = { path = "../timeline_panel" }
 rayon = "1.10"
 aexlo-rs = { git = "https://github.com/potistudio/aexlo-rs.git", branch = "master" }
