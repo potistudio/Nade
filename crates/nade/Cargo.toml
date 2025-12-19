@@ -22,10 +22,12 @@ anyhow.workspace = true
 env_logger.workspace = true
 log.workspace = true
 image = "0.25.8"
-iced = { version = "0.14", features = ["image", "debug", "tokio", "canvas"] }
+iced = { version = "0.14", features = ["wgpu", "image", "debug", "tokio", "canvas"] }
 status_bar = { path = "../status_bar" }
-core = { path = "../core" }
+nade_core = { path = "../core", package = "core" }
 panel_system = { path = "../panel_system" }
 timeline_panel = { path = "../timeline_panel" }
 rayon = "1.10"
-aexlo-rs = { git = "https://github.com/potistudio/aexlo-rs.git", branch = "master" }
+crossbeam-channel = "0.5.15"
+tokio = { version = "1.48.0", features = ["full"] }
+bytes = "1.11.0"

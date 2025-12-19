@@ -1,6 +1,6 @@
 use crate::encoder::Encoder;
 use anyhow::Result;
-use core::FrameBuffer;
+use nade_core::FrameBuffer;
 use std::{
 	io::Write,
 	process::{Command, Stdio},
@@ -18,7 +18,7 @@ impl Default for FfmpegEncoder {
 				"-f",
 				"rawvideo",
 				"-pixel_format",
-				"rgb24",
+				"rgba",
 				"-video_size",
 				&format!("{}x{}", 1920, 1080),
 				"-framerate",

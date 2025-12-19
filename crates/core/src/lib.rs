@@ -145,8 +145,133 @@ pub trait Effect: Send + Sync {
 	/// エフェクト適用後の色
 	fn apply(&self, input: RgbColor, x: u32, y: u32, ctx: &RenderContext) -> RgbColor;
 
-	/// エフェクト名を取得
-	///
 	/// デバッグやUI表示に使用されます。
 	fn name(&self) -> &str;
+}
+
+// =============================================================================
+// アプリケーション状態 (Core/Model)
+// =============================================================================
+
+#[derive(Debug, Clone)]
+pub struct Model {
+	pub preview: PreviewModel,
+}
+
+impl Default for Model {
+	fn default() -> Self {
+		Self {
+			preview: PreviewModel::default(),
+		}
+	}
+}
+
+/// プレビュー状態
+#[derive(Debug, Clone)]
+pub struct PreviewModel {
+	/// 現在の時間（秒）
+	pub time: f32,
+	/// フレームレート
+	pub fps: f32,
+	/// 幅
+	pub width: u32,
+	/// 高さ
+	pub height: u32,
+	/// 再生中かどうか
+	pub is_playing: bool,
+	/// 現在のフレームデータ（レンダリング結果）
+	///
+	/// `Arc<[u8]>` を使用してスレッド間で効率的に共有します。
+	pub frame: Option<FrameData>,
+}
+
+impl Default for PreviewModel {
+	fn default() -> Self {
+		Self {
+			time: 0.0,
+			fps: 0.0,
+			width: 640,
+			height: 360,
+			is_playing: false,
+			frame: None,
+		}
+	}
+}
+
+/// フレームデータ（共有/軽量）
+#[derive(Debug, Clone)]
+pub struct FrameData {
+	pub width: u32,
+	pub height: u32,
+	pub pixels: bytes::Bytes,
+}
+
+// =============================================================================
+// メッセージ (Msg / Events)
+// =============================================================================
+
+#[derive(Debug, Clone)]
+pub enum Msg {
+	/// 定期更新（ティック）
+	Tick,
+	/// 時間変更要求
+	SetTime(f32),
+	/// 再生トグル
+	TogglePlay,
+	/// シャットダウン
+	Shutdown,
+	/// フレームレンダリング完了
+	FrameRendered(FrameData),
+}
+
+// =============================================================================
+// エフェクト (Side Effects)
+// =============================================================================
+
+#[derive(Debug, Clone)]
+pub enum CoreEffect {
+	RenderFrame { time: f32, width: u32, height: u32 },
+}
+
+// =============================================================================
+// Update Logic
+// =============================================================================
+
+pub fn update(mut model: Model, msg: Msg) -> (Model, Vec<CoreEffect>) {
+	let mut effects = Vec::new();
+
+	match msg {
+		Msg::Tick => {
+			if model.preview.is_playing {
+				// シンプルな 60fps シミュレーション
+				model.preview.time += 1.0 / 60.0;
+				// Render request
+				effects.push(CoreEffect::RenderFrame {
+					time: model.preview.time,
+					width: model.preview.width,
+					height: model.preview.height,
+				});
+			}
+		}
+		Msg::SetTime(t) => {
+			model.preview.time = t;
+			// Seek したらレンダリング
+			effects.push(CoreEffect::RenderFrame {
+				time: model.preview.time,
+				width: model.preview.width,
+				height: model.preview.height,
+			});
+		}
+		Msg::TogglePlay => {
+			model.preview.is_playing = !model.preview.is_playing;
+		}
+		Msg::Shutdown => {
+			// No-op for now
+		}
+		Msg::FrameRendered(frame) => {
+			model.preview.frame = Some(frame);
+		}
+	}
+
+	(model, effects)
 }

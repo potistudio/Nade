@@ -2,7 +2,7 @@
 //!
 //! アニメーション波形パターンを生成するエフェクトです。
 
-use core::{Effect, RenderContext, RgbColor};
+use nade_core::{Effect, RenderContext, RgbColor};
 
 /// 波形エフェクト
 ///

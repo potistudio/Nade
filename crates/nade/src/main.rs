@@ -8,10 +8,15 @@ mod encoder;
 mod renderer;
 
 use iced::widget::{Image, column, container, image, row, text};
-use iced::{Color, Element, Length, Subscription, Theme};
+use iced::{Color, Element, Length, Subscription, Task, Theme};
 use panel_system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
+use std::sync::Arc;
+use std::thread;
 use std::time::Instant;
 use timeline_panel::{TimelineMessage, TimelineWidget};
+
+use crossbeam_channel::{Receiver, Sender, unbounded};
+use nade_core::{CoreEffect, FrameData, Model, Msg, PreviewModel, update};
 
 // =============================================================================
 // テーマ設定
@@ -62,133 +67,134 @@ impl PanelContent {
 #[derive(Debug, Clone)]
 pub enum AppPanelMessage {
 	Timeline(TimelineMessage),
-	// 将来的に Properties(PropertiesMessage) などを追加可能
 }
 
 /// アプリケーションメッセージ
 #[derive(Debug, Clone)]
 pub enum Message {
-	/// フレームティック
-	Tick(Instant),
 	/// タイムスライダー変更
 	TimeChanged(f32),
 	/// パネルシステムメッセージ
 	PanelSystem(PanelSystemMessage<PanelContent, AppPanelMessage>),
-}
-
-// =============================================================================
-// ピクセルビューア状態
-// =============================================================================
-
-/// ピクセルバッファ管理
-#[derive(Debug)]
-struct PreviewState {
-	width: u32,
-	height: u32,
-	pixels: Vec<u8>,
-	time: f32,
-	last_frame: Option<Instant>,
-	fps: f32,
-}
-
-impl Default for PreviewState {
-	fn default() -> Self {
-		let width = 320;
-		let height = 240;
-		let pixels = vec![0u8; (width * height * 4) as usize];
-		Self {
-			width,
-			height,
-			pixels,
-			time: 0.0,
-			last_frame: None,
-			fps: 0.0,
-		}
-	}
-}
-
-impl PreviewState {
-	fn update_tick(&mut self, now: Instant) {
-		let dt = if let Some(last) = self.last_frame {
-			now.duration_since(last).as_secs_f32()
-		} else {
-			0.016
-		};
-		self.last_frame = Some(now);
-
-		if dt > 0.0 {
-			let current_fps = 1.0 / dt;
-			self.fps = self.fps * 0.9 + current_fps * 0.1;
-		}
-
-		self.time += dt;
-		self.update_pixels();
-	}
-
-	fn set_time(&mut self, value: f32) {
-		self.time = value;
-		self.update_pixels();
-	}
-
-	fn update_pixels(&mut self) {
-		let frame_num = (self.time * 60.0) as u32;
-		let rgb_image = renderer::render_frame(frame_num, self.width, self.height);
-		let rgb_data = rgb_image.into_raw();
-
-		let pixel_count = (self.width * self.height) as usize;
-		for i in 0..pixel_count {
-			let src_idx = i * 3;
-			let dst_idx = i * 4;
-			self.pixels[dst_idx] = rgb_data[src_idx];
-			self.pixels[dst_idx + 1] = rgb_data[src_idx + 1];
-			self.pixels[dst_idx + 2] = rgb_data[src_idx + 2];
-			self.pixels[dst_idx + 3] = 255;
-		}
-	}
+	/// Coreからのモデル更新
+	CoreUpdated(Model),
 }
 
 // =============================================================================
 // アプリケーション状態
 // =============================================================================
 
-/// Nadeアプリケーション
-#[derive(Debug)]
-struct NadeApp {
-	/// パネルシステム
-	panel_system: PanelSystem<PanelContent>,
-	/// プレビュー状態
-	preview: PreviewState,
-	/// タイムラインウィジェット
-	timeline: TimelineWidget,
-	/// ステータスバー
-	status_bar: status_bar::StatusBar,
-}
+/// Coreへの接続状態（Subscription用）
+#[derive(Clone)]
+struct CoreConnection(Arc<std::sync::Mutex<Receiver<Model>>>);
 
-impl Default for NadeApp {
-	fn default() -> Self {
-		let panel_system = Self::create_panel_layout();
-
-		Self {
-			panel_system,
-			preview: PreviewState::default(),
-			timeline: TimelineWidget::new(),
-			status_bar: status_bar::StatusBar::new(),
-		}
+impl std::hash::Hash for CoreConnection {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		(Arc::as_ptr(&self.0) as usize).hash(state);
 	}
 }
 
+// run_with only requires Hash, but usually Eq is good practice or required by Hash derivation rules
+impl PartialEq for CoreConnection {
+	fn eq(&self, other: &Self) -> bool {
+		Arc::ptr_eq(&self.0, &other.0)
+	}
+}
+
+impl Eq for CoreConnection {}
+
+/// Coreストリームの構築
+fn build_core_stream(conn: &CoreConnection) -> iced::futures::stream::BoxStream<'static, Message> {
+	use iced::futures::{SinkExt, StreamExt};
+	use std::time::Duration;
+
+	let rx_mutex = conn.0.clone();
+
+	iced::stream::channel(
+		100,
+		move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
+			let rx = rx_mutex;
+			loop {
+				let result = tokio::task::spawn_blocking({
+					let rx = rx.clone();
+					move || {
+						if let Ok(guard) = rx.lock() {
+							// タイムアウト付きで受信することで、iced終了時にループを抜けられる
+							match guard.recv_timeout(Duration::from_millis(100)) {
+								Ok(model) => Some(Some(model)),
+								Err(crossbeam_channel::RecvTimeoutError::Timeout) => Some(None),
+								Err(crossbeam_channel::RecvTimeoutError::Disconnected) => None,
+							}
+						} else {
+							None
+						}
+					}
+				})
+				.await
+				.ok()
+				.flatten();
+
+				match result {
+					Some(Some(model)) => {
+						// Model受信成功
+						if output.send(Message::CoreUpdated(model)).await.is_err() {
+							// iced側がチャンネルを閉じた
+							break;
+						}
+					}
+					Some(None) => {
+						// タイムアウト - 継続（ただしicedがシャットダウン中なら自然に終了する）
+						continue;
+					}
+					None => {
+						// チャンネル切断またはロック失敗
+						break;
+					}
+				}
+			}
+		},
+	)
+	.boxed()
+}
+
+/// Nadeアプリケーション
+struct NadeApp {
+	/// パネルシステム
+	panel_system: PanelSystem<PanelContent>,
+	/// Coreへの送信チャンネル
+	core_tx: Sender<Msg>,
+	/// Coreからの受信チャンネル (Subscriptionで使用)
+	core_rx: Arc<std::sync::Mutex<Receiver<Model>>>,
+	/// 現在のモデル（表示用キャッシュ）
+	current_model: Model,
+
+	/// タイムラインウィジェット (UI State)
+	timeline: TimelineWidget,
+	/// ステータスバー (UI State)
+	status_bar: status_bar::StatusBar,
+}
+
 impl NadeApp {
+	/// アプリケーションの初期化
+	fn new(core_tx: Sender<Msg>, core_rx: Receiver<Model>) -> (Self, Task<Message>) {
+		let panel_system = Self::create_panel_layout();
+
+		let app = Self {
+			panel_system,
+			core_tx,
+			core_rx: Arc::new(std::sync::Mutex::new(core_rx)),
+			current_model: Model::default(),
+			timeline: TimelineWidget::new(),
+			status_bar: status_bar::StatusBar::new(),
+		};
+
+		// 初期フレームを描画するためのトリガー
+		app.core_tx.send(Msg::SetTime(0.0)).ok();
+
+		(app, Task::none())
+	}
+
 	/// デフォルトのパネルレイアウトを作成
-	///
-	/// ```text
-	/// ┌─────────────┬────────────────────────────┐
-	/// │ Composition │                            │
-	/// │             │      Main Preview          │
-	/// ├─────────────┤                            │
-	/// │ Properties  ├────────────────────────────┤
-	/// │             │        Timeline            │
-	/// └─────────────┴────────────────────────────┘
-	/// ```
 	fn create_panel_layout() -> PanelSystem<PanelContent> {
 		let mut builder = LayoutBuilder::new();
 
@@ -209,13 +215,15 @@ impl NadeApp {
 	}
 
 	/// メッセージを処理
-	fn update(&mut self, message: Message) {
+	fn update(&mut self, message: Message) -> Task<Message> {
 		match message {
-			Message::Tick(now) => {
-				self.preview.update_tick(now);
+			Message::CoreUpdated(model) => {
+				self.current_model = model;
+				Task::none()
 			}
 			Message::TimeChanged(value) => {
-				self.preview.set_time(value);
+				self.core_tx.send(Msg::SetTime(value)).ok();
+				Task::none()
 			}
 			Message::PanelSystem(msg) => {
 				// アプリケーションメッセージのルーティング
@@ -223,11 +231,14 @@ impl NadeApp {
 					match app_msg {
 						AppPanelMessage::Timeline(timeline_msg) => {
 							self.timeline.update(timeline_msg.clone());
+							// Timelineの変更をCoreに通知する場合
+							// self.core_tx.send(Msg::...);
 						}
 					}
 				}
 				// システムメッセージはパネルシステムへ
 				self.panel_system.update(msg);
+				Task::none()
 			}
 		}
 	}
@@ -271,28 +282,37 @@ impl NadeApp {
 
 	/// プレビューパネルのビュー
 	fn view_preview<'a>(&self) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
-		let handle = image::Handle::from_rgba(
-			self.preview.width,
-			self.preview.height,
-			self.preview.pixels.clone(),
-		);
+		let preview = &self.current_model.preview;
 
-		let fps_text = text(format!("{:.1} FPS", self.preview.fps))
+		let content = if let Some(frame) = &preview.frame {
+			// bytes::Bytes を使用してコピーを回避
+			let handle = image::Handle::from_rgba(frame.width, frame.height, frame.pixels.clone());
+
+			let img = Image::new(handle)
+				.content_fit(iced::ContentFit::Contain)
+				.width(Length::Fill)
+				.height(Length::Fill);
+
+			container(img).width(Length::Fill).height(Length::Fill)
+		} else {
+			container(text("No Signal").color(Color::WHITE))
+				.width(Length::Fill)
+				.height(Length::Fill)
+				.center_x(Length::Fill)
+				.center_y(Length::Fill)
+		};
+
+		let fps_text = text(format!("{:.1} FPS", preview.fps))
 			.size(12)
 			.color(Color::from_rgb(0.4, 0.8, 1.0));
 
-		let time_text = text(format!("Time: {:.2}s", self.preview.time))
+		let time_text = text(format!("Time: {:.2}s", preview.time))
 			.size(12)
 			.color(Color::from_rgb(0.8, 0.8, 0.8));
 
-		let img = Image::new(handle)
-			.content_fit(iced::ContentFit::Contain)
-			.width(Length::Fill)
-			.height(Length::Fill);
-
 		column![
 			row![fps_text, text(" | ").size(12), time_text].spacing(5),
-			container(img).width(Length::Fill).height(Length::Fill),
+			content,
 		]
 		.spacing(5)
 		.padding(5)
@@ -303,8 +323,6 @@ impl NadeApp {
 	fn view_timeline<'a>(
 		&'a self,
 	) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
-		// タイムラインウィジェットを描画
-		// TimelineMessageをAppPanelMessageでラップしてルーティング
 		self.timeline
 			.view()
 			.map(AppPanelMessage::Timeline)
@@ -383,28 +401,143 @@ impl NadeApp {
 
 	/// サブスクリプション
 	fn subscription(&self) -> Subscription<Message> {
-		iced::window::frames().map(Message::Tick)
+		let core_rx = self.core_rx.clone();
+		Subscription::run_with(CoreConnection(core_rx), build_core_stream)
 	}
 }
 
 // =============================================================================
-// エントリーポイント
+// Core Loop
 // =============================================================================
 
-/// アプリケーションのエントリーポイント
+fn core_loop(rx: Receiver<Msg>, tx: Sender<Model>) {
+	let mut model = Model::default();
+	// 初期状態送信
+	tx.send(model.clone()).ok();
+
+	loop {
+		// メッセージ待機
+		let msg = match rx.recv() {
+			Ok(m) => m,
+			Err(_) => break, // Sender drops
+		};
+
+		if let Msg::Shutdown = msg {
+			break;
+		}
+
+		// ロジック更新 (Pure)
+		let (next_model, effects) = update(model, msg);
+		model = next_model;
+
+		// Effect 実行 (Impure)
+		for effect in effects {
+			match effect {
+				CoreEffect::RenderFrame {
+					time,
+					width,
+					height,
+				} => {
+					// レンダリング実行
+					// ここで renderer::render_frame を呼ぶ
+					// フレーム番号換算
+					let frame_num = (time * 60.0) as u32;
+					let img_buffer = renderer::render_frame(frame_num, width, height);
+					let raw = img_buffer.into_raw();
+					// Arc化してFrameData作成
+					let frame_data = FrameData {
+						width,
+						height,
+						pixels: bytes::Bytes::from(raw),
+					};
+
+					// レンダリング結果をメッセージとして自分自身(Core Logic)に戻すか、
+					// 直接 Model に反映して送るか。
+					// update関数は FrameRendered メッセージを受け付けるので、
+					// ここで再帰的に update を呼ぶか、次のループで処理するか。
+					// メッセージとして投げ直すのが本来の Elm Architecture だが、
+					// チャンネル経由だと非同期になる。
+					// synchronous に反映したいならここで update を呼ぶ。
+
+					// Simple approach: Apply directly to model for now
+					model.preview.frame = Some(frame_data);
+				}
+			}
+		}
+
+		// 更新された状態をUIへ送信
+		tx.send(model.clone()).ok();
+	}
+}
+
+// =============================================================================
+// Entry Point
+// =============================================================================
+
+fn run_ui(ui_tx: Sender<Msg>, ui_rx: Receiver<Model>) -> iced::Result {
+	iced::application(
+		move || NadeApp::new(ui_tx.clone(), ui_rx.clone()),
+		NadeApp::update,
+		NadeApp::view,
+	)
+	.subscription(NadeApp::subscription)
+	.theme(theme)
+	.title("Nade")
+	.window_size((1600.0, 900.0))
+	.run()
+}
+
+/// Entry point of the application (desktop)
 pub fn main() -> iced::Result {
 	#[allow(unsafe_code)]
 	unsafe {
+		//FIXME: RUST_LOGをアプリケーションから分離する
 		std::env::set_var("RUST_LOG", "debug");
 		std::env::set_var("ICED_PRESENT_MODE", "immediate");
 	}
 
+	// TODO: debug_assertions でログレベル分岐（優先度：中）
+
+	// TODO: bounded channel 検討（優先度：低・将来）
+	// 現状は問題ないが、Coreのレンダリングが重くなってUIが追いつかない場合、
+	// unboundedだとメモリを消費し続ける。将来的にはboundedにしてbackpressureをかけるか、
+	// 最新のModelだけ保持する仕組みを検討する。
 	env_logger::init();
 
-	iced::application(NadeApp::default, NadeApp::update, NadeApp::view)
-		.subscription(NadeApp::subscription)
-		.theme(theme)
-		.title("Nade")
-		.window_size((1600.0, 900.0))
-		.run()
+	// Create channels for communication between UI and core logic
+	let (ui_tx, core_rx) = unbounded::<Msg>();
+	let (core_tx, ui_rx) = unbounded::<Model>();
+
+	// Shutdown用にSenderを保持
+	// NOTE: NadeApp内のSenderはicedがdropするタイミングが不定のため、
+	// チャネルcloseに依存せず明示的にMsg::Shutdownを送る方式を採用
+	let shutdown_tx = ui_tx.clone();
+
+	// Start core logic in a separate thread
+	let core_handle = thread::spawn(move || {
+		core_loop(core_rx, core_tx);
+	});
+
+	// Start UI in the main thread
+	let ui_result = run_ui(ui_tx, ui_rx);
+
+	// TODO: Graceful Shutdown改善（優先度：低）
+	// 現在Subscription内でrecv_timeout(100ms)を使用してシャットダウンを検知している。
+	// これは実質ポーリングであり、以下の改善案がある:
+	// - shutdown専用channelを追加し、futures::select!で両方を監視する
+	// - tokio::sync::watch等のbroadcast channelを使用する
+	// ただし現状で実用上問題ないため、複雑化を避けて保留。
+	log::debug!("UI finished, sending Shutdown...");
+	shutdown_tx.send(Msg::Shutdown).ok();
+
+	// Wait for the core thread to finish
+	log::debug!("Waiting for core thread to finish...");
+	if let Err(e) = core_handle.join() {
+		log::error!("Core thread joined with error: {:?}", e);
+	} else {
+		log::info!("Core thread shutdown successfully.");
+	}
+
+	log::debug!("Shutdown completed.");
+	ui_result
 }

@@ -6,9 +6,9 @@ pub mod effects;
 
 use crate::encoder::Encoder;
 use anyhow::Result;
-use core::{Effect, FrameBuffer, RenderContext, RgbColor};
 use effects::WaveEffect;
-use image::{ImageBuffer, Rgb};
+use image::{ImageBuffer, Rgba};
+use nade_core::{Effect, FrameBuffer, RenderContext, RgbColor};
 use rayon::prelude::*;
 
 /// 指定されたフレーム番号に対応する画像を生成
@@ -23,8 +23,8 @@ use rayon::prelude::*;
 ///
 /// # 戻り値
 ///
-/// RGB フォーマットの `ImageBuffer`
-pub fn render_frame(frame_num: u32, width: u32, height: u32) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
+/// RGBA フォーマットの `ImageBuffer`
+pub fn render_frame(frame_num: u32, width: u32, height: u32) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
 	// デフォルトのエフェクトを使用
 	let effect = WaveEffect::default();
 	render_frame_with_effect(&effect, frame_num, width, height)
@@ -43,13 +43,13 @@ pub fn render_frame(frame_num: u32, width: u32, height: u32) -> ImageBuffer<Rgb<
 ///
 /// # 戻り値
 ///
-/// RGB フォーマットの `ImageBuffer`
+/// RGBA フォーマットの `ImageBuffer`
 pub fn render_frame_with_effect(
 	effect: &dyn Effect,
 	frame_num: u32,
 	width: u32,
 	height: u32,
-) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
+) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
 	// レンダリングコンテキストを作成
 	let ctx = RenderContext {
 		width,
@@ -65,7 +65,7 @@ pub fn render_frame_with_effect(
 			(0..width)
 				.flat_map(|x| {
 					let color = effect.apply(RgbColor::BLACK, x, y, &ctx);
-					[color.r, color.g, color.b]
+					[color.r, color.g, color.b, 255]
 				})
 				.collect::<Vec<u8>>()
 		})
