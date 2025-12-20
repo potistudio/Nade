@@ -30,11 +30,15 @@ pub fn main() -> iced::Result {
 		std::env::set_var("ICED_PRESENT_MODE", "immediate");
 	}
 
-	// TODO: bounded channel 検討（優先度：低・将来）
-	// 現状は問題ないが、Coreのレンダリングが重くなってUIが追いつかない場合、
-	// unboundedだとメモリを消費し続ける。将来的にはboundedにしてbackpressureをかけるか、
-	// 最新のModelだけ保持する仕組みを検討する。
 	env_logger::init();
+
+	// TODO: bounded channel 検討（優先度：低・将来）
+	// 現状unboundedで問題ないが、レンダリングが重くなり
+	// メモリ消費が問題になった場合は以下を検討：
+	// - bounded(2) でbackpressure
+	// - tokio::sync::watchで最新のみ保持
+	// - カスタムLatestModel構造体
+	// 計測して問題が出てから対応する。
 
 	// Create channels for communication between UI and core logic
 	let (ui_tx, core_rx) = unbounded::<Msg>();
