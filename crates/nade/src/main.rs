@@ -19,12 +19,16 @@ use nade_core::{Model, Msg};
 pub fn main() -> iced::Result {
 	#[allow(unsafe_code)]
 	unsafe {
-		//FIXME: RUST_LOGをアプリケーションから分離する
-		std::env::set_var("RUST_LOG", "debug");
+		if std::env::var("RUST_LOG").is_err() {
+			#[cfg(debug_assertions)]
+			std::env::set_var("RUST_LOG", "nade=debug");
+
+			#[cfg(not(debug_assertions))]
+			std::env::set_var("RUST_LOG", "nade=info");
+		}
+
 		std::env::set_var("ICED_PRESENT_MODE", "immediate");
 	}
-
-	// TODO: debug_assertions でログレベル分岐（優先度：中）
 
 	// TODO: bounded channel 検討（優先度：低・将来）
 	// 現状は問題ないが、Coreのレンダリングが重くなってUIが追いつかない場合、
