@@ -4,10 +4,10 @@
 
 use iced::keyboard;
 use iced::time;
-use iced::widget::{Image, column, container, image, row, text};
-use iced::{Color, Element, Length, Subscription, Task, Theme};
+use iced::widget::{column, container};
+use iced::{Element, Length, Subscription, Task, Theme};
 use panel_system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use timeline_panel::TimelineWidget;
 
@@ -16,6 +16,9 @@ use nade_core::{Model, Msg};
 
 use crate::message::{AppPanelMessage, Message};
 use crate::panel_content::PanelContent;
+use crate::panels;
+use crate::services::core_service::{CoreConnection, build_core_stream};
+use crate::theme;
 
 // =============================================================================
 // テーマ設定
@@ -24,84 +27,6 @@ use crate::panel_content::PanelContent;
 /// アプリケーションのテーマを返す
 pub fn theme(_state: &NadeApp) -> Theme {
 	Theme::Dark
-}
-
-// =============================================================================
-// Core接続
-// =============================================================================
-
-/// Coreへの接続状態（Subscription用）
-#[derive(Clone)]
-pub struct CoreConnection(pub Arc<std::sync::Mutex<Receiver<Model>>>);
-
-impl std::hash::Hash for CoreConnection {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		(Arc::as_ptr(&self.0) as usize).hash(state);
-	}
-}
-
-impl PartialEq for CoreConnection {
-	fn eq(&self, other: &Self) -> bool {
-		Arc::ptr_eq(&self.0, &other.0)
-	}
-}
-
-impl Eq for CoreConnection {}
-
-/// Coreストリームの構築
-pub fn build_core_stream(
-	conn: &CoreConnection,
-) -> iced::futures::stream::BoxStream<'static, Message> {
-	use iced::futures::{SinkExt, StreamExt};
-	use std::time::Duration;
-
-	let rx_mutex = conn.0.clone();
-
-	iced::stream::channel(
-		100,
-		move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
-			let rx = rx_mutex;
-			loop {
-				let result = tokio::task::spawn_blocking({
-					let rx = rx.clone();
-					move || {
-						if let Ok(guard) = rx.lock() {
-							// タイムアウト付きで受信することで、iced終了時にループを抜けられる
-							match guard.recv_timeout(Duration::from_millis(100)) {
-								Ok(model) => Some(Some(model)),
-								Err(crossbeam_channel::RecvTimeoutError::Timeout) => Some(None),
-								Err(crossbeam_channel::RecvTimeoutError::Disconnected) => None,
-							}
-						} else {
-							None
-						}
-					}
-				})
-				.await
-				.ok()
-				.flatten();
-
-				match result {
-					Some(Some(model)) => {
-						// Model受信成功
-						if output.send(Message::CoreUpdated(model)).await.is_err() {
-							// iced側がチャンネルを閉じた
-							break;
-						}
-					}
-					Some(None) => {
-						// タイムアウト - 継続（ただしicedがシャットダウン中なら自然に終了する）
-						continue;
-					}
-					None => {
-						// チャンネル切断またはロック失敗
-						break;
-					}
-				}
-			}
-		},
-	)
-	.boxed()
 }
 
 // =============================================================================
@@ -115,7 +40,10 @@ pub struct NadeApp {
 	/// Coreへの送信チャンネル
 	core_tx: Sender<Msg>,
 	/// Coreからの受信チャンネル (Subscriptionで使用)
-	core_rx: Arc<std::sync::Mutex<Receiver<Model>>>,
+	///
+	/// Icedの要件(Sync)を満たすためMutexでラップするが、
+	/// 実際の受信ループではロックしない（初期化時のみ）。
+	core_rx: Arc<Mutex<Receiver<Model>>>,
 	/// 現在のモデル（表示用キャッシュ）
 	current_model: Model,
 
@@ -133,7 +61,7 @@ impl NadeApp {
 		let app = Self {
 			panel_system,
 			core_tx,
-			core_rx: Arc::new(std::sync::Mutex::new(core_rx)),
+			core_rx: Arc::new(Mutex::new(core_rx)),
 			current_model: Model::default(),
 			timeline: TimelineWidget::new(),
 			status_bar: status_bar::StatusBar::new(),
@@ -218,7 +146,7 @@ impl NadeApp {
 			container(self.status_bar.view())
 				.width(Length::Fill)
 				.style(|_theme| container::Style {
-					background: Some(iced::Background::Color(Color::from_rgb(0.1, 0.1, 0.1))),
+					background: Some(theme::BACKGROUND.into()),
 					..Default::default()
 				}),
 		]
@@ -234,131 +162,12 @@ impl NadeApp {
 		content: &PanelContent,
 	) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
 		match content {
-			PanelContent::MainPreview => self.view_preview(),
-			PanelContent::Timeline => self.view_timeline(),
-			PanelContent::Properties => self.view_properties(),
-			PanelContent::Composition => self.view_composition(),
-			PanelContent::Console => self.view_console(),
+			PanelContent::MainPreview => panels::preview::view(&self.current_model.preview),
+			PanelContent::Timeline => panels::timeline::view(&self.timeline),
+			PanelContent::Properties => panels::properties::view(),
+			PanelContent::Composition => panels::composition::view(),
+			PanelContent::Console => panels::console::view(),
 		}
-	}
-
-	/// プレビューパネルのビュー
-	fn view_preview<'a>(&self) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
-		let preview = &self.current_model.preview;
-
-		let content = if let Some(frame) = &preview.frame {
-			// bytes::Bytes を使用してコピーを回避
-			let handle = image::Handle::from_rgba(frame.width, frame.height, frame.pixels.clone());
-
-			let img = Image::new(handle)
-				.content_fit(iced::ContentFit::Contain)
-				.width(Length::Fill)
-				.height(Length::Fill);
-
-			container(img).width(Length::Fill).height(Length::Fill)
-		} else {
-			container(text("No Signal").color(Color::WHITE))
-				.width(Length::Fill)
-				.height(Length::Fill)
-				.center_x(Length::Fill)
-				.center_y(Length::Fill)
-		};
-
-		let fps_text = text(format!("{:.1} FPS", preview.fps))
-			.size(12)
-			.color(Color::from_rgb(0.4, 0.8, 1.0));
-
-		let time_text = text(format!("Time: {:.2}s", preview.time))
-			.size(12)
-			.color(Color::from_rgb(0.8, 0.8, 0.8));
-
-		column![
-			row![fps_text, text(" | ").size(12), time_text].spacing(5),
-			content,
-		]
-		.spacing(5)
-		.padding(5)
-		.into()
-	}
-
-	/// タイムラインパネルのビュー
-	fn view_timeline<'a>(
-		&'a self,
-	) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
-		self.timeline
-			.view()
-			.map(AppPanelMessage::Timeline)
-			.map(PanelSystemMessage::AppMessage)
-	}
-
-	/// プロパティパネルのビュー
-	fn view_properties<'a>(
-		&self,
-	) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
-		let content = column![
-			text("Properties").size(14).color(Color::WHITE),
-			text("No selection")
-				.size(12)
-				.color(Color::from_rgb(0.6, 0.6, 0.6)),
-		]
-		.spacing(10)
-		.padding(10);
-
-		container(content)
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.style(|_| container::Style {
-				background: Some(PanelContent::Properties.color().into()),
-				..Default::default()
-			})
-			.into()
-	}
-
-	/// コンポジションパネルのビュー
-	fn view_composition<'a>(
-		&self,
-	) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
-		let content = column![
-			text("Composition").size(14).color(Color::WHITE),
-			text("└─ Layer 1")
-				.size(12)
-				.color(Color::from_rgb(0.8, 0.8, 0.8)),
-			text("   └─ Effect: Sine Wave")
-				.size(11)
-				.color(Color::from_rgb(0.6, 0.6, 0.6)),
-		]
-		.spacing(5)
-		.padding(10);
-
-		container(content)
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.style(|_| container::Style {
-				background: Some(PanelContent::Composition.color().into()),
-				..Default::default()
-			})
-			.into()
-	}
-
-	/// コンソールパネルのビュー
-	fn view_console<'a>(&self) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
-		let content = column![
-			text("Console").size(14).color(Color::WHITE),
-			text("[INFO] Application started")
-				.size(11)
-				.color(Color::from_rgb(0.7, 0.7, 0.7)),
-		]
-		.spacing(5)
-		.padding(10);
-
-		container(content)
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.style(|_| container::Style {
-				background: Some(PanelContent::Console.color().into()),
-				..Default::default()
-			})
-			.into()
 	}
 
 	/// サブスクリプション

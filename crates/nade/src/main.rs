@@ -8,7 +8,10 @@ mod core;
 mod encoder;
 mod message;
 mod panel_content;
+mod panels;
 mod renderer;
+mod services;
+mod theme;
 
 use std::thread;
 
@@ -18,7 +21,7 @@ use nade_core::{Model, Msg};
 /// Entry point of the application (desktop)
 pub fn main() -> iced::Result {
 	// TODO: 環境変数の設定を抽出する
-	// NOTO: 複雑化した際に検討する
+	// NOTE: 複雑化した際に検討する
 	#[allow(unsafe_code)]
 	unsafe {
 		if std::env::var("RUST_LOG").is_err() {
@@ -65,17 +68,17 @@ pub fn main() -> iced::Result {
 	// - shutdown専用channelを追加し、futures::select!で両方を監視する
 	// - tokio::sync::watch等のbroadcast channelを使用する
 	// ただし現状で実用上問題ないため、複雑化を避けて保留。
-	log::debug!("UI finished, sending Shutdown...");
+	log::info!("Waiting for shutdown...");
 	shutdown_tx.send(Msg::Shutdown).ok();
 
 	// Wait for the core thread to finish
-	log::debug!("Waiting for core thread to finish...");
+	log::info!("Waiting for core thread to finish...");
 	if let Err(e) = core_handle.join() {
 		log::error!("Core thread joined with error: {:?}", e);
 	} else {
 		log::info!("Core thread shutdown successfully.");
 	}
 
-	log::debug!("Shutdown completed.");
+	log::info!("Shutdown completed.");
 	ui_result
 }
