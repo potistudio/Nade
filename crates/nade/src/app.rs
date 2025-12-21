@@ -2,10 +2,13 @@
 //!
 //! NadeのメインUIアプリケーション実装です。
 
+use iced::keyboard;
+use iced::time;
 use iced::widget::{Image, column, container, image, row, text};
 use iced::{Color, Element, Length, Subscription, Task, Theme};
 use panel_system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
 use std::sync::Arc;
+
 use timeline_panel::TimelineWidget;
 
 use crossbeam_channel::{Receiver, Sender};
@@ -171,6 +174,17 @@ impl NadeApp {
 			}
 			Message::TimeChanged(value) => {
 				self.core_tx.send(Msg::SetTime(value)).ok();
+				Task::none()
+			}
+			Message::TogglePlay => {
+				self.core_tx.send(Msg::TogglePlay).ok();
+				Task::none()
+			}
+			Message::Tick => {
+				// 再生中のみフレームを進める
+				if self.current_model.preview.is_playing {
+					self.core_tx.send(Msg::Tick).ok();
+				}
 				Task::none()
 			}
 			Message::PanelSystem(msg) => {
@@ -350,7 +364,30 @@ impl NadeApp {
 	/// サブスクリプション
 	pub fn subscription(&self) -> Subscription<Message> {
 		let core_rx = self.core_rx.clone();
-		Subscription::run_with(CoreConnection(core_rx), build_core_stream)
+		let core_subscription = Subscription::run_with(CoreConnection(core_rx), build_core_stream);
+
+		// キーボードサブスクリプション：スペースキーで再生/一時停止
+		let keyboard_subscription: Subscription<Message> =
+			iced::event::listen_with(|event, _status, _id| {
+				if let iced::Event::Keyboard(keyboard::Event::KeyPressed {
+					key: keyboard::Key::Named(keyboard::key::Named::Space),
+					..
+				}) = event
+				{
+					Some(Message::TogglePlay)
+				} else {
+					None
+				}
+			});
+
+		// 再生中のみTickを送信 (60fps)
+		let tick_subscription: Subscription<Message> = if self.current_model.preview.is_playing {
+			time::every(std::time::Duration::from_millis(16)).map(|_| Message::Tick)
+		} else {
+			Subscription::none()
+		};
+
+		Subscription::batch([core_subscription, keyboard_subscription, tick_subscription])
 	}
 }
 

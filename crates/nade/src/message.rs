@@ -19,6 +19,10 @@ pub enum AppPanelMessage {
 pub enum Message {
 	/// タイムスライダー変更
 	TimeChanged(f32),
+	/// 再生/一時停止の切り替え
+	TogglePlay,
+	/// 定期更新（再生中のアニメーション用）
+	Tick,
 	/// パネルシステムメッセージ
 	PanelSystem(PanelSystemMessage<PanelContent, AppPanelMessage>),
 	/// Coreからのモデル更新

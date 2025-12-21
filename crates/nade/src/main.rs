@@ -17,6 +17,8 @@ use nade_core::{Model, Msg};
 
 /// Entry point of the application (desktop)
 pub fn main() -> iced::Result {
+	// TODO: 環境変数の設定を抽出する
+	// NOTO: 複雑化した際に検討する
 	#[allow(unsafe_code)]
 	unsafe {
 		if std::env::var("RUST_LOG").is_err() {
