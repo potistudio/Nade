@@ -27,4 +27,6 @@ pub enum Message {
 	PanelSystem(PanelSystemMessage<PanelContent, AppPanelMessage>),
 	/// Coreからのモデル更新
 	CoreUpdated(Model),
+	/// ウィンドウが閉じられた
+	WindowClosed(iced::window::Id),
 }

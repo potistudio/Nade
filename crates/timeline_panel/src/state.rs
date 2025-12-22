@@ -1,6 +1,6 @@
 //! タイムライン状態の定義
 
-use iced::{Color, Point, Rectangle, Size, Vector};
+use iced::{Color, Point, Rectangle, Vector};
 
 use crate::consts::*;
 
@@ -170,6 +170,7 @@ pub struct TimelineState {
 	pub selected_clip: Option<(usize, usize)>,
 	pub(crate) drag_state: DragState,
 	pub(crate) ctrl_pressed: bool,
+	pub(crate) viewport_width: f32,
 	next_clip_id: usize,
 }
 
@@ -183,6 +184,7 @@ impl Default for TimelineState {
 			selected_clip: None,
 			drag_state: DragState::None,
 			ctrl_pressed: false,
+			viewport_width: 800.0,
 			next_clip_id: 0,
 		};
 		state.add_sample_content();
@@ -191,6 +193,12 @@ impl Default for TimelineState {
 }
 
 impl TimelineState {
+	/// Is the playhead being dragged?
+	#[inline]
+	pub fn is_dragging_playhead(&self) -> bool {
+		matches!(self.drag_state, DragState::Playhead)
+	}
+
 	/// 新しいタイムライン状態を作成（空）
 	pub fn new() -> Self {
 		Self {
@@ -201,6 +209,7 @@ impl TimelineState {
 			selected_clip: None,
 			drag_state: DragState::None,
 			ctrl_pressed: false,
+			viewport_width: 800.0,
 			next_clip_id: 0,
 		}
 	}
@@ -209,11 +218,13 @@ impl TimelineState {
 	// 座標変換
 	// -------------------------------------------------------------------------
 
+	/// Convert a time value to an x coordinate.
 	#[inline]
 	pub(crate) fn time_to_x(&self, time: f32, timeline_left: f32) -> f32 {
 		timeline_left + (time * PIXELS_PER_SECOND * self.time_scale) + self.scroll_offset.x
 	}
 
+	/// Convert an x coordinate to a time value.
 	#[inline]
 	pub(crate) fn x_to_time(&self, x: f32, timeline_left: f32) -> f32 {
 		((x - timeline_left) - self.scroll_offset.x) / (PIXELS_PER_SECOND * self.time_scale)
@@ -223,6 +234,7 @@ impl TimelineState {
 	// クリップ操作
 	// -------------------------------------------------------------------------
 
+	/// Get the next available clip ID.
 	pub fn next_clip_id(&mut self) -> usize {
 		let id = self.next_clip_id;
 		self.next_clip_id += 1;
@@ -277,38 +289,85 @@ impl TimelineState {
 	}
 
 	// -------------------------------------------------------------------------
-	// スクロール
+	// Scroll
 	// -------------------------------------------------------------------------
 
-	pub(crate) fn clamp_scroll_offset(&mut self) {
+	/// Clamp the scroll offset to valid bounds
+	pub fn clamp_scroll_offset(&mut self) {
+		// TODO: implement basic math functions for iced::Vector
+		// e.g. min(), max(), abs(), etc.
+		// more: egui::math::Vec2
 		self.scroll_offset.x = self.scroll_offset.x.min(0.0);
 		self.scroll_offset.y = self.scroll_offset.y.min(0.0);
 	}
 
-	pub(crate) fn apply_scroll_delta(&mut self, x: f32, y: f32) {
-		self.scroll_offset.x += x;
-		self.scroll_offset.y += y;
+	/// Set the position of the timeline offset
+	pub fn set_scroll_position(&mut self, x: f32, y: f32) {
+		self.scroll_offset.x = x;
+		self.scroll_offset.y = y;
+		self.clamp_scroll_offset();
+	}
+
+	/// Apply a scroll delta to the timeline offset
+	/// and clamp to the minimum values
+	pub fn apply_scroll_delta(&mut self, x: f32, y: f32) {
+		self.scroll_offset.x = self.scroll_offset.x + x;
+		self.scroll_offset.y = self.scroll_offset.y + y;
 		self.clamp_scroll_offset();
 	}
 
 	// -------------------------------------------------------------------------
-	// ズーム
+	// Zoom
 	// -------------------------------------------------------------------------
 
-	pub fn zoom_in(&mut self) {
-		self.time_scale = (self.time_scale * 1.2).min(MAX_SCALE);
+	/// Update the viewport width
+	pub fn update_viewport_width(&mut self, width: f32) {
+		self.viewport_width = width;
 	}
 
-	pub fn zoom_out(&mut self) {
-		self.time_scale = (self.time_scale / 1.2).max(MIN_SCALE);
-	}
-
-	pub fn set_time_scale(&mut self, scale: f32) {
+	/// Set the timeline zoom scale
+	/// and clamp to the minimum and maximum scale
+	pub fn set_zoom_scale(&mut self, scale: f32) {
 		self.time_scale = scale.clamp(MIN_SCALE, MAX_SCALE);
 	}
 
+	/// Set the timeline zoom scale, keeping the playhead centered
+	pub fn set_zoom_scale_centered(&mut self, scale: f32) {
+		let new_scale = scale.clamp(MIN_SCALE, MAX_SCALE);
+		if (self.time_scale - new_scale).abs() < f32::EPSILON {
+			return;
+		}
+
+		self.time_scale = new_scale;
+
+		// Center the playhead
+		// content_center_x = self.viewport_width / 2.0; (approx relative to content area start)
+		// We want: (playhead_time * PPS * scale) + scroll_offset_x = content_center_x
+		// So: scroll_offset_x = content_center_x - (playhead_time * PPS * scale)
+
+		let content_center_x = (self.viewport_width - TRACK_LABEL_WIDTH) / 2.0;
+		let new_offset_x =
+			content_center_x - (self.playhead_time * PIXELS_PER_SECOND * self.time_scale);
+
+		self.scroll_offset.x = new_offset_x;
+		self.clamp_scroll_offset();
+	}
+
+	/// Zoom in the timeline by 1.2x
+	/// and clamp to the maximum scale
+	pub fn zoom_in(&mut self) {
+		self.set_zoom_scale_centered(self.time_scale * 1.2);
+	}
+
+	/// Zoom out the timeline by 1.2x
+	/// and clamp to the minimum scale
+	pub fn zoom_out(&mut self) {
+		self.set_zoom_scale_centered(self.time_scale / 1.2);
+	}
+
+	/// Reset the timeline zoom scale to 1.0
 	pub fn reset_zoom(&mut self) {
-		self.time_scale = 1.0;
+		self.set_zoom_scale(1.0);
 	}
 
 	// -------------------------------------------------------------------------

@@ -67,6 +67,7 @@ pub fn core_loop(rx: Receiver<Msg>, tx: Sender<Model>) {
 		};
 
 		if let Some(Msg::Shutdown) = msg {
+			log::info!("Core: Received Msg::Shutdown. Exiting loop.");
 			break;
 		}
 

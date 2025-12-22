@@ -30,6 +30,7 @@ pub enum TimelineMessage {
 	ZoomOut,
 	ZoomChanged(f32),
 	ResetZoom,
+	PlayheadChanged(f32),
 	Canvas,
 }
 
@@ -79,14 +80,22 @@ impl TimelineWidget {
 		self.state.borrow_mut()
 	}
 
+	/// プレイヘッドをドラッグ中かどうか
+	pub fn is_dragging_playhead(&self) -> bool {
+		self.state.borrow().is_dragging_playhead()
+	}
+
 	/// メッセージを処理
 	pub fn update(&mut self, message: TimelineMessage) {
 		let mut state = self.state.borrow_mut();
 		match message {
 			TimelineMessage::ZoomIn => state.zoom_in(),
 			TimelineMessage::ZoomOut => state.zoom_out(),
-			TimelineMessage::ZoomChanged(scale) => state.set_time_scale(scale),
+			TimelineMessage::ZoomChanged(scale) => {
+				state.set_zoom_scale_centered(scale);
+			}
 			TimelineMessage::ResetZoom => state.reset_zoom(),
+			TimelineMessage::PlayheadChanged(time) => state.playhead_time = time,
 			TimelineMessage::Canvas => {}
 		}
 	}
@@ -190,6 +199,7 @@ impl canvas::Program<TimelineMessage> for TimelineProgram {
 	) -> Option<canvas::Action<TimelineMessage>> {
 		let layout = TimelineLayout::from_bounds_absolute(bounds);
 		let cursor_position = cursor.position_in(bounds);
+		let mut actions = Vec::new();
 
 		let handled = {
 			let mut state = self.state.borrow_mut();
@@ -197,10 +207,16 @@ impl canvas::Program<TimelineMessage> for TimelineProgram {
 				Event::Mouse(mouse_event) => match mouse_event {
 					mouse::Event::ButtonPressed(mouse::Button::Left) => cursor_position
 						.map(|pos| {
-							state.handle_mouse_press(
+							let (handled, time_changed) = state.handle_mouse_press(
 								Point::new(bounds.x + pos.x, bounds.y + pos.y),
 								bounds,
-							)
+							);
+							if let Some(time) = time_changed {
+								actions.push(canvas::Action::publish(
+									TimelineMessage::PlayheadChanged(time),
+								));
+							}
+							handled
 						})
 						.unwrap_or(false),
 					mouse::Event::ButtonReleased(mouse::Button::Left) => {
@@ -208,10 +224,16 @@ impl canvas::Program<TimelineMessage> for TimelineProgram {
 					}
 					mouse::Event::CursorMoved { .. } => cursor_position
 						.map(|pos| {
-							state.handle_mouse_move(
+							let (handled, time_changed) = state.handle_mouse_move(
 								Point::new(bounds.x + pos.x, bounds.y + pos.y),
 								layout.timeline_left(),
-							)
+							);
+							if let Some(time) = time_changed {
+								actions.push(canvas::Action::publish(
+									TimelineMessage::PlayheadChanged(time),
+								));
+							}
+							handled
 						})
 						.unwrap_or(false),
 					mouse::Event::WheelScrolled { delta } if cursor_position.is_some() => {
@@ -234,7 +256,9 @@ impl canvas::Program<TimelineMessage> for TimelineProgram {
 			}
 		};
 
-		if handled {
+		if let Some(msg) = actions.pop() {
+			Some(msg)
+		} else if handled {
 			Some(canvas::Action::request_redraw())
 		} else {
 			None
@@ -260,6 +284,9 @@ impl canvas::Program<TimelineMessage> for TimelineProgram {
 
 impl TimelineProgram {
 	fn draw_timeline(&self, frame: &mut canvas::Frame, bounds: Size) {
+		if (self.state.borrow().viewport_width - bounds.width).abs() > 0.1 {
+			self.state.borrow_mut().update_viewport_width(bounds.width);
+		}
 		let state = self.state.borrow();
 		let layout = TimelineLayout::from_bounds(Rectangle::new(Point::ORIGIN, bounds));
 
@@ -595,20 +622,24 @@ impl TimelineProgram {
 // =============================================================================
 
 impl TimelineState {
-	pub(crate) fn handle_mouse_press(&mut self, pos: Point, bounds: Rectangle) -> bool {
+	pub(crate) fn handle_mouse_press(
+		&mut self,
+		pos: Point,
+		bounds: Rectangle,
+	) -> (bool, Option<f32>) {
 		let layout = TimelineLayout::from_bounds_absolute(bounds);
 
 		if layout.ruler.contains(pos) {
 			self.playhead_time = self.x_to_time(pos.x, layout.timeline_left()).max(0.0);
 			self.drag_state = DragState::Playhead;
-			return true;
+			return (true, Some(self.playhead_time));
 		}
 
 		if layout.content.contains(pos) {
 			if let Some((track_id, clip_id)) = self.find_clip_at(pos, bounds) {
 				self.selected_clip = Some((track_id, clip_id));
 				self.start_clip_drag(pos, track_id, clip_id, layout.timeline_left());
-				return true;
+				return (true, None);
 			}
 
 			self.selected_clip = None;
@@ -616,10 +647,10 @@ impl TimelineState {
 				start_offset: self.scroll_offset,
 				start_cursor: pos,
 			};
-			return true;
+			return (true, None);
 		}
 
-		false
+		(false, None)
 	}
 
 	fn start_clip_drag(&mut self, pos: Point, track_id: usize, clip_id: usize, timeline_left: f32) {
@@ -647,11 +678,15 @@ impl TimelineState {
 		}
 	}
 
-	pub(crate) fn handle_mouse_move(&mut self, pos: Point, timeline_left: f32) -> bool {
+	pub(crate) fn handle_mouse_move(
+		&mut self,
+		pos: Point,
+		timeline_left: f32,
+	) -> (bool, Option<f32>) {
 		match self.drag_state.clone() {
 			DragState::Playhead => {
 				self.playhead_time = self.x_to_time(pos.x, timeline_left).max(0.0);
-				true
+				(true, Some(self.playhead_time))
 			}
 			DragState::Clip {
 				track_id,
@@ -662,7 +697,7 @@ impl TimelineState {
 				if let Some(clip) = self.find_clip_mut(track_id, clip_id) {
 					clip.start_time = time.max(0.0);
 				}
-				true
+				(true, None)
 			}
 			DragState::ClipResizeLeft {
 				track_id,
@@ -677,14 +712,14 @@ impl TimelineState {
 					clip.start_time = original_start + original_duration - new_duration;
 					clip.duration = new_duration;
 				}
-				true
+				(true, None)
 			}
 			DragState::ClipResizeRight { track_id, clip_id } => {
 				let end_time = self.x_to_time(pos.x, timeline_left);
 				if let Some(clip) = self.find_clip_mut(track_id, clip_id) {
 					clip.duration = (end_time - clip.start_time).max(MIN_CLIP_DURATION);
 				}
-				true
+				(true, None)
 			}
 			DragState::Panning {
 				start_offset,
@@ -693,9 +728,9 @@ impl TimelineState {
 				let delta = pos - start_cursor;
 				self.scroll_offset = start_offset + delta;
 				self.clamp_scroll_offset();
-				true
+				(true, None)
 			}
-			DragState::None => false,
+			DragState::None => (false, None),
 		}
 	}
 

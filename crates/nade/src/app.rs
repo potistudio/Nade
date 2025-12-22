@@ -51,12 +51,18 @@ pub struct NadeApp {
 	timeline: TimelineWidget,
 	/// ステータスバー (UI State)
 	status_bar: status_bar::StatusBar,
+
+	/// Serviceシャットダウン用送信機
+	service_shutdown_tx: Option<Sender<()>>,
+	/// Serviceシャットダウン用受信機（Serviceへ渡す）
+	service_shutdown_rx: Arc<Mutex<Receiver<()>>>,
 }
 
 impl NadeApp {
 	/// アプリケーションの初期化
 	pub fn new(core_tx: Sender<Msg>, core_rx: Receiver<Model>) -> (Self, Task<Message>) {
 		let panel_system = Self::create_panel_layout();
+		let (shutdown_tx, shutdown_rx) = crossbeam_channel::bounded(1);
 
 		let app = Self {
 			panel_system,
@@ -65,6 +71,8 @@ impl NadeApp {
 			current_model: Model::default(),
 			timeline: TimelineWidget::new(),
 			status_bar: status_bar::StatusBar::new(),
+			service_shutdown_tx: Some(shutdown_tx),
+			service_shutdown_rx: Arc::new(Mutex::new(shutdown_rx)),
 		};
 
 		// 初期フレームを描画するためのトリガー
@@ -98,6 +106,10 @@ impl NadeApp {
 		match message {
 			Message::CoreUpdated(model) => {
 				self.current_model = model;
+				// プレイヘッドを同期（ドラッグ中は同期しない）
+				if !self.timeline.is_dragging_playhead() {
+					self.timeline.state_mut().playhead_time = self.current_model.preview.time;
+				}
 				Task::none()
 			}
 			Message::TimeChanged(value) => {
@@ -121,14 +133,32 @@ impl NadeApp {
 					match app_msg {
 						AppPanelMessage::Timeline(timeline_msg) => {
 							self.timeline.update(timeline_msg.clone());
-							// Timelineの変更をCoreに通知する場合
-							// self.core_tx.send(Msg::...);\
+
+							// シーク操作をCodeに通知
+							if let timeline_panel::TimelineMessage::PlayheadChanged(time) =
+								timeline_msg
+							{
+								self.core_tx.send(Msg::SetTime(*time)).ok();
+							}
 						}
 					}
 				}
 				// システムメッセージはパネルシステムへ
 				self.panel_system.update(msg);
 				Task::none()
+			}
+			Message::WindowClosed(id) => {
+				log::info!("App: WindowClosed event received. ID: {:?}", id);
+				// Coreにシャットダウン信号を送信
+				log::info!("App: Sending Msg::Shutdown to Core...");
+				if let Err(e) = self.core_tx.send(Msg::Shutdown) {
+					log::error!("App: Failed to send Msg::Shutdown: {:?}", e);
+				} else {
+					log::info!("App: Msg::Shutdown sent successfully.");
+				}
+				// ウィンドウを閉じる
+				log::info!("App: Closing window...");
+				iced::window::close(id)
 			}
 		}
 	}
@@ -173,7 +203,9 @@ impl NadeApp {
 	/// サブスクリプション
 	pub fn subscription(&self) -> Subscription<Message> {
 		let core_rx = self.core_rx.clone();
-		let core_subscription = Subscription::run_with(CoreConnection(core_rx), build_core_stream);
+		let shutdown_rx = self.service_shutdown_rx.clone();
+		let core_subscription =
+			Subscription::run_with(CoreConnection(core_rx, shutdown_rx), build_core_stream);
 
 		// キーボードサブスクリプション：スペースキーで再生/一時停止
 		let keyboard_subscription: Subscription<Message> =
@@ -196,7 +228,21 @@ impl NadeApp {
 			Subscription::none()
 		};
 
-		Subscription::batch([core_subscription, keyboard_subscription, tick_subscription])
+		// ウィンドウイベントの監視
+		let window_subscription = iced::event::listen_with(|event, _status, id| {
+			if let iced::Event::Window(iced::window::Event::CloseRequested) = event {
+				Some(Message::WindowClosed(id))
+			} else {
+				None
+			}
+		});
+
+		Subscription::batch([
+			core_subscription,
+			keyboard_subscription,
+			tick_subscription,
+			window_subscription,
+		])
 	}
 }
 
