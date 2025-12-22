@@ -141,6 +141,28 @@ impl NadeApp {
 								self.core_tx.send(Msg::SetTime(*time)).ok();
 							}
 						}
+						AppPanelMessage::Property(prop_msg) => {
+							if let Some(selection) = &mut self.current_model.preview.selection {
+								match prop_msg {
+									crate::message::PropertyMessage::PositionChanged(axis, val) => {
+										selection.position[*axis] = *val;
+									}
+									crate::message::PropertyMessage::RotationChanged(axis, val) => {
+										selection.rotation[*axis] = *val;
+									}
+									crate::message::PropertyMessage::ScaleChanged(axis, val) => {
+										selection.scale[*axis] = *val;
+									}
+									crate::message::PropertyMessage::OpacityChanged(val) => {
+										selection.opacity = *val;
+									}
+								}
+								// 変更をCoreに通知
+								self.core_tx
+									.send(Msg::UpdateTransform(selection.clone()))
+									.ok();
+							}
+						}
 					}
 				}
 				// システムメッセージはパネルシステムへ
@@ -194,7 +216,9 @@ impl NadeApp {
 		match content {
 			PanelContent::MainPreview => panels::preview::view(&self.current_model.preview),
 			PanelContent::Timeline => panels::timeline::view(&self.timeline),
-			PanelContent::Properties => panels::properties::view(),
+			PanelContent::Properties => {
+				panels::properties::view(self.current_model.preview.selection.as_ref())
+			}
 			PanelContent::Composition => panels::composition::view(),
 			PanelContent::Console => panels::console::view(),
 		}

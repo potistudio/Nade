@@ -189,6 +189,8 @@ pub struct PreviewModel {
 	///
 	/// `Arc<[u8]>` を使用してスレッド間で効率的に共有します。
 	pub frame: Option<FrameData>,
+	/// 現在選択されているオブジェクトのトランスフォーム (テスト用)
+	pub selection: Option<Transform>,
 }
 
 impl Default for PreviewModel {
@@ -200,6 +202,7 @@ impl Default for PreviewModel {
 			height: 360,
 			is_playing: false,
 			frame: None,
+			selection: Some(Transform::default()),
 		}
 	}
 }
@@ -228,6 +231,8 @@ pub enum Msg {
 	Shutdown,
 	/// フレームレンダリング完了
 	FrameRendered(FrameData),
+	/// トランスフォーム更新
+	UpdateTransform(Transform),
 }
 
 // =============================================================================
@@ -277,7 +282,34 @@ pub fn update(mut model: Model, msg: Msg) -> (Model, Vec<CoreEffect>) {
 		Msg::FrameRendered(frame) => {
 			model.preview.frame = Some(frame);
 		}
+		Msg::UpdateTransform(transform) => {
+			model.preview.selection = Some(transform);
+		}
 	}
 
 	(model, effects)
+}
+
+// =============================================================================
+// トランスフォーム
+// =============================================================================
+
+/// 3次元トランスフォーム
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Transform {
+	pub position: [f32; 3],
+	pub rotation: [f32; 3],
+	pub scale: [f32; 3],
+	pub opacity: f32,
+}
+
+impl Default for Transform {
+	fn default() -> Self {
+		Self {
+			position: [0.0, 0.0, 0.0],
+			rotation: [0.0, 0.0, 0.0],
+			scale: [1.0, 1.0, 1.0],
+			opacity: 1.0,
+		}
+	}
 }

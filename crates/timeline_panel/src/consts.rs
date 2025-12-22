@@ -3,8 +3,8 @@
 use iced::Color;
 
 // レイアウト
-pub const TRACK_HEIGHT: f32 = 40.0;
-pub const TRACK_PADDING: f32 = 4.0;
+pub const TRACK_HEIGHT: f32 = 16.0;
+pub const TRACK_PADDING: f32 = 1.0;
 pub const TRACK_LABEL_WIDTH: f32 = 120.0;
 pub const RULER_HEIGHT: f32 = 24.0;
 pub const PIXELS_PER_SECOND: f32 = 100.0;

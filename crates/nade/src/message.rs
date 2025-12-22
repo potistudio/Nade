@@ -12,6 +12,16 @@ use nade_core::Model;
 #[derive(Debug, Clone)]
 pub enum AppPanelMessage {
 	Timeline(TimelineMessage),
+	Property(PropertyMessage),
+}
+
+/// プロパティパネルメッセージ
+#[derive(Debug, Clone)]
+pub enum PropertyMessage {
+	PositionChanged(usize, f32), // axis (0=x, 1=y, 2=z), value
+	RotationChanged(usize, f32),
+	ScaleChanged(usize, f32),
+	OpacityChanged(f32),
 }
 
 /// アプリケーションメッセージ
