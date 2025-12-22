@@ -3526,10 +3526,12 @@ name = "nade"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "bytemuck",
  "bytes",
  "crossbeam-channel",
  "env_logger",
  "iced 0.14.0",
+ "iced_wgpu 0.14.0",
  "image 0.25.8",
  "log",
  "nade_core",
@@ -3538,6 +3540,7 @@ dependencies = [
  "status_bar",
  "timeline_panel",
  "tokio",
+ "wgpu 27.0.1",
 ]
 
 [[package]]

@@ -1,7 +1,8 @@
 use crate::message::{AppPanelMessage, Message};
 use crate::panel_content::PanelContent;
 use crate::theme::TEXT_PRIMARY;
-use iced::widget::{Image, column, container, image, row, text};
+use crate::widgets::video_view::VideoView;
+use iced::widget::{column, container, row, shader, text};
 use iced::{Color, Element, Length};
 use nade_core::PreviewModel;
 use panel_system::PanelSystemMessage;
@@ -10,23 +11,20 @@ use panel_system::PanelSystemMessage;
 pub fn view<'a>(
 	preview: &PreviewModel,
 ) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
-	let content = if let Some(frame) = &preview.frame {
-		// bytes::Bytes を使用してコピーを回避
-		let handle = image::Handle::from_rgba(frame.width, frame.height, frame.pixels.clone());
-
-		let img = Image::new(handle)
-			.content_fit(iced::ContentFit::Contain)
-			.width(Length::Fill)
-			.height(Length::Fill);
-
-		container(img).width(Length::Fill).height(Length::Fill)
-	} else {
-		container(text("No Signal").color(TEXT_PRIMARY))
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.center_x(Length::Fill)
-			.center_y(Length::Fill)
-	};
+	let content: Element<'_, PanelSystemMessage<PanelContent, AppPanelMessage>> =
+		if let Some(frame) = &preview.frame {
+			shader(VideoView::new(Some(frame.clone())))
+				.width(Length::Fill)
+				.height(Length::Fill)
+				.into()
+		} else {
+			container(text("No Signal").color(TEXT_PRIMARY))
+				.width(Length::Fill)
+				.height(Length::Fill)
+				.center_x(Length::Fill)
+				.center_y(Length::Fill)
+				.into()
+		};
 
 	let fps_text = text(format!("{:.1} FPS", preview.fps))
 		.size(12)

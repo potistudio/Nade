@@ -12,6 +12,7 @@ mod panels;
 mod renderer;
 mod services;
 mod theme;
+mod widgets;
 
 use std::thread;
 
