@@ -102,7 +102,7 @@ where
 	}
 
 	fn layout(
-		&self,
+		&mut self,
 		tree: &mut widget::Tree,
 		renderer: &Renderer,
 		limits: &layout::Limits,
@@ -110,26 +110,26 @@ where
 		let state = tree.state.downcast_ref::<State>();
 
 		if state.mode == Mode::Editing {
-			let text_input = text_input::TextInput::new("", &state.text_value);
-			text_input.layout(&mut tree.children[0], renderer, limits)
+			let mut text_input: text_input::TextInput<Message, Theme, Renderer> =
+				text_input::TextInput::new("", &state.text_value);
+			Widget::layout(&mut text_input, tree, renderer, limits)
 		} else {
-			let text_size = renderer.measure(
-				&format!("{:.2}", self.value),
-				12.0,
-				16.0.into(),
-				renderer.default_font(),
-				limits.max().width,
-				iced::advanced::text::Shaping::Basic,
-			);
+			let text_size = Size::new(50.0, 20.0);
+			// 	renderer.measure(
+			// 	&format!("{:.2}", self.value),
+			// 	12.0,
+			// 	16.0.into(),
+			// 	renderer.default_font(),
+			// 	limits.max().width,
+			// 	iced::advanced::text::Shaping::Basic,
+			// );
 
-			let padding = Padding::from(5.0);
+			let padding_h = 10.0; // Padding::from(5.0) -> left+right = 10.0
+			let padding_v = 10.0; // top+bottom = 10.0
 			let size = limits.resolve(
 				self.width,
 				Length::Shrink,
-				Size::new(
-					text_size.width + padding.horizontal(),
-					text_size.height + padding.vertical(),
-				),
+				Size::new(text_size.width + padding_h, text_size.height + padding_v),
 			);
 			layout::Node::new(size)
 		}
@@ -148,8 +148,10 @@ where
 		let state = tree.state.downcast_ref::<State>();
 
 		if state.mode == Mode::Editing {
-			let text_input = text_input::TextInput::new("", &state.text_value);
-			text_input.draw(
+			let text_input: text_input::TextInput<Message, Theme, Renderer> =
+				text_input::TextInput::new("", &state.text_value);
+			Widget::draw(
+				&text_input,
 				&tree.children[0],
 				renderer,
 				theme,
@@ -175,27 +177,29 @@ where
 			);
 
 			let content = format!("{:.2}", self.value);
-			let text_size = renderer.measure(
-				&content,
-				12.0,
-				16.0.into(),
-				renderer.default_font(),
-				bounds.width,
-				iced::advanced::text::Shaping::Basic,
-			);
+			let text_size = Size::new(50.0, 20.0);
+			// let text_size = renderer.measure(
+			// 	&content,
+			// 	12.0,
+			// 	16.0.into(),
+			// 	renderer.default_font(),
+			// 	bounds.width,
+			// 	iced::advanced::text::Shaping::Basic,
+			// );
 
 			let x = bounds.x + 5.0;
 			let y = bounds.center_y() - text_size.height / 2.0;
 
 			renderer.fill_text(
 				iced::advanced::text::Text {
-					content: Cow::Owned(content),
+					content: content.into(),
 					bounds: Size::new(bounds.width, bounds.height),
 					size: 12.0.into(),
 					line_height: 16.0.into(),
 					font: renderer.default_font(),
-					horizontal_alignment: iced::alignment::Horizontal::Left,
-					vertical_alignment: iced::alignment::Vertical::Center,
+					align_x: iced::alignment::Horizontal::Left.into(),
+					align_y: iced::alignment::Vertical::Center.into(),
+					wrapping: iced::advanced::text::Wrapping::Word,
 					shaping: iced::advanced::text::Shaping::Basic,
 				},
 				Point::new(x, y),
@@ -206,13 +210,15 @@ where
 	}
 
 	fn children(&self) -> Vec<widget::Tree> {
-		vec![widget::Tree::new(
-			text_input::TextInput::<'a, Message>::new("", ""),
-		)]
+		vec![widget::Tree::new(Element::<Message, Theme, Renderer>::new(
+			text_input::TextInput::new("", ""),
+		))]
 	}
 
 	fn diff(&self, tree: &mut widget::Tree) {
-		tree.diff_children(&[text_input::TextInput::<'a, Message>::new("", "")]);
+		tree.diff_children(&[Element::<Message, Theme, Renderer>::new(
+			text_input::TextInput::new("", ""),
+		)]);
 	}
 
 	fn tag(&self) -> widget::tree::Tag {
@@ -223,17 +229,17 @@ where
 		widget::tree::State::new(State::default())
 	}
 
-	fn on_event(
+	fn update(
 		&mut self,
 		tree: &mut widget::Tree,
-		event: Event,
+		event: &Event,
 		layout: Layout<'_>,
 		cursor: Cursor,
 		renderer: &Renderer,
 		clipboard: &mut dyn Clipboard,
 		shell: &mut Shell<'_, Message>,
 		viewport: &Rectangle,
-	) -> event::Status {
+	) {
 		let state = tree.state.downcast_mut::<State>();
 		let bounds = layout.bounds();
 
@@ -242,14 +248,16 @@ where
 				if let Some(cursor_position) = cursor.position() {
 					if !bounds.contains(cursor_position) {
 						state.mode = Mode::Idle;
-						return event::Status::Captured;
+						shell.capture_event();
+						return;
 					}
 				}
 			}
 			// Forward to text input? Currently hard to check return value for message interception.
 			// Just skipping logic for MVP.
 			// User is stuck in edit mode until click outside?
-			return event::Status::Ignored;
+			// User is stuck in edit mode until click outside?
+			return;
 		}
 
 		match event {
@@ -260,7 +268,8 @@ where
 							state.mode = Mode::PotentialDrag {
 								start_pos: cursor_position,
 							};
-							return event::Status::Captured;
+							shell.capture_event();
+							return;
 						}
 					}
 				}
@@ -287,7 +296,8 @@ where
 						shell.publish((self.on_change)(new_val));
 					}
 
-					return event::Status::Captured;
+					shell.capture_event();
+					return;
 				}
 				_ => {}
 			},
@@ -304,19 +314,19 @@ where
 							}
 						}
 						state.mode = Mode::Idle;
-						return event::Status::Captured;
+						shell.capture_event();
+						return;
 					}
 					Mode::Dragging { .. } => {
 						state.mode = Mode::Idle;
-						return event::Status::Captured;
+						shell.capture_event();
+						return;
 					}
 					_ => {}
 				}
 			}
 			_ => {}
 		}
-
-		event::Status::Ignored
 	}
 }
 
