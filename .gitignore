@@ -1,4 +1,4 @@
-# Build artifacts
+# Cargo build artifacts
 target/
 
 # macOS system files

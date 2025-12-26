@@ -37,8 +37,10 @@ pub fn theme(_state: &NadeApp) -> Theme {
 pub struct NadeApp {
 	/// パネルシステム
 	panel_system: PanelSystem<PanelContent>,
+
 	/// Coreへの送信チャンネル
 	core_tx: Sender<Msg>,
+
 	/// Coreからの受信チャンネル (Subscriptionで使用)
 	///
 	/// Icedの要件(Sync)を満たすためMutexでラップするが、
@@ -49,6 +51,7 @@ pub struct NadeApp {
 
 	/// タイムラインウィジェット (UI State)
 	timeline: TimelineWidget,
+
 	/// ステータスバー (UI State)
 	status_bar: status_bar::StatusBar,
 
@@ -274,7 +277,6 @@ impl NadeApp {
 // UI実行
 // =============================================================================
 
-/// UIを実行する
 pub fn run_ui(ui_tx: Sender<Msg>, ui_rx: Receiver<Model>) -> iced::Result {
 	iced::application(
 		move || NadeApp::new(ui_tx.clone(), ui_rx.clone()),
@@ -285,5 +287,6 @@ pub fn run_ui(ui_tx: Sender<Msg>, ui_rx: Receiver<Model>) -> iced::Result {
 	.theme(theme)
 	.title("Nade")
 	.window_size((1600.0, 900.0))
+	.exit_on_close_request(false)
 	.run()
 }
