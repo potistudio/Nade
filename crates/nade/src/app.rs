@@ -17,6 +17,7 @@ use nade_core::{Model, Msg};
 use crate::message::{AppPanelMessage, Message};
 use crate::panel_content::PanelContent;
 use crate::panels;
+use crate::panels::project::{ProjectData, ProjectUiState};
 use crate::services::core_service::{CoreConnection, build_core_stream};
 use crate::theme;
 
@@ -59,6 +60,11 @@ pub struct NadeApp {
 	service_shutdown_tx: Option<Sender<()>>,
 	/// Serviceシャットダウン用受信機（Serviceへ渡す）
 	service_shutdown_rx: Arc<Mutex<Receiver<()>>>,
+
+	/// プロジェクトデータ (Mock)
+	project_data: ProjectData,
+	/// プロジェクトUI状態
+	project_ui: ProjectUiState,
 }
 
 impl NadeApp {
@@ -76,6 +82,8 @@ impl NadeApp {
 			status_bar: status_bar::StatusBar::new(),
 			service_shutdown_tx: Some(shutdown_tx),
 			service_shutdown_rx: Arc::new(Mutex::new(shutdown_rx)),
+			project_data: ProjectData::default(),
+			project_ui: ProjectUiState::default(),
 		};
 
 		// 初期フレームを描画するためのトリガー
@@ -88,10 +96,10 @@ impl NadeApp {
 	fn create_panel_layout() -> PanelSystem<PanelContent> {
 		let mut builder = LayoutBuilder::new();
 
-		// 左側: Composition + Properties (縦分割)
-		let composition = builder.panel("Composition", PanelContent::Composition);
+		// 左側: Project + Properties (縦分割)
+		let project = builder.panel("Project", PanelContent::Project);
 		let properties = builder.panel("Properties", PanelContent::Properties);
-		let left_side = LayoutBuilder::<PanelContent>::vsplit(composition, properties, 0.5);
+		let left_side = LayoutBuilder::<PanelContent>::vsplit(project, properties, 0.5);
 
 		// 右側: Preview + Timeline (縦分割)
 		let preview = builder.panel("Preview", PanelContent::MainPreview);
@@ -166,6 +174,23 @@ impl NadeApp {
 									.ok();
 							}
 						}
+						AppPanelMessage::Project(proj_msg) => {
+							match proj_msg {
+								crate::message::ProjectMessage::ToggleExpand(id) => {
+									if self.project_ui.expanded_ids.contains(id) {
+										self.project_ui.expanded_ids.remove(id);
+									} else {
+										self.project_ui.expanded_ids.insert(*id);
+									}
+								}
+								crate::message::ProjectMessage::Select(id) => {
+									self.project_ui.selected_id = Some(*id);
+								}
+								crate::message::ProjectMessage::OpenItem(_id) => {
+									// TODO: Implement open logic
+								}
+							}
+						}
 					}
 				}
 				// システムメッセージはパネルシステムへ
@@ -222,7 +247,7 @@ impl NadeApp {
 			PanelContent::Properties => {
 				panels::properties::view(self.current_model.preview.selection.as_ref())
 			}
-			PanelContent::Composition => panels::composition::view(),
+			PanelContent::Project => panels::project::view(&self.project_data, &self.project_ui),
 			PanelContent::Console => panels::console::view(),
 		}
 	}

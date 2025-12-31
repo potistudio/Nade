@@ -13,8 +13,8 @@ pub enum PanelContent {
 	Timeline,
 	/// プロパティ（パラメータ編集）
 	Properties,
-	/// コンポジション（レイヤー/エフェクトツリー）
-	Composition,
+	/// プロジェクト（アセットブラウザ）
+	Project,
 	/// コンソール（ログ出力）
 	Console,
 }
@@ -26,7 +26,7 @@ impl PanelContent {
 			PanelContent::MainPreview => Color::from_rgb(0.2, 0.3, 0.4),
 			PanelContent::Timeline => Color::from_rgb(0.3, 0.2, 0.4),
 			PanelContent::Properties => Color::from_rgb(0.2, 0.4, 0.3),
-			PanelContent::Composition => Color::from_rgb(0.4, 0.3, 0.2),
+			PanelContent::Project => Color::from_rgb(0.4, 0.3, 0.2),
 			PanelContent::Console => Color::from_rgb(0.15, 0.15, 0.15),
 		}
 	}

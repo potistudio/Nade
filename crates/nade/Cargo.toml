@@ -34,3 +34,4 @@ bytes = "1.11.0"
 bytemuck = "1.16"
 wgpu = "27.0.1"
 iced_wgpu = "0.14"
+uuid = { version = "1.19.0", features = ["v4", "serde"] }

@@ -3,7 +3,7 @@
 use iced::Color;
 
 // レイアウト
-pub const TRACK_HEIGHT: f32 = 16.0;
+pub const TRACK_HEIGHT: f32 = 18.0;
 pub const TRACK_PADDING: f32 = 1.0;
 pub const TRACK_LABEL_WIDTH: f32 = 120.0;
 pub const RULER_HEIGHT: f32 = 24.0;
@@ -18,7 +18,7 @@ pub const RESIZE_HANDLE_WIDTH: f32 = 8.0;
 pub const RESIZE_HANDLE_VISUAL_WIDTH: f32 = 4.0;
 pub const SCROLL_MULTIPLIER: f32 = 20.0;
 pub const MIN_CLIP_DURATION: f32 = 0.1;
-pub const CLIP_CORNER_RADIUS: f32 = 4.0;
+pub const CLIP_CORNER_RADIUS: f32 = 1.0;
 
 // 色
 pub mod colors {

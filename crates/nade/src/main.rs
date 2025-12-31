@@ -56,25 +56,19 @@ pub fn main() -> iced::Result {
 	let shutdown_tx = ui_tx.clone();
 
 	// Start core logic in a separate thread
-	let core_handle = thread::spawn(move || {
+	let core_thread = thread::spawn(move || {
 		core::core_loop(core_rx, core_tx);
 	});
 
 	// Start UI in the main thread
 	let ui_result = app::run_ui(ui_tx, ui_rx);
 
-	// TODO: Graceful Shutdown改善（優先度：低）
-	// 現在Subscription内でrecv_timeout(100ms)を使用してシャットダウンを検知している。
-	// これは実質ポーリングであり、以下の改善案がある:
-	// - shutdown専用channelを追加し、futures::select!で両方を監視する
-	// - tokio::sync::watch等のbroadcast channelを使用する
-	// ただし現状で実用上問題ないため、複雑化を避けて保留。
 	log::info!("Waiting for shutdown...");
 	shutdown_tx.send(Msg::Shutdown).ok();
 
 	// Wait for the core thread to finish
 	log::info!("Waiting for core thread to finish...");
-	if let Err(e) = core_handle.join() {
+	if let Err(e) = core_thread.join() {
 		log::error!("Core thread joined with error: {:?}", e);
 	} else {
 		log::info!("Core thread shutdown successfully.");

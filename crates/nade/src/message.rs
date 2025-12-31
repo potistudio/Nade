@@ -13,6 +13,15 @@ use nade_core::Model;
 pub enum AppPanelMessage {
 	Timeline(TimelineMessage),
 	Property(PropertyMessage),
+	Project(ProjectMessage),
+}
+
+/// プロジェクトパネルメッセージ
+#[derive(Debug, Clone)]
+pub enum ProjectMessage {
+	ToggleExpand(uuid::Uuid),
+	Select(uuid::Uuid),
+	OpenItem(uuid::Uuid),
 }
 
 /// プロパティパネルメッセージ
