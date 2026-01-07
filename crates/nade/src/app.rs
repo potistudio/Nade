@@ -9,7 +9,7 @@ use iced::{Element, Length, Subscription, Task, Theme};
 use panel_system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
 use std::sync::{Arc, Mutex};
 
-use timeline_panel::TimelineWidget;
+use timeline_pane::TimelineWidget;
 
 use crossbeam_channel::{Receiver, Sender};
 use nade_core::{Model, Msg};
@@ -146,7 +146,7 @@ impl NadeApp {
 							self.timeline.update(timeline_msg.clone());
 
 							// シーク操作をCodeに通知
-							if let timeline_panel::TimelineMessage::PlayheadChanged(time) =
+							if let timeline_pane::TimelineMessage::PlayheadChanged(time) =
 								timeline_msg
 							{
 								self.core_tx.send(Msg::SetTime(*time)).ok();

@@ -1,26 +1,26 @@
-//! タイムラインの定数と色設定
+//! Colors and layout constants for the timeline UI.
 
 use iced::Color;
 
-// レイアウト
+// Layout constants
 pub const TRACK_HEIGHT: f32 = 18.0;
 pub const TRACK_PADDING: f32 = 1.0;
 pub const TRACK_LABEL_WIDTH: f32 = 120.0;
 pub const RULER_HEIGHT: f32 = 24.0;
 pub const PIXELS_PER_SECOND: f32 = 100.0;
 
-// スケール制限
+// Zooming limits
 pub const MIN_SCALE: f32 = 0.1;
 pub const MAX_SCALE: f32 = 10.0;
 
-// インタラクション
+// Interaction constants
 pub const RESIZE_HANDLE_WIDTH: f32 = 8.0;
 pub const RESIZE_HANDLE_VISUAL_WIDTH: f32 = 4.0;
 pub const SCROLL_MULTIPLIER: f32 = 20.0;
 pub const MIN_CLIP_DURATION: f32 = 0.1;
 pub const CLIP_CORNER_RADIUS: f32 = 1.0;
 
-// 色
+// Color constants
 pub mod colors {
 	use super::Color;
 

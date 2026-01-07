@@ -177,32 +177,20 @@ where
 			);
 
 			let content = format!("{:.2}", self.value);
-			let text_size = Size::new(50.0, 20.0);
-			// let text_size = renderer.measure(
-			// 	&content,
-			// 	12.0,
-			// 	16.0.into(),
-			// 	renderer.default_font(),
-			// 	bounds.width,
-			// 	iced::advanced::text::Shaping::Basic,
-			// );
-
-			let x = bounds.x + 5.0;
-			let y = bounds.center_y() - text_size.height / 2.0;
 
 			renderer.fill_text(
 				iced::advanced::text::Text {
 					content: content.into(),
 					bounds: Size::new(bounds.width, bounds.height),
 					size: 12.0.into(),
-					line_height: 16.0.into(),
+					line_height: iced::advanced::text::LineHeight::Relative(1.3),
 					font: renderer.default_font(),
-					align_x: iced::alignment::Horizontal::Left.into(),
+					align_x: iced::alignment::Horizontal::Center.into(),
 					align_y: iced::alignment::Vertical::Center.into(),
 					wrapping: iced::advanced::text::Wrapping::Word,
 					shaping: iced::advanced::text::Shaping::Basic,
 				},
-				Point::new(x, y),
+				bounds.center(),
 				Color::WHITE,
 				*viewport,
 			);

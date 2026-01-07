@@ -14,10 +14,10 @@ use iced::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::{
-	consts::*,
-	state::{DragState, TimelineClip, TimelineLayout, TimelineState, format_time, lighten_color},
+use crate::state::{
+	DragState, TimelineClip, TimelineLayout, TimelineState, format_time, lighten_color,
 };
+use nade_constants::*;
 
 // =============================================================================
 // メッセージ
@@ -153,7 +153,7 @@ impl TimelineWidget {
 			.padding(8)
 			.width(Length::Fill)
 			.style(|_theme| container::Style {
-				background: Some(colors::RULER_BG.into()),
+				background: Some(nade_constants::colors::RULER_BG.into()),
 				..Default::default()
 			})
 			.into()

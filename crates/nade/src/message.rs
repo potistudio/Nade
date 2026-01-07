@@ -3,7 +3,7 @@
 //! アプリケーション全体で使用されるメッセージ型を定義します。
 
 use panel_system::PanelSystemMessage;
-use timeline_panel::TimelineMessage;
+use timeline_pane::TimelineMessage;
 
 use crate::panel_content::PanelContent;
 use nade_core::Model;

@@ -56,7 +56,7 @@ pub fn main() -> iced::Result {
 	let shutdown_tx = ui_tx.clone();
 
 	// Start core logic in a separate thread
-	let core_thread = thread::spawn(move || {
+	let core_handle = thread::spawn(move || {
 		core::core_loop(core_rx, core_tx);
 	});
 
@@ -68,7 +68,7 @@ pub fn main() -> iced::Result {
 
 	// Wait for the core thread to finish
 	log::info!("Waiting for core thread to finish...");
-	if let Err(e) = core_thread.join() {
+	if let Err(e) = core_handle.join() {
 		log::error!("Core thread joined with error: {:?}", e);
 	} else {
 		log::info!("Core thread shutdown successfully.");

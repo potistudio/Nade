@@ -915,6 +915,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1d728cc89cf3aee9ff92b05e62b19ee65a02b5702cff7d5a377e32c6ae29d8d"
 
 [[package]]
+name = "cli"
+version = "0.0.1"
+dependencies = [
+ "uuid",
+]
+
+[[package]]
 name = "clipboard-win"
 version = "5.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1346,6 +1353,17 @@ name = "dconf_rs"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7046468a81e6a002061c01e6a7c83139daf91b11c30e66795b13217c2d885c8b"
+
+[[package]]
+name = "desktop"
+version = "0.0.1"
+dependencies = [
+ "env_logger",
+ "iced 0.14.0",
+ "log",
+ "nade-constants",
+ "nade-engine",
+]
 
 [[package]]
 name = "detect-desktop-environment"
@@ -3309,9 +3327,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.28"
+version = "0.4.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
+checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "loop9"
@@ -3538,10 +3556,25 @@ dependencies = [
  "panel_system",
  "rayon",
  "status_bar",
- "timeline_panel",
+ "timeline_pane",
  "tokio",
  "uuid",
  "wgpu 27.0.1",
+]
+
+[[package]]
+name = "nade-constants"
+version = "0.0.1"
+dependencies = [
+ "iced 0.14.0",
+]
+
+[[package]]
+name = "nade-engine"
+version = "0.0.1"
+dependencies = [
+ "log",
+ "nade-constants",
 ]
 
 [[package]]
@@ -5487,10 +5520,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "timeline_panel"
+name = "timeline_pane"
 version = "0.0.1"
 dependencies = [
  "iced 0.14.0",
+ "nade-constants",
 ]
 
 [[package]]

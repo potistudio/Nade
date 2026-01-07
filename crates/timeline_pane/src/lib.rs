@@ -3,9 +3,6 @@
 //! Icedアプリケーション用のタイムラインウィジェット。
 //! トラック、クリップ、再生ヘッドの管理と表示を提供します。
 
-#![allow(dead_code)]
-
-mod consts;
 mod state;
 mod widget;
 

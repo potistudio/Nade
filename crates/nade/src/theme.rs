@@ -8,11 +8,11 @@ pub const TEXT_MUTED: Color = Color::from_rgb(0.6, 0.6, 0.6);
 pub mod panel {
 	use super::*;
 
-	pub const PREVIEW_BG: Color = Color::from_rgb(0.2, 0.3, 0.4);
-	pub const TIMELINE_BG: Color = Color::from_rgb(0.3, 0.2, 0.4);
-	pub const PROPERTIES_BG: Color = Color::from_rgb(0.2, 0.4, 0.3);
-	pub const COMPOSITION_BG: Color = Color::from_rgb(0.4, 0.3, 0.2);
-	pub const CONSOLE_BG: Color = Color::from_rgb(0.15, 0.15, 0.15);
+	pub const PREVIEW_BG: Color = Color::from_rgb(0.128, 0.128, 0.128);
+	pub const TIMELINE_BG: Color = Color::from_rgb(0.128, 0.128, 0.128);
+	pub const PROPERTIES_BG: Color = Color::from_rgb(0.128, 0.128, 0.128);
+	pub const COMPOSITION_BG: Color = Color::from_rgb(0.128, 0.128, 0.128);
+	pub const CONSOLE_BG: Color = Color::from_rgb(0.128, 0.128, 0.128);
 }
 
 pub mod spacing {

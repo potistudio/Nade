@@ -1,6 +1,5 @@
 [package]
-name = "timeline_panel"
-description = "Timeline widget for Iced applications"
+name = "nade-engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,4 +10,5 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-iced = { version = "0.14", features = ["canvas"] }
+log.workspace = true
+nade-constants.workspace = true
