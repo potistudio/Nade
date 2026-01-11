@@ -49,10 +49,8 @@ fn main() -> eframe::Result<()> {
 	glyph_engine::print_localized_strings("./assets/fonts/Rubik/Rubik_regular.ttf");
 
 	eframe::run_native(
-		"Demo - Font",
+		"Font Feature Playground",
 		options,
 		Box::new(|_cc| Ok(Box::new(FontPlaygroundApp::default()))),
-	);
-
-	Ok(())
+	)
 }

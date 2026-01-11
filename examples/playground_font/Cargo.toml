@@ -12,3 +12,4 @@ canvas_panel = { path = "../../crates/canvas_panel" }
 env_logger = "0.11.8"
 log = "0.4.28"
 swash = "0.2.6"
+rfd = "0.15"
