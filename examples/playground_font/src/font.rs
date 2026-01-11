@@ -1,8 +1,6 @@
 use egui::{Color32, ColorImage, Pos2, Response, Stroke, TextureOptions, Ui, pos2};
 
-use crate::glyph_engine::{
-	self, FeatureInfo, GlyphEngine, RasterizedGlyph, ShapedGlyph, VariationInfo,
-};
+use crate::glyph_engine::{self, FeatureInfo, GlyphEngine, ShapedGlyph, VariationInfo};
 
 /// フォントフィーチャーの有効/無効状態
 #[derive(Debug, Clone)]
@@ -117,10 +115,9 @@ impl FontPlaygroundWidget {
 			.add_filter("Font Files", &["ttf", "otf", "ttc", "otc"])
 			.add_filter("All Files", &["*"])
 			.pick_file()
+			&& let Some(path_str) = path.to_str()
 		{
-			if let Some(path_str) = path.to_str() {
-				self.load_font(path_str);
-			}
+			self.load_font(path_str);
 		}
 	}
 
@@ -313,39 +310,36 @@ impl FontPlaygroundWidget {
 							engine.rasterize_glyph(shaped.id, self.font_size, &active_variations)
 						});
 
-						if let Some(glyph) = rasterized {
-							if glyph.width > 0 && glyph.height > 0 {
-								let size = [glyph.width as usize, glyph.height as usize];
-								let mut pixels = Vec::with_capacity(size[0] * size[1] * 4);
-								for alpha in glyph.data {
-									let color =
-										Color32::from_rgba_premultiplied(100, 200, 255, alpha);
-									pixels.extend_from_slice(&color.to_array());
-								}
-
-								let image = ColorImage::from_rgba_unmultiplied(size, &pixels);
-								let texture = ui.ctx().load_texture(
-									format!("glyph_{}", shaped.id),
-									image,
-									TextureOptions::LINEAR,
-								);
-
-								let pos = pos2(
-									glyph_x + glyph.left as f32,
-									baseline_y - glyph.top as f32,
-								);
-								let rect = egui::Rect::from_min_size(
-									pos,
-									egui::vec2(glyph.width as f32, glyph.height as f32),
-								);
-
-								painter.image(
-									texture.id(),
-									rect,
-									egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
-									Color32::WHITE,
-								);
+						if let Some(glyph) = rasterized
+							&& glyph.width > 0 && glyph.height > 0
+						{
+							let size = [glyph.width as usize, glyph.height as usize];
+							let mut pixels = Vec::with_capacity(size[0] * size[1] * 4);
+							for alpha in glyph.data {
+								let color = Color32::from_rgba_premultiplied(100, 200, 255, alpha);
+								pixels.extend_from_slice(&color.to_array());
 							}
+
+							let image = ColorImage::from_rgba_unmultiplied(size, &pixels);
+							let texture = ui.ctx().load_texture(
+								format!("glyph_{}", shaped.id),
+								image,
+								TextureOptions::LINEAR,
+							);
+
+							let pos =
+								pos2(glyph_x + glyph.left as f32, baseline_y - glyph.top as f32);
+							let rect = egui::Rect::from_min_size(
+								pos,
+								egui::vec2(glyph.width as f32, glyph.height as f32),
+							);
+
+							painter.image(
+								texture.id(),
+								rect,
+								egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+								Color32::WHITE,
+							);
 						}
 					} else {
 						// アウトラインモード（パス描画）

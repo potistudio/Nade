@@ -37,7 +37,7 @@ impl eframe::App for FontPlaygroundApp {
 
 fn main() -> eframe::Result<()> {
 	unsafe {
-		std::env::set_var("RUST_LOG", "debug");
+		std::env::set_var("RUST_LOG", "playground_font=debug");
 	}
 	env_logger::init();
 
