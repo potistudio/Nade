@@ -11,4 +11,4 @@ workspace = true
 
 [dependencies]
 log.workspace = true
-nade-constants.workspace = true
+constants.workspace = true

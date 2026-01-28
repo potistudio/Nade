@@ -1,5 +1,5 @@
 use super::state::EngineState;
-use nade_constants::TICK_INTERVAL_MS;
+use constants::TICK_INTERVAL_MS;
 use std::{
 	sync::{
 		Arc,

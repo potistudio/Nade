@@ -17,7 +17,7 @@ use std::rc::Rc;
 use crate::state::{
 	DragState, TimelineClip, TimelineLayout, TimelineState, format_time, lighten_color,
 };
-use nade_constants::*;
+use constants::*;
 
 // =============================================================================
 // メッセージ
@@ -153,7 +153,7 @@ impl TimelineWidget {
 			.padding(8)
 			.width(Length::Fill)
 			.style(|_theme| container::Style {
-				background: Some(nade_constants::colors::RULER_BG.into()),
+				background: Some(constants::colors::RULER_BG.into()),
 				..Default::default()
 			})
 			.into()

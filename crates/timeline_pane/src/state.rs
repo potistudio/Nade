@@ -2,7 +2,7 @@
 
 use iced::{Color, Point, Rectangle, Vector};
 
-use nade_constants::*;
+use constants::*;
 
 // =============================================================================
 // タイムラインクリップ

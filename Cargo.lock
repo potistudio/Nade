@@ -1044,6 +1044,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "constants"
+version = "0.0.1"
+dependencies = [
+ "iced 0.14.0",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1358,10 +1365,10 @@ checksum = "7046468a81e6a002061c01e6a7c83139daf91b11c30e66795b13217c2d885c8b"
 name = "desktop"
 version = "0.0.1"
 dependencies = [
+ "constants",
  "env_logger",
  "iced 0.14.0",
  "log",
- "nade-constants",
  "nade-engine",
 ]
 
@@ -3563,18 +3570,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "nade-constants"
-version = "0.0.1"
-dependencies = [
- "iced 0.14.0",
-]
-
-[[package]]
 name = "nade-engine"
 version = "0.0.1"
 dependencies = [
+ "constants",
  "log",
- "nade-constants",
 ]
 
 [[package]]
@@ -5523,8 +5523,8 @@ dependencies = [
 name = "timeline_pane"
 version = "0.0.1"
 dependencies = [
+ "constants",
  "iced 0.14.0",
- "nade-constants",
 ]
 
 [[package]]

@@ -15,4 +15,4 @@ env_logger.workspace = true
 iced = "0.14.0"
 log.workspace = true
 nade-engine.workspace = true
-nade-constants.workspace = true
+constants.workspace = true

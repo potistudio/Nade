@@ -12,4 +12,4 @@ workspace = true
 
 [dependencies]
 iced.workspace = true
-nade-constants = { path = "../constants" }
+constants.workspace = true

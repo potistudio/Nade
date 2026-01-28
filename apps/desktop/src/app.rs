@@ -1,9 +1,9 @@
+use constants::{LOG_INTERVAL_MS, SAMPLE_RATE};
 use iced::{
 	Element, Subscription, Task,
 	widget::{self, PaneGrid},
 	window,
 };
-use nade_constants::{LOG_INTERVAL_MS, SAMPLE_RATE};
 use nade_engine::AudioEngine;
 
 #[derive(Debug, Clone, Copy)]

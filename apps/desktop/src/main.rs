@@ -3,9 +3,10 @@
 mod app;
 
 use app::NadeApp;
-use nade_constants::{APP_TITLE, WINDOW_HEIGHT, WINDOW_WIDTH};
+use constants::{APP_TITLE, WINDOW_HEIGHT, WINDOW_WIDTH};
 
-fn init_logger() {
+/// Entry point for the desktop application
+pub fn main() -> iced::Result {
 	#[allow(unsafe_code)]
 	unsafe {
 		if std::env::var("RUST_LOG").is_err() {
@@ -20,11 +21,6 @@ fn init_logger() {
 	}
 
 	env_logger::init();
-}
-
-/// Entry point for the desktop application
-pub fn main() -> iced::Result {
-	init_logger();
 
 	iced::application(NadeApp::new, NadeApp::update, NadeApp::view)
 		.subscription(NadeApp::subscription)

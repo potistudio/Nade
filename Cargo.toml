@@ -26,6 +26,6 @@ log = "0.4.29"
 iced = { version = "0.14", features = ["advanced", "canvas"] }
 anyhow = "1.0.100"
 env_logger = "0.11.8"
-nade-constants = { path = "crates/constants" }
+constants = { path = "crates/constants" }
 nade-engine = { path = "crates/engine" }
 nade-timeline = { path = "crates/timeline_pane" }
