@@ -7,18 +7,22 @@ use iced::time;
 use iced::widget::{column, container};
 use iced::{Element, Length, Subscription, Task, Theme};
 use panel_system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Instant;
 
 use timeline_pane::TimelineWidget;
 
-use crossbeam_channel::{Receiver, Sender};
-use nade_core::{Model, Msg};
+use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
+use nade_core::{CoreEffect, FrameData, Model, Msg, update};
 
 use crate::message::{AppPanelMessage, Message};
 use crate::panel_content::PanelContent;
 use crate::panels;
 use crate::panels::project::{ProjectData, ProjectUiState};
-use crate::services::core_service::{CoreConnection, build_core_stream};
+use crate::renderer;
+use crate::services::render_service::{RenderConnection, build_render_stream};
 use crate::theme;
 
 // =============================================================================
@@ -39,27 +43,29 @@ pub struct NadeApp {
 	/// パネルシステム
 	panel_system: PanelSystem<PanelContent>,
 
-	/// Coreへの送信チャンネル
-	core_tx: Sender<Msg>,
+	/// レンダリング結果送信用チャンネル
+	render_tx: Sender<FrameData>,
+	/// レンダリング結果受信用チャンネル（Subscriptionで使用）
+	render_rx: Arc<std::sync::Mutex<Receiver<FrameData>>>,
+	/// レンダリングServiceのシャットダウン通知
+	render_shutdown_tx: Option<Sender<()>>,
+	/// レンダリングServiceのシャットダウン受信機（Serviceへ渡す）
+	render_shutdown_rx: Arc<std::sync::Mutex<Receiver<()>>>,
 
-	/// Coreからの受信チャンネル (Subscriptionで使用)
-	///
-	/// Icedの要件(Sync)を満たすためMutexでラップするが、
-	/// 実際の受信ループではロックしない（初期化時のみ）。
-	core_rx: Arc<Mutex<Receiver<Model>>>,
-	/// 現在のモデル（表示用キャッシュ）
+	/// 現在のモデル（UIスレッドで更新）
 	current_model: Model,
+	/// バックグラウンドレンダリング中かどうか
+	is_rendering: Arc<AtomicBool>,
+	/// FPS計算用カウンタ
+	frame_count: u32,
+	/// FPS更新の基準時刻
+	fps_update_time: Instant,
 
 	/// タイムラインウィジェット (UI State)
 	timeline: TimelineWidget,
 
 	/// ステータスバー (UI State)
 	status_bar: status_bar::StatusBar,
-
-	/// Serviceシャットダウン用送信機
-	service_shutdown_tx: Option<Sender<()>>,
-	/// Serviceシャットダウン用受信機（Serviceへ渡す）
-	service_shutdown_rx: Arc<Mutex<Receiver<()>>>,
 
 	/// プロジェクトデータ (Mock)
 	project_data: ProjectData,
@@ -69,25 +75,30 @@ pub struct NadeApp {
 
 impl NadeApp {
 	/// アプリケーションの初期化
-	pub fn new(core_tx: Sender<Msg>, core_rx: Receiver<Model>) -> (Self, Task<Message>) {
+	pub fn new() -> (Self, Task<Message>) {
 		let panel_system = Self::create_panel_layout();
-		let (shutdown_tx, shutdown_rx) = crossbeam_channel::bounded(1);
+		let (render_tx, render_rx) = unbounded::<FrameData>();
+		let (shutdown_tx, shutdown_rx) = bounded(1);
+		let now = Instant::now();
 
-		let app = Self {
+		let mut app = Self {
 			panel_system,
-			core_tx,
-			core_rx: Arc::new(Mutex::new(core_rx)),
+			render_tx,
+			render_rx: Arc::new(std::sync::Mutex::new(render_rx)),
+			render_shutdown_tx: Some(shutdown_tx),
+			render_shutdown_rx: Arc::new(std::sync::Mutex::new(shutdown_rx)),
 			current_model: Model::default(),
+			is_rendering: Arc::new(AtomicBool::new(false)),
+			frame_count: 0,
+			fps_update_time: now,
 			timeline: TimelineWidget::new(),
 			status_bar: status_bar::StatusBar::new(),
-			service_shutdown_tx: Some(shutdown_tx),
-			service_shutdown_rx: Arc::new(Mutex::new(shutdown_rx)),
 			project_data: ProjectData::default(),
 			project_ui: ProjectUiState::default(),
 		};
 
 		// 初期フレームを描画するためのトリガー
-		app.core_tx.send(Msg::SetTime(0.0)).ok();
+		app.apply_core_msg(Msg::SetTime(0.0));
 
 		(app, Task::none())
 	}
@@ -112,11 +123,76 @@ impl NadeApp {
 		PanelSystem::new().with_layout(layout)
 	}
 
+	/// CoreロジックをUIスレッドで適用し、副作用のみを非同期実行する
+	fn apply_core_msg(&mut self, msg: Msg) {
+		let (next_model, effects) = update(self.current_model.clone(), msg);
+		self.current_model = next_model;
+		self.handle_effects(effects);
+	}
+
+	/// CoreEffectの実行（重い処理のみバックグラウンドへ）
+	fn handle_effects(&mut self, effects: Vec<CoreEffect>) {
+		for effect in effects {
+			match effect {
+				CoreEffect::RenderFrame {
+					time,
+					width,
+					height,
+				} => {
+					if self.is_rendering.load(Ordering::SeqCst) {
+						log::trace!("Skipping frame render - previous render still in progress");
+						continue;
+					}
+					self.spawn_render(time, width, height);
+				}
+			}
+		}
+	}
+
+	/// レンダリングだけを別スレッドで実行する
+	fn spawn_render(&self, time: f32, width: u32, height: u32) {
+		self.is_rendering.store(true, Ordering::SeqCst);
+		let is_rendering = Arc::clone(&self.is_rendering);
+		let render_tx = self.render_tx.clone();
+
+		thread::spawn(move || {
+			let frame_num = (time * 60.0) as u32;
+			let img_buffer = renderer::render_frame(frame_num, width, height);
+			let raw = img_buffer.into_raw();
+
+			let frame_data = FrameData {
+				width,
+				height,
+				pixels: bytes::Bytes::from(raw),
+			};
+
+			if render_tx.send(frame_data).is_err() {
+				log::info!("Render thread: receiver dropped before frame delivery.");
+			}
+			is_rendering.store(false, Ordering::SeqCst);
+		});
+	}
+
+	/// バックグラウンドレンダリング完了を処理する
+	fn handle_render_completed(&mut self, frame: FrameData) {
+		self.apply_core_msg(Msg::FrameRendered(frame));
+
+		// FPS計算
+		self.frame_count += 1;
+		let now = Instant::now();
+		let elapsed = now.duration_since(self.fps_update_time).as_secs_f32();
+		if elapsed >= 0.5 {
+			self.current_model.preview.fps = self.frame_count as f32 / elapsed;
+			self.frame_count = 0;
+			self.fps_update_time = now;
+		}
+	}
+
 	/// メッセージを処理
 	pub fn update(&mut self, message: Message) -> Task<Message> {
 		match message {
-			Message::CoreUpdated(model) => {
-				self.current_model = model;
+			Message::RenderCompleted(frame) => {
+				self.handle_render_completed(frame);
 				// プレイヘッドを同期（ドラッグ中は同期しない）
 				if !self.timeline.is_dragging_playhead() {
 					self.timeline.state_mut().playhead_time = self.current_model.preview.time;
@@ -124,17 +200,17 @@ impl NadeApp {
 				Task::none()
 			}
 			Message::TimeChanged(value) => {
-				self.core_tx.send(Msg::SetTime(value)).ok();
+				self.apply_core_msg(Msg::SetTime(value));
 				Task::none()
 			}
 			Message::TogglePlay => {
-				self.core_tx.send(Msg::TogglePlay).ok();
+				self.apply_core_msg(Msg::TogglePlay);
 				Task::none()
 			}
 			Message::Tick => {
 				// 再生中のみフレームを進める
 				if self.current_model.preview.is_playing {
-					self.core_tx.send(Msg::Tick).ok();
+					self.apply_core_msg(Msg::Tick);
 				}
 				Task::none()
 			}
@@ -149,11 +225,13 @@ impl NadeApp {
 							if let timeline_pane::TimelineMessage::PlayheadChanged(time) =
 								timeline_msg
 							{
-								self.core_tx.send(Msg::SetTime(*time)).ok();
+								self.apply_core_msg(Msg::SetTime(*time));
 							}
 						}
 						AppPanelMessage::Property(prop_msg) => {
-							if let Some(selection) = &mut self.current_model.preview.selection {
+							let updated_selection = if let Some(selection) =
+								&mut self.current_model.preview.selection
+							{
 								match prop_msg {
 									crate::message::PropertyMessage::PositionChanged(axis, val) => {
 										selection.position[*axis] = *val;
@@ -168,10 +246,14 @@ impl NadeApp {
 										selection.opacity = *val;
 									}
 								}
+								Some(selection.clone())
+							} else {
+								None
+							};
+
+							if let Some(selection) = updated_selection {
 								// 変更をCoreに通知
-								self.core_tx
-									.send(Msg::UpdateTransform(selection.clone()))
-									.ok();
+								self.apply_core_msg(Msg::UpdateTransform(selection));
 							}
 						}
 						AppPanelMessage::Project(proj_msg) => {
@@ -199,12 +281,11 @@ impl NadeApp {
 			}
 			Message::WindowClosed(id) => {
 				log::info!("App: WindowClosed event received. ID: {:?}", id);
-				// Coreにシャットダウン信号を送信
-				log::info!("App: Sending Msg::Shutdown to Core...");
-				if let Err(e) = self.core_tx.send(Msg::Shutdown) {
-					log::error!("App: Failed to send Msg::Shutdown: {:?}", e);
-				} else {
-					log::info!("App: Msg::Shutdown sent successfully.");
+				// レンダリングServiceへシャットダウンを通知
+				if let Some(tx) = self.render_shutdown_tx.take() {
+					if let Err(e) = tx.send(()) {
+						log::error!("App: Failed to send render shutdown: {:?}", e);
+					}
 				}
 				// ウィンドウを閉じる
 				log::info!("App: Closing window...");
@@ -254,10 +335,10 @@ impl NadeApp {
 
 	/// サブスクリプション
 	pub fn subscription(&self) -> Subscription<Message> {
-		let core_rx = self.core_rx.clone();
-		let shutdown_rx = self.service_shutdown_rx.clone();
-		let core_subscription =
-			Subscription::run_with(CoreConnection(core_rx, shutdown_rx), build_core_stream);
+		let render_rx = self.render_rx.clone();
+		let shutdown_rx = self.render_shutdown_rx.clone();
+		let render_subscription =
+			Subscription::run_with(RenderConnection(render_rx, shutdown_rx), build_render_stream);
 
 		// キーボードサブスクリプション：スペースキーで再生/一時停止
 		let keyboard_subscription: Subscription<Message> =
@@ -290,7 +371,7 @@ impl NadeApp {
 		});
 
 		Subscription::batch([
-			core_subscription,
+			render_subscription,
 			keyboard_subscription,
 			tick_subscription,
 			window_subscription,
@@ -302,12 +383,8 @@ impl NadeApp {
 // UI実行
 // =============================================================================
 
-pub fn run_ui(ui_tx: Sender<Msg>, ui_rx: Receiver<Model>) -> iced::Result {
-	iced::application(
-		move || NadeApp::new(ui_tx.clone(), ui_rx.clone()),
-		NadeApp::update,
-		NadeApp::view,
-	)
+pub fn run_ui() -> iced::Result {
+	iced::application(NadeApp::new, NadeApp::update, NadeApp::view)
 	.subscription(NadeApp::subscription)
 	.theme(theme)
 	.title("Nade")

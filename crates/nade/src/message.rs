@@ -6,7 +6,7 @@ use panel_system::PanelSystemMessage;
 use timeline_pane::TimelineMessage;
 
 use crate::panel_content::PanelContent;
-use nade_core::Model;
+use nade_core::FrameData;
 
 /// アプリケーションパネルメッセージ（ラッパー）
 #[derive(Debug, Clone)]
@@ -44,8 +44,8 @@ pub enum Message {
 	Tick,
 	/// パネルシステムメッセージ
 	PanelSystem(PanelSystemMessage<PanelContent, AppPanelMessage>),
-	/// Coreからのモデル更新
-	CoreUpdated(Model),
+	/// バックグラウンドレンダリング完了
+	RenderCompleted(FrameData),
 	/// ウィンドウが閉じられた
 	WindowClosed(iced::window::Id),
 }

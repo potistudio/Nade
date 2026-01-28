@@ -1,1 +1,1 @@
-pub mod core_service;
+pub mod render_service;
