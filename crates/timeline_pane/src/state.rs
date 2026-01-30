@@ -3,19 +3,30 @@
 use iced::{Color, Point, Rectangle, Vector};
 
 use constants::*;
+use nade_core::SceneObjectId;
 
 // =============================================================================
 // タイムラインクリップ
 // =============================================================================
 
 /// タイムラインクリップ
+///
+/// シーンオブジェクトをタイムライン上で視覚的に表現するためのクリップです。
+/// `scene_object_id` でシーンオブジェクトと紐付けられています。
 #[derive(Clone, Debug)]
 pub struct TimelineClip {
+	/// クリップID（タイムライン内でのユニークID）
 	pub id: usize,
+	/// クリップ名
 	pub name: String,
+	/// 開始時間（秒）
 	pub start_time: f32,
+	/// 持続時間（秒）
 	pub duration: f32,
+	/// 表示色
 	pub color: Color,
+	/// 紐付けられたシーンオブジェクトのID
+	pub scene_object_id: Option<SceneObjectId>,
 }
 
 impl TimelineClip {
@@ -27,6 +38,26 @@ impl TimelineClip {
 			start_time,
 			duration,
 			color,
+			scene_object_id: None,
+		}
+	}
+
+	/// シーンオブジェクトに紐付けられたクリップを作成
+	pub fn from_scene_object(
+		id: usize,
+		name: &str,
+		start_time: f32,
+		duration: f32,
+		color: Color,
+		scene_object_id: SceneObjectId,
+	) -> Self {
+		Self {
+			id,
+			name: name.to_string(),
+			start_time,
+			duration,
+			color,
+			scene_object_id: Some(scene_object_id),
 		}
 	}
 
@@ -176,7 +207,7 @@ pub struct TimelineState {
 
 impl Default for TimelineState {
 	fn default() -> Self {
-		let mut state = Self {
+		Self {
 			tracks: Vec::new(),
 			playhead_time: 0.0,
 			scroll_offset: Vector::ZERO,
@@ -186,9 +217,7 @@ impl Default for TimelineState {
 			ctrl_pressed: false,
 			viewport_width: 800.0,
 			next_clip_id: 0,
-		};
-		state.add_sample_content();
-		state
+		}
 	}
 }
 
@@ -371,52 +400,69 @@ impl TimelineState {
 	}
 
 	// -------------------------------------------------------------------------
-	// サンプルデータ
+	// Composition同期
 	// -------------------------------------------------------------------------
 
-	fn add_sample_content(&mut self) {
-		let sample_clips = [
-			(
-				"Video",
-				vec![
-					("Intro", 0.0, 2.5, Color::from_rgb8(66, 133, 244)),
-					("Main Scene", 3.0, 5.0, Color::from_rgb8(52, 168, 83)),
-					("Outro", 9.0, 2.0, Color::from_rgb8(251, 188, 4)),
-				],
-			),
-			(
-				"Audio",
-				vec![("BGM", 0.0, 11.0, Color::from_rgb8(234, 67, 53))],
-			),
-			(
-				"Effects",
-				vec![
-					("Fade In", 0.0, 1.0, Color::from_rgb8(156, 39, 176)),
-					("Transition", 2.5, 0.5, Color::from_rgb8(156, 39, 176)),
-					("Fade Out", 10.0, 1.0, Color::from_rgb8(156, 39, 176)),
-				],
-			),
-			(
-				"Subtitles",
-				vec![
-					("Title", 0.5, 2.0, Color::from_rgb8(0, 188, 212)),
-					("Description", 4.0, 3.0, Color::from_rgb8(0, 188, 212)),
-				],
-			),
-		];
+	/// Compositionからタイムラインを同期
+	///
+	/// Composition内のすべてのシーンオブジェクトをタイムラインクリップとして追加します。
+	/// 既存のクリップはクリアされます。
+	pub fn sync_with_composition(&mut self, composition: &nade_core::Composition) {
+		// 既存のトラックをクリア
+		self.tracks.clear();
+		self.next_clip_id = 0;
+		self.selected_clip = None;
 
-		for (track_name, clips) in sample_clips {
-			let mut track = TimelineTrack::new(track_name);
-			for (name, start, duration, color) in clips {
-				track.add_clip(TimelineClip::new(
-					self.next_clip_id(),
-					name,
-					start,
-					duration,
-					color,
-				));
+		// 新しいトラックを作成（オブジェクトタイプごとにまとめる）
+		let mut objects_track = TimelineTrack::new("Objects");
+
+		for obj in composition.all_objects() {
+			// オブジェクトの色をRGBA -> Colorに変換
+			let color = if let Some(rect) = obj.as_rectangle() {
+				Color::from_rgba(
+					rect.fill_color[0],
+					rect.fill_color[1],
+					rect.fill_color[2],
+					rect.fill_color[3],
+				)
+			} else {
+				Color::from_rgb8(100, 100, 100) // デフォルト色
+			};
+
+			let clip = TimelineClip::from_scene_object(
+				self.next_clip_id(),
+				obj.name(),
+				obj.start_time(),
+				obj.duration(),
+				color,
+				obj.id(),
+			);
+
+			objects_track.add_clip(clip);
+		}
+
+		// トラックをタイムラインに追加
+		if !objects_track.clips.is_empty() {
+			self.tracks.push(objects_track);
+		}
+	}
+
+	/// クリップの変更をCompositionに反映
+	///
+	/// タイムライン上でクリップが移動された場合、
+	/// 対応するシーンオブジェクトの開始時間を更新します。
+	pub fn apply_clip_changes_to_composition(&self, composition: &mut nade_core::Composition) {
+		for track in &self.tracks {
+			for clip in &track.clips {
+				if let Some(scene_object_id) = clip.scene_object_id {
+					if let Some(obj) = composition.get_mut(scene_object_id) {
+						// 開始時間を同期
+						obj.set_start_time(clip.start_time);
+						// 持続時間を同期
+						obj.set_duration(clip.duration);
+					}
+				}
 			}
-			self.tracks.push(track);
 		}
 	}
 

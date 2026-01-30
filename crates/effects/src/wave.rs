@@ -2,7 +2,7 @@
 //!
 //! アニメーション波形パターンを生成するエフェクトです。
 
-use crate::{Effect, RenderContext, RgbColor};
+use super::{Effect, RenderContext, RgbColor};
 
 /// 波形エフェクト
 ///

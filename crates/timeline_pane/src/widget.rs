@@ -220,7 +220,13 @@ impl canvas::Program<TimelineMessage> for TimelineProgram {
 						})
 						.unwrap_or(false),
 					mouse::Event::ButtonReleased(mouse::Button::Left) => {
-						state.handle_mouse_release()
+						let (handled, time_changed) = state.handle_mouse_release();
+						if let Some(time) = time_changed {
+							actions.push(canvas::Action::publish(
+								TimelineMessage::PlayheadChanged(time),
+							));
+						}
+						handled
 					}
 					mouse::Event::CursorMoved { .. } => cursor_position
 						.map(|pos| {
@@ -734,12 +740,20 @@ impl TimelineState {
 		}
 	}
 
-	pub(crate) fn handle_mouse_release(&mut self) -> bool {
+	/// マウスリリース時の処理
+	///
+	/// プレイヘッドドラッグ終了時は最終時間を返す
+	pub(crate) fn handle_mouse_release(&mut self) -> (bool, Option<f32>) {
+		let was_playhead_drag = matches!(self.drag_state, DragState::Playhead);
 		if !matches!(self.drag_state, DragState::None) {
 			self.drag_state = DragState::None;
-			return true;
+			// プレイヘッドドラッグ終了時は最終時間を通知
+			if was_playhead_drag {
+				return (true, Some(self.playhead_time));
+			}
+			return (true, None);
 		}
-		false
+		(false, None)
 	}
 
 	pub(crate) fn handle_scroll(&mut self, delta: mouse::ScrollDelta) -> bool {

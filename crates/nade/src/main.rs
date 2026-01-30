@@ -4,11 +4,9 @@
 
 mod app;
 mod composition;
-mod encoder;
 mod message;
 mod panel_content;
 mod panels;
-mod renderer;
 mod services;
 mod theme;
 mod widgets;

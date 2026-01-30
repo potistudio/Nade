@@ -1,4 +1,4 @@
-use crate::encoder::Encoder;
+use super::*;
 use anyhow::Result;
 use nade_core::FrameBuffer;
 use std::{

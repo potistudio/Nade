@@ -15,13 +15,12 @@ use std::time::Instant;
 use timeline_pane::TimelineWidget;
 
 use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
-use nade_core::{CoreEffect, FrameData, Model, Msg, update};
+use nade_core::{Composition, CoreEffect, FrameData, Model, Msg, RectangleObject, update};
 
 use crate::message::{AppPanelMessage, Message};
 use crate::panel_content::PanelContent;
 use crate::panels;
 use crate::panels::project::{ProjectData, ProjectUiState};
-use crate::renderer;
 use crate::services::render_service::{RenderConnection, build_render_stream};
 use crate::theme;
 
@@ -71,6 +70,9 @@ pub struct NadeApp {
 	project_data: ProjectData,
 	/// プロジェクトUI状態
 	project_ui: ProjectUiState,
+
+	/// コンポジション（シーンオブジェクト管理）
+	composition: Arc<std::sync::Mutex<Composition>>,
 }
 
 impl NadeApp {
@@ -95,7 +97,14 @@ impl NadeApp {
 			status_bar: status_bar::StatusBar::new(),
 			project_data: ProjectData::default(),
 			project_ui: ProjectUiState::default(),
+			composition: Arc::new(std::sync::Mutex::new(Self::create_sample_composition())),
 		};
+
+		// タイムラインをCompositionと同期
+		{
+			let comp = app.composition.lock().unwrap();
+			app.timeline.state_mut().sync_with_composition(&comp);
+		}
 
 		// 初期フレームを描画するためのトリガー
 		app.apply_core_msg(Msg::SetTime(0.0));
@@ -121,6 +130,37 @@ impl NadeApp {
 		let layout = LayoutBuilder::<PanelContent>::hsplit(left_side, right_side, 0.25);
 
 		PanelSystem::new().with_layout(layout)
+	}
+
+	/// サンプルのコンポジションを作成
+	fn create_sample_composition() -> Composition {
+		let mut composition = Composition::new();
+
+		// サンプル矩形1: 青い矩形（最初から5秒間）
+		composition.add_rectangle(
+			RectangleObject::new("Blue Rectangle")
+				.with_start_time(0.0)
+				.with_duration(5.0)
+				.with_size(200.0, 150.0)
+				.with_fill_color(0.2, 0.6, 1.0, 1.0),
+		);
+
+		// サンプル矩形2: 赤い矩形（3秒から5秒間）
+		composition.add_rectangle(
+			RectangleObject::new("Red Rectangle")
+				.with_start_time(3.0)
+				.with_duration(5.0)
+				.with_size(100.0, 100.0)
+				.with_fill_color(1.0, 0.3, 0.3, 0.8)
+				.with_transform(nade_core::Transform {
+					position: [100.0, 50.0, 0.0],
+					rotation: [0.0, 0.0, 30.0], // 30度回転
+					scale: [1.0, 1.0, 1.0],
+					opacity: 1.0,
+				}),
+		);
+
+		composition
 	}
 
 	/// CoreロジックをUIスレッドで適用し、副作用のみを非同期実行する
@@ -154,10 +194,14 @@ impl NadeApp {
 		self.is_rendering.store(true, Ordering::SeqCst);
 		let is_rendering = Arc::clone(&self.is_rendering);
 		let render_tx = self.render_tx.clone();
+		let composition = Arc::clone(&self.composition);
 
 		thread::spawn(move || {
-			let frame_num = (time * 60.0) as u32;
-			let img_buffer = renderer::render_frame(frame_num, width, height);
+			// Compositionをロックしてレンダリング
+			let comp = composition.lock().unwrap();
+			let img_buffer = renderer::render_frame_with_composition(&comp, time, width, height);
+			drop(comp); // ロックを早期解放
+
 			let raw = img_buffer.into_raw();
 
 			let frame_data = FrameData {
@@ -221,11 +265,21 @@ impl NadeApp {
 						AppPanelMessage::Timeline(timeline_msg) => {
 							self.timeline.update(timeline_msg.clone());
 
-							// シーク操作をCodeに通知
+							// シーク操作をCoreに通知
 							if let timeline_pane::TimelineMessage::PlayheadChanged(time) =
 								timeline_msg
 							{
 								self.apply_core_msg(Msg::SetTime(*time));
+							}
+
+							// タイムラインのクリップ変更をCompositionに反映
+							// (Canvasイベント以外の場合は同期をスキップ)
+							if !matches!(timeline_msg, timeline_pane::TimelineMessage::Canvas) {
+								// ドラッグ完了時などにCompositionに変更を反映
+								let mut comp = self.composition.lock().unwrap();
+								self.timeline
+									.state()
+									.apply_clip_changes_to_composition(&mut comp);
 							}
 						}
 						AppPanelMessage::Property(prop_msg) => {
@@ -337,8 +391,10 @@ impl NadeApp {
 	pub fn subscription(&self) -> Subscription<Message> {
 		let render_rx = self.render_rx.clone();
 		let shutdown_rx = self.render_shutdown_rx.clone();
-		let render_subscription =
-			Subscription::run_with(RenderConnection(render_rx, shutdown_rx), build_render_stream);
+		let render_subscription = Subscription::run_with(
+			RenderConnection(render_rx, shutdown_rx),
+			build_render_stream,
+		);
 
 		// キーボードサブスクリプション：スペースキーで再生/一時停止
 		let keyboard_subscription: Subscription<Message> =
@@ -385,10 +441,10 @@ impl NadeApp {
 
 pub fn run_ui() -> iced::Result {
 	iced::application(NadeApp::new, NadeApp::update, NadeApp::view)
-	.subscription(NadeApp::subscription)
-	.theme(theme)
-	.title("Nade")
-	.window_size((1600.0, 900.0))
-	.exit_on_close_request(false)
-	.run()
+		.subscription(NadeApp::subscription)
+		.theme(theme)
+		.title("Nade")
+		.window_size((1600.0, 900.0))
+		.exit_on_close_request(false)
+		.run()
 }

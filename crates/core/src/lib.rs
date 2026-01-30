@@ -71,89 +71,13 @@ pub struct RenderContext {
 // エフェクト
 // =============================================================================
 
-pub mod effects;
+pub mod composition;
+pub mod object;
 
-// =============================================================================
-// エフェクトトレイト
-// =============================================================================
-
-/// エフェクトコンポーネントの共通インターフェース
-///
-/// すべてのエフェクトはこのトレイトを実装します。
-/// `Send + Sync` によりマルチスレッド処理と外部プラグイン連携が可能です。
-///
-/// # Example
-///
-/// ```ignore
-/// struct MyEffect;
-///
-/// impl Effect for MyEffect {
-///     fn apply(&self, input: RgbColor, x: u32, y: u32, ctx: &RenderContext) -> RgbColor {
-///         // エフェクト処理
-///         input
-///     }
-///
-///     fn name(&self) -> &str {
-///         "My Effect"
-///     }
-/// }
-/// ```
-pub trait Effect: Send + Sync {
-	/// エフェクトを初期化
-	///
-	/// エフェクトが使用される前に呼び出されます。
-	/// 外部ファイルの読み込みやリソースの確保などを行います。
-	///
-	/// # Returns
-	///
-	/// 初期化に成功した場合は `Ok(())`、失敗した場合はエラーメッセージを含む `Err`
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// fn init(&mut self) -> Result<(), String> {
-	///     self.texture = load_texture("path/to/texture.png")?;
-	///     Ok(())
-	/// }
-	/// ```
-	fn init(&mut self) -> Result<(), String> {
-		Ok(())
-	}
-
-	/// リソースを解放
-	///
-	/// エフェクトが不要になった際に呼び出されます。
-	/// 読み込んだファイルやリソースの解放を行います。
-	fn dispose(&mut self) {
-		// デフォルトでは何もしない
-	}
-
-	/// 初期化済みかどうかを確認
-	///
-	/// # Returns
-	///
-	/// 初期化済みの場合は `true`
-	fn is_initialized(&self) -> bool {
-		true
-	}
-
-	/// ピクセルにエフェクトを適用
-	///
-	/// # Arguments
-	///
-	/// * `input` - 入力色（前のエフェクトの出力または初期値）
-	/// * `x` - ピクセルのX座標
-	/// * `y` - ピクセルのY座標
-	/// * `ctx` - レンダリングコンテキスト
-	///
-	/// # Returns
-	///
-	/// エフェクト適用後の色
-	fn apply(&self, input: RgbColor, x: u32, y: u32, ctx: &RenderContext) -> RgbColor;
-
-	/// デバッグやUI表示に使用されます。
-	fn name(&self) -> &str;
-}
+// コンポジション型の再エクスポート
+pub use composition::Composition;
+// シーンオブジェクト型の再エクスポート
+pub use object::{RectangleObject, SceneObject, SceneObjectData, SceneObjectId};
 
 // =============================================================================
 // アプリケーション状態 (Core/Model)
@@ -311,5 +235,55 @@ impl Default for Transform {
 			scale: [1.0, 1.0, 1.0],
 			opacity: 1.0,
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_rectangle_object_visibility() {
+		let rect = RectangleObject::new("Test")
+			.with_start_time(1.0)
+			.with_duration(3.0);
+
+		assert!(!rect.is_visible_at(0.5));
+		assert!(rect.is_visible_at(1.0));
+		assert!(rect.is_visible_at(2.5));
+		assert!(!rect.is_visible_at(4.0));
+	}
+
+	#[test]
+	fn test_composition_add_and_get() {
+		let mut comp = Composition::new();
+		let id = comp.add_rectangle(RectangleObject::new("Rect1"));
+
+		assert_eq!(comp.len(), 1);
+		assert!(comp.get(id).is_some());
+		assert_eq!(comp.get(id).unwrap().name(), "Rect1");
+	}
+
+	#[test]
+	fn test_composition_visible_objects() {
+		let mut comp = Composition::new();
+		comp.add_rectangle(
+			RectangleObject::new("Early")
+				.with_start_time(0.0)
+				.with_duration(2.0),
+		);
+		comp.add_rectangle(
+			RectangleObject::new("Late")
+				.with_start_time(3.0)
+				.with_duration(2.0),
+		);
+
+		let visible_at_1 = comp.visible_objects_at(1.0);
+		assert_eq!(visible_at_1.len(), 1);
+		assert_eq!(visible_at_1[0].name(), "Early");
+
+		let visible_at_4 = comp.visible_objects_at(4.0);
+		assert_eq!(visible_at_4.len(), 1);
+		assert_eq!(visible_at_4[0].name(), "Late");
 	}
 }

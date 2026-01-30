@@ -1,9 +1,12 @@
 [package]
-name = "nade_core"
+name = "encoder"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
 [dependencies]
-bytes = "1.11.0"
+anyhow.workspace = true
+env_logger.workspace = true
+log.workspace = true
+nade_core = { path = "../core" }
