@@ -439,12 +439,34 @@ impl NadeApp {
 // UI実行
 // =============================================================================
 
+/// アプリケーションアイコンを読み込む
+fn load_app_icon() -> Option<iced::window::Icon> {
+	// アイコンファイルのパス（実行ファイルからの相対パス）
+	let icon_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+		.parent()?
+		.parent()?
+		.join("assets/icons/x1024.png");
+
+	let image = image::open(&icon_path).ok()?.into_rgba8();
+	let (width, height) = image.dimensions();
+	let rgba = image.into_raw();
+
+	iced::window::icon::from_rgba(rgba, width, height).ok()
+}
+
 pub fn run_ui() -> iced::Result {
+	// ウィンドウ設定を作成
+	let window_settings = iced::window::Settings {
+		icon: load_app_icon(),
+		size: iced::Size::new(1600.0, 900.0),
+		..Default::default()
+	};
+
 	iced::application(NadeApp::new, NadeApp::update, NadeApp::view)
 		.subscription(NadeApp::subscription)
 		.theme(theme)
 		.title("Nade")
-		.window_size((1600.0, 900.0))
+		.window(window_settings)
 		.exit_on_close_request(false)
 		.run()
 }

@@ -52,3 +52,11 @@ wgpu = "27.0.1"
 iced_wgpu = "0.14"
 uuid = { version = "1.19.0", features = ["v4", "serde"] }
 renderer = { path = "../renderer" }
+
+[package.metadata.bundle]
+name = "Nade"
+identifier = "com.potistudio.nade"
+icon = ["../../assets/icons/AppIcon.icns"]
+category = "public.app-category.video"
+copyright = "Copyright © 2026 POTI. All rights reserved."
+short_description = "Built to Create. Programmed to Kill Adobe."
