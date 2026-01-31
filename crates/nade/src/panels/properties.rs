@@ -2,7 +2,7 @@ use crate::message::{AppPanelMessage, PropertyMessage};
 use crate::panel_content::PanelContent;
 use crate::theme::panel::PROPERTIES_BG;
 use crate::theme::{TEXT_MUTED, TEXT_PRIMARY};
-use iced::widget::{column, container, row, slider, text};
+use iced::widget::{column, container, row, text};
 use iced::{Element, Length};
 use nade_core::Transform;
 use panel_system::PanelSystemMessage;

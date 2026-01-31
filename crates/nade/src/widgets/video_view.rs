@@ -1,6 +1,6 @@
 use iced::advanced::graphics::Viewport;
-use iced::widget::shader::{self, Pipeline, Primitive, Program};
-use iced::{Rectangle, Size, mouse};
+use iced::widget::shader::{Pipeline, Primitive, Program};
+use iced::{Rectangle, mouse};
 use nade_core::FrameData;
 use std::fmt::Debug;
 

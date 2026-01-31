@@ -31,6 +31,7 @@ pub enum TimelineMessage {
 	ZoomChanged(f32),
 	ResetZoom,
 	PlayheadChanged(f32),
+	ClipModified,
 	Canvas,
 }
 
@@ -86,35 +87,32 @@ impl TimelineWidget {
 	}
 
 	/// メッセージを処理
-	pub fn update(&mut self, message: TimelineMessage) {
+	pub fn update(&mut self, message: TimelineMessage, current_time: f32) {
 		let mut state = self.state.borrow_mut();
 		match message {
-			TimelineMessage::ZoomIn => state.zoom_in(),
-			TimelineMessage::ZoomOut => state.zoom_out(),
+			TimelineMessage::ZoomIn => state.zoom_in(current_time),
+			TimelineMessage::ZoomOut => state.zoom_out(current_time),
 			TimelineMessage::ZoomChanged(scale) => {
-				state.set_zoom_scale_centered(scale);
+				state.set_zoom_scale_centered(scale, current_time);
 			}
 			TimelineMessage::ResetZoom => state.reset_zoom(),
-			TimelineMessage::PlayheadChanged(time) => state.playhead_time = time,
+			TimelineMessage::PlayheadChanged(_) => {} // App側で処理されるため何もしない
+			TimelineMessage::ClipModified => {}       // App側で処理
 			TimelineMessage::Canvas => {}
 		}
 	}
 
 	/// ビューを生成
-	pub fn view(&self) -> Element<'_, TimelineMessage> {
+	pub fn view(&self, current_time: f32) -> Element<'_, TimelineMessage> {
 		let time_scale = self.state.borrow().time_scale;
 		let zoom_controls = self.zoom_controls(time_scale);
 		let timeline_canvas: Element<'_, TimelineMessage> =
-			Canvas::new(TimelineProgram::new(Rc::clone(&self.state)))
+			Canvas::new(TimelineProgram::new(Rc::clone(&self.state), current_time))
 				.width(Length::Fill)
 				.height(Length::Fill)
 				.into();
 
-		column![
-			timeline_canvas.map(|_| TimelineMessage::Canvas),
-			zoom_controls,
-		]
-		.into()
+		column![timeline_canvas, zoom_controls,].into()
 	}
 
 	fn zoom_controls(&self, time_scale: f32) -> Element<'_, TimelineMessage> {
@@ -166,11 +164,15 @@ impl TimelineWidget {
 
 struct TimelineProgram {
 	state: Rc<RefCell<TimelineState>>,
+	current_time: f32,
 }
 
 impl TimelineProgram {
-	fn new(state: Rc<RefCell<TimelineState>>) -> Self {
-		Self { state }
+	fn new(state: Rc<RefCell<TimelineState>>, current_time: f32) -> Self {
+		Self {
+			state,
+			current_time,
+		}
 	}
 }
 
@@ -220,11 +222,15 @@ impl canvas::Program<TimelineMessage> for TimelineProgram {
 						})
 						.unwrap_or(false),
 					mouse::Event::ButtonReleased(mouse::Button::Left) => {
+						let was_dragging_clip = state.is_dragging_clip();
 						let (handled, time_changed) = state.handle_mouse_release();
 						if let Some(time) = time_changed {
 							actions.push(canvas::Action::publish(
 								TimelineMessage::PlayheadChanged(time),
 							));
+						}
+						if was_dragging_clip {
+							actions.push(canvas::Action::publish(TimelineMessage::ClipModified));
 						}
 						handled
 					}
@@ -239,18 +245,22 @@ impl canvas::Program<TimelineMessage> for TimelineProgram {
 									TimelineMessage::PlayheadChanged(time),
 								));
 							}
+							if handled && state.is_dragging_clip() {
+								actions
+									.push(canvas::Action::publish(TimelineMessage::ClipModified));
+							}
 							handled
 						})
 						.unwrap_or(false),
 					mouse::Event::WheelScrolled { delta } if cursor_position.is_some() => {
-						state.handle_scroll(*delta)
+						state.handle_scroll(*delta, self.current_time)
 					}
 					_ => false,
 				},
 				Event::Keyboard(event) => match event {
 					keyboard::Event::KeyPressed { key, modifiers, .. } => {
 						state.update_modifiers(*modifiers);
-						state.handle_keyboard(key.clone(), *modifiers)
+						state.handle_keyboard(key.clone(), *modifiers, self.current_time)
 					}
 					keyboard::Event::KeyReleased { modifiers, .. } => {
 						state.update_modifiers(*modifiers);
@@ -298,6 +308,8 @@ impl TimelineProgram {
 
 		frame.fill_rectangle(Point::ORIGIN, bounds, colors::BACKGROUND);
 
+		// ... (draw_timeline_content has no changes needed if it doesn't use playhead_time) ...
+		// But draw_playhead needs self.current_time
 		self.draw_timeline_content(frame, &state, layout.content);
 		self.draw_ruler(frame, &state, layout.ruler);
 		self.draw_track_labels(frame, &state, layout.track_labels);
@@ -551,7 +563,7 @@ impl TimelineProgram {
 		ruler_rect: Rectangle,
 		timeline_rect: Rectangle,
 	) {
-		let x = state.time_to_x(state.playhead_time, timeline_rect.x);
+		let x = state.time_to_x(self.current_time, timeline_rect.x);
 
 		if x < timeline_rect.x || x > timeline_rect.x + timeline_rect.width {
 			return;
@@ -628,6 +640,21 @@ impl TimelineProgram {
 // =============================================================================
 
 impl TimelineState {
+	/// Is a clip being dragged?
+	#[inline]
+	pub fn is_dragging_clip(&self) -> bool {
+		matches!(
+			self.drag_state,
+			DragState::Clip { .. }
+				| DragState::ClipResizeLeft { .. }
+				| DragState::ClipResizeRight { .. }
+		)
+	}
+
+	/// マウスプレス時の処理
+	///
+	/// プレイヘッドドラッグ開始時は開始時間を返す
+	/// Returns (handled, playhead_time)
 	pub(crate) fn handle_mouse_press(
 		&mut self,
 		pos: Point,
@@ -636,9 +663,9 @@ impl TimelineState {
 		let layout = TimelineLayout::from_bounds_absolute(bounds);
 
 		if layout.ruler.contains(pos) {
-			self.playhead_time = self.x_to_time(pos.x, layout.timeline_left()).max(0.0);
+			let time = self.x_to_time(pos.x, layout.timeline_left()).max(0.0);
 			self.drag_state = DragState::Playhead;
-			return (true, Some(self.playhead_time));
+			return (true, Some(time));
 		}
 
 		if layout.content.contains(pos) {
@@ -691,8 +718,8 @@ impl TimelineState {
 	) -> (bool, Option<f32>) {
 		match self.drag_state.clone() {
 			DragState::Playhead => {
-				self.playhead_time = self.x_to_time(pos.x, timeline_left).max(0.0);
-				(true, Some(self.playhead_time))
+				let time = self.x_to_time(pos.x, timeline_left).max(0.0);
+				(true, Some(time))
 			}
 			DragState::Clip {
 				track_id,
@@ -747,16 +774,17 @@ impl TimelineState {
 		let was_playhead_drag = matches!(self.drag_state, DragState::Playhead);
 		if !matches!(self.drag_state, DragState::None) {
 			self.drag_state = DragState::None;
-			// プレイヘッドドラッグ終了時は最終時間を通知
+			// プレイヘッドドラッグ終了時は最終時間を通知...できないのでNoneを返す
+			// (moveイベントで既に更新されているはず)
 			if was_playhead_drag {
-				return (true, Some(self.playhead_time));
+				return (true, None);
 			}
 			return (true, None);
 		}
 		(false, None)
 	}
 
-	pub(crate) fn handle_scroll(&mut self, delta: mouse::ScrollDelta) -> bool {
+	pub(crate) fn handle_scroll(&mut self, delta: mouse::ScrollDelta, current_time: f32) -> bool {
 		if self.ctrl_pressed {
 			let dy = match delta {
 				mouse::ScrollDelta::Lines { y, .. } => y * SCROLL_MULTIPLIER,
@@ -764,9 +792,9 @@ impl TimelineState {
 			};
 
 			if dy > 0.0 {
-				self.zoom_in();
+				self.zoom_in(current_time);
 			} else if dy < 0.0 {
-				self.zoom_out();
+				self.zoom_out(current_time);
 			}
 		} else {
 			match delta {
@@ -785,15 +813,20 @@ impl TimelineState {
 		self.ctrl_pressed = modifiers.command();
 	}
 
-	pub(crate) fn handle_keyboard(&mut self, key: Key, modifiers: keyboard::Modifiers) -> bool {
+	pub(crate) fn handle_keyboard(
+		&mut self,
+		key: Key,
+		modifiers: keyboard::Modifiers,
+		current_time: f32,
+	) -> bool {
 		if modifiers.command() {
 			match key {
 				Key::Character(ref c) if c == "=" || c == "+" => {
-					self.zoom_in();
+					self.zoom_in(current_time);
 					return true;
 				}
 				Key::Character(ref c) if c == "-" => {
-					self.zoom_out();
+					self.zoom_out(current_time);
 					return true;
 				}
 				_ => {}
@@ -819,19 +852,17 @@ impl TimelineState {
 
 		let layout = TimelineLayout::from_bounds_absolute(bounds);
 
-		if layout.content.contains(pos) {
-			if let Some((track_id, clip_id)) = self.find_clip_at(pos, bounds) {
-				if let Some(clip) = self.find_clip(track_id, clip_id) {
-					let x_start = self.time_to_x(clip.start_time, layout.timeline_left());
-					let x_end = self.time_to_x(clip.end_time(), layout.timeline_left());
+		if layout.content.contains(pos)
+			&& let Some((track_id, clip_id)) = self.find_clip_at(pos, bounds)
+			&& let Some(clip) = self.find_clip(track_id, clip_id)
+		{
+			let x_start = self.time_to_x(clip.start_time, layout.timeline_left());
+			let x_end = self.time_to_x(clip.end_time(), layout.timeline_left());
 
-					if pos.x < x_start + RESIZE_HANDLE_WIDTH || pos.x > x_end - RESIZE_HANDLE_WIDTH
-					{
-						return mouse::Interaction::ResizingHorizontally;
-					}
-					return mouse::Interaction::Grab;
-				}
+			if pos.x < x_start + RESIZE_HANDLE_WIDTH || pos.x > x_end - RESIZE_HANDLE_WIDTH {
+				return mouse::Interaction::ResizingHorizontally;
 			}
+			return mouse::Interaction::Grab;
 		}
 
 		mouse::Interaction::default()

@@ -1,4 +1,4 @@
-use crate::message::{AppPanelMessage, Message};
+use crate::message::AppPanelMessage;
 use crate::panel_content::PanelContent;
 use crate::theme::TEXT_PRIMARY;
 use crate::widgets::video_view::VideoView;

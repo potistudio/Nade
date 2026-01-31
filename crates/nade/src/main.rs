@@ -3,7 +3,6 @@
 //! Nadeアプリケーションのエントリーポイント。
 
 mod app;
-mod composition;
 mod message;
 mod panel_content;
 mod panels;

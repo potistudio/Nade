@@ -237,10 +237,11 @@ impl NadeApp {
 		match message {
 			Message::RenderCompleted(frame) => {
 				self.handle_render_completed(frame);
-				// プレイヘッドを同期（ドラッグ中は同期しない）
-				if !self.timeline.is_dragging_playhead() {
-					self.timeline.state_mut().playhead_time = self.current_model.preview.time;
-				}
+				// プレイヘッドを同期
+				// Widgetはステートレスになったため、ここでの同期は不要になったが、
+				// Coreからの更新があった場合に他のUIパーツへの通知が必要ならここで行う。
+				// self.timeline.state_mut().playhead_time = self.current_model.preview.time;
+
 				Task::none()
 			}
 			Message::TimeChanged(value) => {
@@ -263,7 +264,8 @@ impl NadeApp {
 				if let PanelSystemMessage::AppMessage(app_msg) = &msg {
 					match app_msg {
 						AppPanelMessage::Timeline(timeline_msg) => {
-							self.timeline.update(timeline_msg.clone());
+							self.timeline
+								.update(timeline_msg.clone(), self.current_model.preview.time);
 
 							// シーク操作をCoreに通知
 							if let timeline_pane::TimelineMessage::PlayheadChanged(time) =
@@ -280,6 +282,12 @@ impl NadeApp {
 								self.timeline
 									.state()
 									.apply_clip_changes_to_composition(&mut comp);
+							}
+
+							// クリップ操作時はプレビューを即時更新
+							if matches!(timeline_msg, timeline_pane::TimelineMessage::ClipModified)
+							{
+								self.apply_core_msg(Msg::SetTime(self.current_model.preview.time));
 							}
 						}
 						AppPanelMessage::Property(prop_msg) => {
@@ -378,7 +386,9 @@ impl NadeApp {
 	) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
 		match content {
 			PanelContent::MainPreview => panels::preview::view(&self.current_model.preview),
-			PanelContent::Timeline => panels::timeline::view(&self.timeline),
+			PanelContent::Timeline => {
+				panels::timeline::view(&self.timeline, self.current_model.preview.time)
+			}
 			PanelContent::Properties => {
 				panels::properties::view(self.current_model.preview.selection.as_ref())
 			}

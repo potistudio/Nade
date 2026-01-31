@@ -2,12 +2,11 @@ use iced::advanced::layout::{self, Layout};
 use iced::advanced::renderer;
 use iced::advanced::widget::{self, Widget};
 use iced::advanced::{Clipboard, Shell, mouse};
-use iced::event::{self, Event};
+use iced::event::Event;
 use iced::keyboard;
 use iced::mouse::Cursor;
 use iced::widget::text_input;
-use iced::{Border, Color, Element, Length, Padding, Point, Rectangle, Size, Theme, Vector};
-use std::borrow::Cow;
+use iced::{Border, Color, Element, Length, Point, Rectangle, Size};
 
 pub struct DraggableNumber<'a, Message, Theme = iced::Theme, Renderer = iced::Renderer>
 where
@@ -223,10 +222,10 @@ where
 		event: &Event,
 		layout: Layout<'_>,
 		cursor: Cursor,
-		renderer: &Renderer,
-		clipboard: &mut dyn Clipboard,
+		_renderer: &Renderer,
+		_clipboard: &mut dyn Clipboard,
 		shell: &mut Shell<'_, Message>,
-		viewport: &Rectangle,
+		_viewport: &Rectangle,
 	) {
 		let state = tree.state.downcast_mut::<State>();
 		let bounds = layout.bounds();

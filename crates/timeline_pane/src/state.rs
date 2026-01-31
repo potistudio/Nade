@@ -195,7 +195,6 @@ impl TimelineLayout {
 #[derive(Debug)]
 pub struct TimelineState {
 	pub tracks: Vec<TimelineTrack>,
-	pub playhead_time: f32,
 	pub scroll_offset: Vector,
 	pub time_scale: f32,
 	pub selected_clip: Option<(usize, usize)>,
@@ -209,7 +208,6 @@ impl Default for TimelineState {
 	fn default() -> Self {
 		Self {
 			tracks: Vec::new(),
-			playhead_time: 0.0,
 			scroll_offset: Vector::ZERO,
 			time_scale: 1.0,
 			selected_clip: None,
@@ -232,7 +230,6 @@ impl TimelineState {
 	pub fn new() -> Self {
 		Self {
 			tracks: Vec::new(),
-			playhead_time: 0.0,
 			scroll_offset: Vector::ZERO,
 			time_scale: 1.0,
 			selected_clip: None,
@@ -361,7 +358,7 @@ impl TimelineState {
 	}
 
 	/// Set the timeline zoom scale, keeping the playhead centered
-	pub fn set_zoom_scale_centered(&mut self, scale: f32) {
+	pub fn set_zoom_scale_centered(&mut self, scale: f32, current_time: f32) {
 		let new_scale = scale.clamp(MIN_SCALE, MAX_SCALE);
 		if (self.time_scale - new_scale).abs() < f32::EPSILON {
 			return;
@@ -375,8 +372,7 @@ impl TimelineState {
 		// So: scroll_offset_x = content_center_x - (playhead_time * PPS * scale)
 
 		let content_center_x = (self.viewport_width - TRACK_LABEL_WIDTH) / 2.0;
-		let new_offset_x =
-			content_center_x - (self.playhead_time * PIXELS_PER_SECOND * self.time_scale);
+		let new_offset_x = content_center_x - (current_time * PIXELS_PER_SECOND * self.time_scale);
 
 		self.scroll_offset.x = new_offset_x;
 		self.clamp_scroll_offset();
@@ -384,14 +380,14 @@ impl TimelineState {
 
 	/// Zoom in the timeline by 1.2x
 	/// and clamp to the maximum scale
-	pub fn zoom_in(&mut self) {
-		self.set_zoom_scale_centered(self.time_scale * 1.2);
+	pub fn zoom_in(&mut self, current_time: f32) {
+		self.set_zoom_scale_centered(self.time_scale * 1.2, current_time);
 	}
 
 	/// Zoom out the timeline by 1.2x
 	/// and clamp to the minimum scale
-	pub fn zoom_out(&mut self) {
-		self.set_zoom_scale_centered(self.time_scale / 1.2);
+	pub fn zoom_out(&mut self, current_time: f32) {
+		self.set_zoom_scale_centered(self.time_scale / 1.2, current_time);
 	}
 
 	/// Reset the timeline zoom scale to 1.0
