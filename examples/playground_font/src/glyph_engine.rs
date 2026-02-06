@@ -1,5 +1,5 @@
 use swash::{
-	Attributes, CacheKey, Charmap, FontRef,
+	CacheKey, Charmap, FontRef,
 	scale::ScaleContext,
 	zeno::{Command, PathData},
 };
@@ -31,17 +31,13 @@ impl Font {
 	}
 
 	// As a convenience, you may want to forward some methods.
-	pub fn attributes(&self) -> Attributes {
-		self.as_ref().attributes()
-	}
-
-	pub fn charmap(&self) -> Charmap {
+	pub fn charmap(&self) -> Charmap<'_> {
 		self.as_ref().charmap()
 	}
 
 	// Create the transient font reference for accessing this crate's
 	// functionality.
-	pub fn as_ref(&self) -> FontRef {
+	pub fn as_ref(&self) -> FontRef<'_> {
 		// Note that you'll want to initialize the struct directly here as
 		// using any of the FontRef constructors will generate a new key which,
 		// while completely safe, will nullify the performance optimizations of
@@ -65,6 +61,7 @@ impl GlyphEngine {
 		Some(Self { font_data })
 	}
 
+	#[allow(dead_code)]
 	pub fn get_glyph_points(&self, character: char) -> Option<Vec<(f32, f32)>> {
 		// Create a scale context and scaler
 		let mut context = ScaleContext::new();
@@ -79,7 +76,7 @@ impl GlyphEngine {
 		let glyph_id = charmap.map(character as u32);
 
 		// Scale the outline for the glyph
-		let outline = scaler.scale_outline(glyph_id).unwrap();
+		let outline = scaler.scale_outline(glyph_id)?;
 		let points = outline.points();
 
 		// Collect the points into a vector of (x, y) tuples
@@ -88,6 +85,7 @@ impl GlyphEngine {
 		Some(point_vec)
 	}
 
+	#[allow(dead_code)]
 	pub fn get_bounds(&self, character: char) -> Option<swash::zeno::Bounds> {
 		// Create a scale context and scaler
 		let mut context = ScaleContext::new();

@@ -14,7 +14,7 @@ pub struct FfmpegEncoder {
 impl Default for FfmpegEncoder {
 	fn default() -> Self {
 		let mut ffmpeg = Command::new("ffmpeg")
-			.args(&[
+			.args([
 				"-f",
 				"rawvideo",
 				"-pixel_format",

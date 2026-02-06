@@ -1,4 +1,3 @@
-pub mod console;
 pub mod preview;
 pub mod project;
 pub mod properties;

@@ -83,17 +83,9 @@ pub use object::{RectangleObject, SceneObject, SceneObjectData, SceneObjectId};
 // アプリケーション状態 (Core/Model)
 // =============================================================================
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Model {
 	pub preview: PreviewModel,
-}
-
-impl Default for Model {
-	fn default() -> Self {
-		Self {
-			preview: PreviewModel::default(),
-		}
-	}
 }
 
 /// プレビュー状態

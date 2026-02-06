@@ -337,8 +337,8 @@ impl TimelineState {
 	/// Apply a scroll delta to the timeline offset
 	/// and clamp to the minimum values
 	pub fn apply_scroll_delta(&mut self, x: f32, y: f32) {
-		self.scroll_offset.x = self.scroll_offset.x + x;
-		self.scroll_offset.y = self.scroll_offset.y + y;
+		self.scroll_offset.x += x;
+		self.scroll_offset.y += y;
 		self.clamp_scroll_offset();
 	}
 
@@ -450,13 +450,13 @@ impl TimelineState {
 	pub fn apply_clip_changes_to_composition(&self, composition: &mut nade_core::Composition) {
 		for track in &self.tracks {
 			for clip in &track.clips {
-				if let Some(scene_object_id) = clip.scene_object_id {
-					if let Some(obj) = composition.get_mut(scene_object_id) {
-						// 開始時間を同期
-						obj.set_start_time(clip.start_time);
-						// 持続時間を同期
-						obj.set_duration(clip.duration);
-					}
+				if let Some(scene_object_id) = clip.scene_object_id
+					&& let Some(obj) = composition.get_mut(scene_object_id)
+				{
+					// 開始時間を同期
+					obj.set_start_time(clip.start_time);
+					// 持続時間を同期
+					obj.set_duration(clip.duration);
 				}
 			}
 		}

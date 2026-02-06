@@ -21,23 +21,20 @@ pub enum AppPanelMessage {
 pub enum ProjectMessage {
 	ToggleExpand(uuid::Uuid),
 	Select(uuid::Uuid),
-	OpenItem(uuid::Uuid),
 }
 
 /// プロパティパネルメッセージ
 #[derive(Debug, Clone)]
 pub enum PropertyMessage {
-	PositionChanged(usize, f32), // axis (0=x, 1=y, 2=z), value
-	RotationChanged(usize, f32),
-	ScaleChanged(usize, f32),
-	OpacityChanged(f32),
+	Position(usize, f32), // axis (0=x, 1=y, 2=z), value
+	Rotation(usize, f32),
+	Scale(usize, f32),
+	Opacity(f32),
 }
 
 /// アプリケーションメッセージ
 #[derive(Debug, Clone)]
 pub enum Message {
-	/// タイムスライダー変更
-	TimeChanged(f32),
 	/// 再生/一時停止の切り替え
 	TogglePlay,
 	/// 定期更新（再生中のアニメーション用）

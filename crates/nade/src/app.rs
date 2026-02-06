@@ -244,10 +244,6 @@ impl NadeApp {
 
 				Task::none()
 			}
-			Message::TimeChanged(value) => {
-				self.apply_core_msg(Msg::SetTime(value));
-				Task::none()
-			}
 			Message::TogglePlay => {
 				self.apply_core_msg(Msg::TogglePlay);
 				Task::none()
@@ -295,20 +291,20 @@ impl NadeApp {
 								&mut self.current_model.preview.selection
 							{
 								match prop_msg {
-									crate::message::PropertyMessage::PositionChanged(axis, val) => {
+									crate::message::PropertyMessage::Position(axis, val) => {
 										selection.position[*axis] = *val;
 									}
-									crate::message::PropertyMessage::RotationChanged(axis, val) => {
+									crate::message::PropertyMessage::Rotation(axis, val) => {
 										selection.rotation[*axis] = *val;
 									}
-									crate::message::PropertyMessage::ScaleChanged(axis, val) => {
+									crate::message::PropertyMessage::Scale(axis, val) => {
 										selection.scale[*axis] = *val;
 									}
-									crate::message::PropertyMessage::OpacityChanged(val) => {
+									crate::message::PropertyMessage::Opacity(val) => {
 										selection.opacity = *val;
 									}
 								}
-								Some(selection.clone())
+								Some(*selection)
 							} else {
 								None
 							};
@@ -318,23 +314,18 @@ impl NadeApp {
 								self.apply_core_msg(Msg::UpdateTransform(selection));
 							}
 						}
-						AppPanelMessage::Project(proj_msg) => {
-							match proj_msg {
-								crate::message::ProjectMessage::ToggleExpand(id) => {
-									if self.project_ui.expanded_ids.contains(id) {
-										self.project_ui.expanded_ids.remove(id);
-									} else {
-										self.project_ui.expanded_ids.insert(*id);
-									}
-								}
-								crate::message::ProjectMessage::Select(id) => {
-									self.project_ui.selected_id = Some(*id);
-								}
-								crate::message::ProjectMessage::OpenItem(_id) => {
-									// TODO: Implement open logic
+						AppPanelMessage::Project(proj_msg) => match proj_msg {
+							crate::message::ProjectMessage::ToggleExpand(id) => {
+								if self.project_ui.expanded_ids.contains(id) {
+									self.project_ui.expanded_ids.remove(id);
+								} else {
+									self.project_ui.expanded_ids.insert(*id);
 								}
 							}
-						}
+							crate::message::ProjectMessage::Select(id) => {
+								self.project_ui.selected_id = Some(*id);
+							}
+						},
 					}
 				}
 				// システムメッセージはパネルシステムへ
@@ -344,10 +335,10 @@ impl NadeApp {
 			Message::WindowClosed(id) => {
 				log::info!("App: WindowClosed event received. ID: {:?}", id);
 				// レンダリングServiceへシャットダウンを通知
-				if let Some(tx) = self.render_shutdown_tx.take() {
-					if let Err(e) = tx.send(()) {
-						log::error!("App: Failed to send render shutdown: {:?}", e);
-					}
+				if let Some(tx) = self.render_shutdown_tx.take()
+					&& let Err(e) = tx.send(())
+				{
+					log::error!("App: Failed to send render shutdown: {:?}", e);
 				}
 				// ウィンドウを閉じる
 				log::info!("App: Closing window...");
@@ -393,7 +384,6 @@ impl NadeApp {
 				panels::properties::view(self.current_model.preview.selection.as_ref())
 			}
 			PanelContent::Project => panels::project::view(&self.project_data, &self.project_ui),
-			PanelContent::Console => panels::console::view(),
 		}
 	}
 

@@ -15,15 +15,15 @@ pub fn view<'a>(
 			text("Properties").size(14).color(TEXT_PRIMARY),
 			// Position
 			transform_row("Position", &transform.position, |axis, val| {
-				PropertyMessage::PositionChanged(axis, val)
+				PropertyMessage::Position(axis, val)
 			}),
 			// Rotation
 			transform_row("Rotation", &transform.rotation, |axis, val| {
-				PropertyMessage::RotationChanged(axis, val)
+				PropertyMessage::Rotation(axis, val)
 			}),
 			// Scale
 			transform_row("Scale", &transform.scale, |axis, val| {
-				PropertyMessage::ScaleChanged(axis, val)
+				PropertyMessage::Scale(axis, val)
 			}),
 			// Opacity
 			column![
@@ -31,7 +31,7 @@ pub fn view<'a>(
 				crate::widgets::draggable_number::draggable_number(
 					transform.opacity,
 					1.0,
-					PropertyMessage::OpacityChanged
+					PropertyMessage::Opacity
 				)
 				.step(0.01),
 			]
@@ -49,9 +49,7 @@ pub fn view<'a>(
 
 		Element::from(col).map(|_: PropertyMessage| {
 			// This branch has no interactive elements, so this is unreachable
-			PanelSystemMessage::AppMessage(AppPanelMessage::Property(
-				PropertyMessage::OpacityChanged(0.0),
-			))
+			PanelSystemMessage::AppMessage(AppPanelMessage::Property(PropertyMessage::Opacity(0.0)))
 		})
 	})
 	.padding(10)

@@ -239,7 +239,7 @@ impl<P: CanvasProgram> CanvasWrapper<'_, P> {
 		while x <= max_x {
 			let p1 = self.local_to_frame(Point::new(x, min_y), bounds);
 			let p2 = self.local_to_frame(Point::new(x, max_y), bounds);
-			frame.stroke(&Path::line(p1, p2), grid_stroke.clone());
+			frame.stroke(&Path::line(p1, p2), grid_stroke);
 			x += grid.spacing;
 		}
 
@@ -249,7 +249,7 @@ impl<P: CanvasProgram> CanvasWrapper<'_, P> {
 		while y <= max_y {
 			let p1 = self.local_to_frame(Point::new(min_x, y), bounds);
 			let p2 = self.local_to_frame(Point::new(max_x, y), bounds);
-			frame.stroke(&Path::line(p1, p2), grid_stroke.clone());
+			frame.stroke(&Path::line(p1, p2), grid_stroke);
 			y += grid.spacing;
 		}
 
@@ -263,7 +263,7 @@ impl<P: CanvasProgram> CanvasWrapper<'_, P> {
 			if 0.0 >= min_y && 0.0 <= max_y {
 				let p1 = self.local_to_frame(Point::new(min_x, 0.0), bounds);
 				let p2 = self.local_to_frame(Point::new(max_x, 0.0), bounds);
-				frame.stroke(&Path::line(p1, p2), axis_stroke.clone());
+				frame.stroke(&Path::line(p1, p2), axis_stroke);
 			}
 
 			// Y axis (x = 0)

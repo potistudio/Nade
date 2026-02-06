@@ -19,7 +19,6 @@ pub enum ItemType {
 	Folder,
 	Composition,
 	Image,
-	Video,
 	Audio,
 }
 
@@ -119,7 +118,6 @@ fn view_item<'a>(
 		}
 		ItemType::Composition => "🎬",
 		ItemType::Image => "🖼️",
-		ItemType::Video => "🎞️",
 		ItemType::Audio => "🔊",
 	};
 

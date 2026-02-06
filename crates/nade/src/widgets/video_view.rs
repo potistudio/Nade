@@ -45,7 +45,6 @@ pub struct VideoPipeline {
 	bind_group: Option<wgpu::BindGroup>,
 	pipeline: wgpu::RenderPipeline,
 	layout: wgpu::BindGroupLayout,
-	format: wgpu::TextureFormat, // Swapchain format
 	last_ptr: usize,
 }
 
@@ -123,7 +122,6 @@ impl Pipeline for VideoPipeline {
 			bind_group: None,
 			pipeline,
 			layout,
-			format,
 			last_ptr: 0,
 		}
 	}
@@ -199,29 +197,29 @@ impl Primitive for VideoPrimitive {
 			// Upload data
 			// Optimization: Only upload if pixels buffer changed or texture was recreated
 			let current_ptr = frame.pixels.as_ptr() as usize;
-			if recreate || current_ptr != pipeline.last_ptr {
-				if let Some(texture) = &pipeline.texture {
-					queue.write_texture(
-						wgpu::TexelCopyTextureInfo {
-							texture,
-							mip_level: 0,
-							origin: wgpu::Origin3d::ZERO,
-							aspect: wgpu::TextureAspect::All,
-						},
-						&frame.pixels,
-						wgpu::TexelCopyBufferLayout {
-							offset: 0,
-							bytes_per_row: Some(4 * width),
-							rows_per_image: Some(height),
-						},
-						wgpu::Extent3d {
-							width,
-							height,
-							depth_or_array_layers: 1,
-						},
-					);
-					pipeline.last_ptr = current_ptr;
-				}
+			if (recreate || current_ptr != pipeline.last_ptr)
+				&& let Some(texture) = &pipeline.texture
+			{
+				queue.write_texture(
+					wgpu::TexelCopyTextureInfo {
+						texture,
+						mip_level: 0,
+						origin: wgpu::Origin3d::ZERO,
+						aspect: wgpu::TextureAspect::All,
+					},
+					&frame.pixels,
+					wgpu::TexelCopyBufferLayout {
+						offset: 0,
+						bytes_per_row: Some(4 * width),
+						rows_per_image: Some(height),
+					},
+					wgpu::Extent3d {
+						width,
+						height,
+						depth_or_array_layers: 1,
+					},
+				);
+				pipeline.last_ptr = current_ptr;
 			}
 		}
 	}

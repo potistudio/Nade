@@ -137,8 +137,8 @@ mod model {
 			}
 
 			format!(
-				"Clip '{}' | Time: {:>3} | Opacity: {:.2} | Effects: {}",
-				self.name, time, current_opacity, effects_info
+				"Clip {:?} '{}' | Time: {:>3} | Opacity: {:.2} | Effects: {}",
+				self.id, self.name, time, current_opacity, effects_info
 			)
 		}
 	}
@@ -178,6 +178,15 @@ fn main() {
 	clip.effects.push(VideoEffectKind::Blur {
 		radius: blur_radius,
 	});
+
+	// 3.5 カラーグレーディングも追加
+	let mut brightness = Animated::new(1.0);
+	brightness.add_modifier(ValueModifier::SineWave {
+		amplitude: 0.2,
+		frequency: 0.1,
+	});
+	clip.effects
+		.push(VideoEffectKind::ColorGrade { brightness });
 
 	// 4. タイムライン再生シミュレーション (Engine Loop)
 	println!("\n--- Rendering Simulation (0 to 120 frames) ---");

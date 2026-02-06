@@ -301,21 +301,21 @@ impl GizmosApp {
 		for h in &self.handles {
 			// Center
 			let d2_center = distance_squared(h.position(), from);
-			if d2_center < r2 && best.as_ref().map_or(true, |b| d2_center < b.3) {
+			if d2_center < r2 && best.as_ref().is_none_or(|b| d2_center < b.3) {
 				let offset = Vector::new(h.position().x - from.x, h.position().y - from.y);
 				best = Some((h.id, HandlePart::Center, offset, d2_center));
 			}
 
 			// Left control
 			let d2_left = distance_squared(h.left_point(), from);
-			if d2_left < r2 && best.as_ref().map_or(true, |b| d2_left < b.3) {
+			if d2_left < r2 && best.as_ref().is_none_or(|b| d2_left < b.3) {
 				let offset = Vector::new(h.left_point().x - from.x, h.left_point().y - from.y);
 				best = Some((h.id, HandlePart::LeftControl, offset, d2_left));
 			}
 
 			// Right control
 			let d2_right = distance_squared(h.right_point(), from);
-			if d2_right < r2 && best.as_ref().map_or(true, |b| d2_right < b.3) {
+			if d2_right < r2 && best.as_ref().is_none_or(|b| d2_right < b.3) {
 				let offset = Vector::new(h.right_point().x - from.x, h.right_point().y - from.y);
 				best = Some((h.id, HandlePart::RightControl, offset, d2_right));
 			}
@@ -483,7 +483,7 @@ impl GizmosCanvasWithState<'_> {
 			while x <= max_x {
 				let p1 = self.local_to_frame(Point::new(x, min_y));
 				let p2 = self.local_to_frame(Point::new(x, max_y));
-				frame.stroke(&Path::line(p1, p2), grid_stroke.clone());
+				frame.stroke(&Path::line(p1, p2), grid_stroke);
 				x += spacing;
 			}
 
@@ -493,7 +493,7 @@ impl GizmosCanvasWithState<'_> {
 			while y <= max_y {
 				let p1 = self.local_to_frame(Point::new(min_x, y));
 				let p2 = self.local_to_frame(Point::new(max_x, y));
-				frame.stroke(&Path::line(p1, p2), grid_stroke.clone());
+				frame.stroke(&Path::line(p1, p2), grid_stroke);
 				y += spacing;
 			}
 		}
@@ -506,7 +506,7 @@ impl GizmosCanvasWithState<'_> {
 		if 0.0 >= min_y && 0.0 <= max_y {
 			let p1 = self.local_to_frame(Point::new(min_x, 0.0));
 			let p2 = self.local_to_frame(Point::new(max_x, 0.0));
-			frame.stroke(&Path::line(p1, p2), axis_stroke.clone());
+			frame.stroke(&Path::line(p1, p2), axis_stroke);
 		}
 
 		if 0.0 >= min_x && 0.0 <= max_x {
@@ -541,7 +541,7 @@ impl GizmosCanvasWithState<'_> {
 				}
 			});
 
-			frame.stroke(&path, bezier_stroke.clone());
+			frame.stroke(&path, bezier_stroke);
 		}
 	}
 
@@ -556,14 +556,14 @@ impl GizmosCanvasWithState<'_> {
 			let right = self.local_to_frame(h.right_point());
 
 			// Control lines
-			frame.stroke(&Path::line(center, left), control_stroke.clone());
-			frame.stroke(&Path::line(center, right), control_stroke.clone());
+			frame.stroke(&Path::line(center, left), control_stroke);
+			frame.stroke(&Path::line(center, right), control_stroke);
 
 			// Control points (hollow circles)
 			let control_stroke_thick = Stroke::default().with_width(2.0).with_color(HANDLE_COLOR);
 			frame.stroke(
 				&Path::circle(left, CONTROL_POINT_RADIUS),
-				control_stroke_thick.clone(),
+				control_stroke_thick,
 			);
 			frame.stroke(
 				&Path::circle(right, CONTROL_POINT_RADIUS),
@@ -575,14 +575,14 @@ impl GizmosCanvasWithState<'_> {
 		}
 
 		// Highlight active handle
-		if let Some(active_id) = self.active_handle {
-			if let Some(h) = self.handles.iter().find(|h| h.id == active_id) {
-				let center = self.local_to_frame(h.position());
-				let highlight_stroke = Stroke::default()
-					.with_width(2.0)
-					.with_color(Color::from_rgb(1.0, 0.8, 0.2));
-				frame.stroke(&Path::circle(center, HANDLE_RADIUS + 3.0), highlight_stroke);
-			}
+		if let Some(active_id) = self.active_handle
+			&& let Some(h) = self.handles.iter().find(|h| h.id == active_id)
+		{
+			let center = self.local_to_frame(h.position());
+			let highlight_stroke = Stroke::default()
+				.with_width(2.0)
+				.with_color(Color::from_rgb(1.0, 0.8, 0.2));
+			frame.stroke(&Path::circle(center, HANDLE_RADIUS + 3.0), highlight_stroke);
 		}
 	}
 

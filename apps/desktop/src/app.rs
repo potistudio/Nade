@@ -1,9 +1,5 @@
 use constants::{LOG_INTERVAL_MS, SAMPLE_RATE};
-use iced::{
-	Element, Subscription, Task,
-	widget::{self, PaneGrid},
-	window,
-};
+use iced::{Element, Subscription, Task, widget, window};
 use nade_engine::AudioEngine;
 
 #[derive(Debug, Clone, Copy)]
@@ -14,22 +10,7 @@ pub enum Message {
 	Tick(std::time::Instant),
 }
 
-struct PaneContent {
-	id: usize,
-	title: String,
-}
-
-impl PaneContent {
-	pub fn new() -> Self {
-		Self {
-			id: 0,
-			title: "Untitled".to_string(),
-		}
-	}
-}
-
 pub struct NadeApp {
-	panes: iced::widget::pane_grid::State<PaneContent>,
 	engine: AudioEngine,
 	// ログ出力制御用
 	last_logged_interval: u64,
@@ -37,10 +18,7 @@ pub struct NadeApp {
 
 impl NadeApp {
 	pub fn new() -> Self {
-		let (panes, _) = iced::widget::pane_grid::State::new(PaneContent::new());
-
 		Self {
-			panes,
 			engine: AudioEngine::new(SAMPLE_RATE),
 			last_logged_interval: 0,
 		}

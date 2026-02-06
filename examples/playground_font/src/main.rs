@@ -52,7 +52,7 @@ fn main() -> eframe::Result<()> {
 		"Demo - Font",
 		options,
 		Box::new(|_cc| Ok(Box::new(FontPlaygroundApp::default()))),
-	);
+	)?;
 
 	Ok(())
 }

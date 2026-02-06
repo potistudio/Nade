@@ -32,7 +32,7 @@ impl MasterClock {
 
 		Self {
 			handle: Some(handle),
-			is_available: is_available,
+			is_available,
 		}
 	}
 

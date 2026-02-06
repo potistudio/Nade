@@ -60,7 +60,6 @@ where
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Mode {
 	Idle,
-	Hovered,
 	PotentialDrag { start_pos: Point },
 	Dragging { start_pos: Point, start_value: f32 },
 	Editing,
@@ -179,13 +178,13 @@ where
 
 			renderer.fill_text(
 				iced::advanced::text::Text {
-					content: content.into(),
+					content,
 					bounds: Size::new(bounds.width, bounds.height),
 					size: 12.0.into(),
 					line_height: iced::advanced::text::LineHeight::Relative(1.3),
 					font: renderer.default_font(),
 					align_x: iced::alignment::Horizontal::Center.into(),
-					align_y: iced::alignment::Vertical::Center.into(),
+					align_y: iced::alignment::Vertical::Center,
 					wrapping: iced::advanced::text::Wrapping::Word,
 					shaping: iced::advanced::text::Shaping::Basic,
 				},
@@ -231,14 +230,12 @@ where
 		let bounds = layout.bounds();
 
 		if state.mode == Mode::Editing {
-			if let Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) = event {
-				if let Some(cursor_position) = cursor.position() {
-					if !bounds.contains(cursor_position) {
-						state.mode = Mode::Idle;
-						shell.capture_event();
-						return;
-					}
-				}
+			if let Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) = event
+				&& let Some(cursor_position) = cursor.position()
+				&& !bounds.contains(cursor_position)
+			{
+				state.mode = Mode::Idle;
+				shell.capture_event();
 			}
 			// Forward to text input? Currently hard to check return value for message interception.
 			// Just skipping logic for MVP.
@@ -249,16 +246,14 @@ where
 
 		match event {
 			Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-				if let Some(cursor_position) = cursor.position() {
-					if bounds.contains(cursor_position) {
-						if state.mode == Mode::Idle || state.mode == Mode::Hovered {
-							state.mode = Mode::PotentialDrag {
-								start_pos: cursor_position,
-							};
-							shell.capture_event();
-							return;
-						}
-					}
+				if let Some(cursor_position) = cursor.position()
+					&& bounds.contains(cursor_position)
+					&& matches!(state.mode, Mode::Idle)
+				{
+					state.mode = Mode::PotentialDrag {
+						start_pos: cursor_position,
+					};
+					shell.capture_event();
 				}
 			}
 			Event::Mouse(mouse::Event::CursorMoved { position }) => match state.mode {
@@ -284,7 +279,6 @@ where
 					}
 
 					shell.capture_event();
-					return;
 				}
 				_ => {}
 			},
@@ -292,22 +286,19 @@ where
 				match state.mode {
 					Mode::PotentialDrag { .. } => {
 						// Clicked. Reset to Idle for now (Editing disabled in MVP)
-						if let Some(cursor_position) = cursor.position() {
-							if bounds.contains(cursor_position) {
-								if keyboard::Modifiers::default().command() {
-									// TODO: Get modifiers
-									shell.publish((self.on_change)(self.default_value));
-								}
-							}
+						if let Some(cursor_position) = cursor.position()
+							&& bounds.contains(cursor_position)
+							&& keyboard::Modifiers::default().command()
+						{
+							// TODO: Get modifiers
+							shell.publish((self.on_change)(self.default_value));
 						}
 						state.mode = Mode::Idle;
 						shell.capture_event();
-						return;
 					}
 					Mode::Dragging { .. } => {
 						state.mode = Mode::Idle;
 						shell.capture_event();
-						return;
 					}
 					_ => {}
 				}
