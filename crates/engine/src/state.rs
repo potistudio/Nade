@@ -52,3 +52,50 @@ impl EngineState {
 		self.current_ticks.fetch_add(ticks, Ordering::Release);
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::EngineState;
+
+	fn approx_eq_f64(a: f64, b: f64) {
+		assert!((a - b).abs() < 1e-12, "left: {a}, right: {b}");
+	}
+
+	#[test]
+	fn new_state_has_expected_defaults() {
+		let state = EngineState::new(48_000);
+
+		assert!(!state.is_playing());
+		assert_eq!(state.current_ticks(), 0);
+		assert_eq!(state.sample_rate(), 48_000);
+		approx_eq_f64(state.current_seconds(), 0.0);
+	}
+
+	#[test]
+	fn set_playing_toggles_playback_flag() {
+		let state = EngineState::new(44_100);
+
+		state.set_playing(true);
+		assert!(state.is_playing());
+
+		state.set_playing(false);
+		assert!(!state.is_playing());
+	}
+
+	#[test]
+	fn tick_operations_update_time_consistently() {
+		let state = EngineState::new(48_000);
+
+		state.add_ticks(24_000);
+		assert_eq!(state.current_ticks(), 24_000);
+		approx_eq_f64(state.current_seconds(), 0.5);
+
+		state.add_ticks(12_000);
+		assert_eq!(state.current_ticks(), 36_000);
+		approx_eq_f64(state.current_seconds(), 0.75);
+
+		state.set_current_ticks(48_000);
+		assert_eq!(state.current_ticks(), 48_000);
+		approx_eq_f64(state.current_seconds(), 1.0);
+	}
+}

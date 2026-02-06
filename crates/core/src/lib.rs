@@ -234,6 +234,10 @@ impl Default for Transform {
 mod tests {
 	use super::*;
 
+	fn approx_eq_f32(a: f32, b: f32) {
+		assert!((a - b).abs() < 1e-6, "left: {a}, right: {b}");
+	}
+
 	#[test]
 	fn test_rectangle_object_visibility() {
 		let rect = RectangleObject::new("Test")
@@ -277,5 +281,110 @@ mod tests {
 		let visible_at_4 = comp.visible_objects_at(4.0);
 		assert_eq!(visible_at_4.len(), 1);
 		assert_eq!(visible_at_4[0].name(), "Late");
+	}
+
+	#[test]
+	fn test_update_tick_advances_time_and_emits_render_when_playing() {
+		let mut model = Model::default();
+		model.preview.is_playing = true;
+		model.preview.width = 1920;
+		model.preview.height = 1080;
+
+		let (updated, effects) = update(model, Msg::Tick);
+
+		approx_eq_f32(updated.preview.time, 1.0 / 60.0);
+		assert_eq!(effects.len(), 1);
+		match &effects[0] {
+			CoreEffect::RenderFrame {
+				time,
+				width,
+				height,
+			} => {
+				approx_eq_f32(*time, updated.preview.time);
+				assert_eq!(*width, 1920);
+				assert_eq!(*height, 1080);
+			}
+		}
+	}
+
+	#[test]
+	fn test_update_tick_does_nothing_when_paused() {
+		let model = Model::default();
+
+		let (updated, effects) = update(model, Msg::Tick);
+
+		approx_eq_f32(updated.preview.time, 0.0);
+		assert!(effects.is_empty());
+	}
+
+	#[test]
+	fn test_update_set_time_updates_model_and_requests_render() {
+		let mut model = Model::default();
+		model.preview.width = 800;
+		model.preview.height = 450;
+
+		let (updated, effects) = update(model, Msg::SetTime(3.25));
+
+		approx_eq_f32(updated.preview.time, 3.25);
+		assert_eq!(effects.len(), 1);
+		match &effects[0] {
+			CoreEffect::RenderFrame {
+				time,
+				width,
+				height,
+			} => {
+				approx_eq_f32(*time, 3.25);
+				assert_eq!(*width, 800);
+				assert_eq!(*height, 450);
+			}
+		}
+	}
+
+	#[test]
+	fn test_update_toggle_play_flips_state() {
+		let model = Model::default();
+
+		let (playing_model, effects) = update(model, Msg::TogglePlay);
+		assert!(playing_model.preview.is_playing);
+		assert!(effects.is_empty());
+
+		let (paused_model, effects) = update(playing_model, Msg::TogglePlay);
+		assert!(!paused_model.preview.is_playing);
+		assert!(effects.is_empty());
+	}
+
+	#[test]
+	fn test_update_frame_rendered_sets_latest_frame() {
+		let frame = FrameData {
+			width: 2,
+			height: 1,
+			pixels: bytes::Bytes::from_static(&[1, 2, 3, 4, 5, 6, 7, 8]),
+		};
+
+		let (updated, effects) = update(Model::default(), Msg::FrameRendered(frame));
+
+		assert!(effects.is_empty());
+		let stored = updated
+			.preview
+			.frame
+			.expect("frame should be stored after Msg::FrameRendered");
+		assert_eq!(stored.width, 2);
+		assert_eq!(stored.height, 1);
+		assert_eq!(stored.pixels.as_ref(), &[1, 2, 3, 4, 5, 6, 7, 8]);
+	}
+
+	#[test]
+	fn test_update_transform_updates_selection() {
+		let transform = Transform {
+			position: [10.0, 20.0, -3.0],
+			rotation: [0.0, 45.0, 90.0],
+			scale: [1.2, 0.8, 1.0],
+			opacity: 0.75,
+		};
+
+		let (updated, effects) = update(Model::default(), Msg::UpdateTransform(transform));
+
+		assert!(effects.is_empty());
+		assert_eq!(updated.preview.selection, Some(transform));
 	}
 }
