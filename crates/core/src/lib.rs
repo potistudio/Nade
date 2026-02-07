@@ -72,10 +72,23 @@ pub struct RenderContext {
 // =============================================================================
 
 pub mod composition;
+pub mod core;
+pub mod graph;
+mod hash;
 pub mod object;
+pub mod ops;
 
 // コンポジション型の再エクスポート
 pub use composition::Composition;
+pub use core::{
+	EvalContext, EvalError, Image, NodeId, NodeState, OperatorState, Output, OutputType, Value,
+	ValueKind, ValueParam,
+};
+pub use graph::{Graph, Node};
+pub use ops::{
+	EvalAccess, Operator, ParamDescriptor, ParamKind, ParamValue, ResolvedHashes, ResolvedOp,
+	ValueParamUi,
+};
 // シーンオブジェクト型の再エクスポート
 pub use object::{RectangleObject, SceneObject, SceneObjectData, SceneObjectId};
 

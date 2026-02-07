@@ -8,19 +8,38 @@ use timeline_pane::TimelineMessage;
 use crate::panel_content::PanelContent;
 use nade_core::FrameData;
 
+/// プロジェクトパネルメッセージ
+pub use project_pane::ProjectMessage;
+
 /// アプリケーションパネルメッセージ（ラッパー）
 #[derive(Debug, Clone)]
 pub enum AppPanelMessage {
 	Timeline(TimelineMessage),
-	Property(PropertyMessage),
+	Inspector(InspectorMessage),
 	Project(ProjectMessage),
 }
 
-/// プロジェクトパネルメッセージ
+/// Graphパネルメッセージ
 #[derive(Debug, Clone)]
-pub enum ProjectMessage {
-	ToggleExpand(uuid::Uuid),
-	Select(uuid::Uuid),
+pub enum GraphMessage {
+	FreqChanged(f32),
+	PhaseChanged(f32),
+	BlurBaseChanged(f32),
+	BlurScaleChanged(f32),
+	ColorAChanged(usize, f32),
+	ColorBChanged(usize, f32),
+	EvalFpsChanged(f32),
+	UseValueDelay(bool),
+	UseImageDelay(bool),
+	Evaluate,
+}
+
+/// インスペクターパネルメッセージ
+#[derive(Debug, Clone)]
+pub enum InspectorMessage {
+	AttachTransformOperator,
+	Property(PropertyMessage),
+	Graph(GraphMessage),
 }
 
 /// プロパティパネルメッセージ

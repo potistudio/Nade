@@ -1,0 +1,14 @@
+[package]
+name = "node_playground_egui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+eframe = { version = "0.33.2", features = ["wgpu"] }
+egui = { version = "0.33.2" }
+env_logger = { workspace = true }
+log = { workspace = true }
+nade_core = { workspace = true }
+operators = { workspace = true }

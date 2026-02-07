@@ -2780,13 +2780,14 @@ dependencies = [
  "image",
  "log",
  "nade_core",
+ "operators",
  "panel_system",
+ "project_pane",
  "rayon",
  "renderer",
  "status_bar",
  "timeline_pane",
  "tokio",
- "uuid",
  "wgpu",
 ]
 
@@ -2878,6 +2879,18 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "memoffset",
+]
+
+[[package]]
+name = "node_playground_egui"
+version = "0.0.1"
+dependencies = [
+ "eframe",
+ "egui",
+ "env_logger",
+ "log",
+ "nade_core",
+ "operators",
 ]
 
 [[package]]
@@ -3355,6 +3368,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "operators"
+version = "0.0.1"
+dependencies = [
+ "nade_core",
+]
+
+[[package]]
 name = "orbclient"
 version = "0.3.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3612,6 +3632,14 @@ checksum = "52717f9a02b6965224f95ca2a81e2e0c5c43baacd28ca057577988930b6c3d5b"
 dependencies = [
  "quote",
  "syn",
+]
+
+[[package]]
+name = "project_pane"
+version = "0.0.1"
+dependencies = [
+ "iced",
+ "uuid",
 ]
 
 [[package]]

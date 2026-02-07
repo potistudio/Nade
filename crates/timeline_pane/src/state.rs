@@ -409,10 +409,10 @@ impl TimelineState {
 		self.next_clip_id = 0;
 		self.selected_clip = None;
 
-		// 新しいトラックを作成（オブジェクトタイプごとにまとめる）
-		let mut objects_track = TimelineTrack::new("Objects");
-
 		for obj in composition.all_objects() {
+			// オブジェクトごとに新しいトラックを作成
+			let mut track = TimelineTrack::new(obj.name());
+
 			// オブジェクトの色をRGBA -> Colorに変換
 			let color = if let Some(rect) = obj.as_rectangle() {
 				Color::from_rgba(
@@ -434,12 +434,8 @@ impl TimelineState {
 				obj.id(),
 			);
 
-			objects_track.add_clip(clip);
-		}
-
-		// トラックをタイムラインに追加
-		if !objects_track.clips.is_empty() {
-			self.tracks.push(objects_track);
+			track.add_clip(clip);
+			self.tracks.push(track);
 		}
 	}
 
@@ -641,12 +637,14 @@ mod tests {
 		let mut state = TimelineState::new();
 		state.sync_with_composition(&composition);
 
-		assert_eq!(state.tracks.len(), 1);
-		assert_eq!(state.tracks[0].clips.len(), 2);
+		assert_eq!(state.tracks.len(), 2);
+		assert_eq!(state.tracks[0].clips.len(), 1);
+		assert_eq!(state.tracks[1].clips.len(), 1);
 
-		let clip = state.tracks[0]
-			.clips
+		let clip = state
+			.tracks
 			.iter_mut()
+			.flat_map(|track| track.clips.iter_mut())
 			.find(|c| c.scene_object_id == Some(id_a))
 			.expect("clip for Rect A should exist after sync");
 		clip.start_time = 10.0;

@@ -41,8 +41,10 @@ iced = { version = "0.14", features = [
 ] }
 status_bar = { path = "../status_bar" }
 nade_core = { path = "../core" }
+operators = { path = "../operators" }
 panel_system = { path = "../panel_system" }
 timeline_pane = { path = "../timeline_pane" }
+project_pane = { path = "../project_pane" }
 rayon = "1.10"
 crossbeam-channel = "0.5.15"
 tokio = { version = "1.48.0", features = ["full"] }
@@ -50,7 +52,6 @@ bytes = "1.11.0"
 bytemuck = "1.16"
 wgpu = "27.0.1"
 iced_wgpu = "0.14"
-uuid = { version = "1.19.0", features = ["v4", "serde"] }
 renderer = { path = "../renderer" }
 
 [package.metadata.bundle]

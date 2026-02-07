@@ -9,8 +9,8 @@ pub enum PanelContent {
 	MainPreview,
 	/// タイムライン
 	Timeline,
-	/// プロパティ（パラメータ編集）
-	Properties,
+	/// インスペクター（Transform/Graph）
+	Inspector,
 	/// プロジェクト（アセットブラウザ）
 	Project,
 }

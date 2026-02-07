@@ -26,3 +26,5 @@ constants = { path = "crates/constants" }
 nade-engine = { path = "crates/engine" }
 nade-timeline = { path = "crates/timeline_pane" }
 nade_core = { path = "crates/core" }
+operators = { path = "crates/operators" }
+uuid = { version = "1.19.0", features = ["v4", "serde"] }

@@ -8,6 +8,6 @@ pub const TEXT_MUTED: Color = Color::from_rgb(0.6, 0.6, 0.6);
 pub mod panel {
 	use super::*;
 
-	pub const PROPERTIES_BG: Color = Color::from_rgb(0.128, 0.128, 0.128);
+	pub const INSPECTOR_BG: Color = Color::from_rgb(0.128, 0.128, 0.128);
 	pub const COMPOSITION_BG: Color = Color::from_rgb(0.128, 0.128, 0.128);
 }

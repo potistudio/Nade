@@ -20,6 +20,7 @@ use nade_core::{Composition, CoreEffect, FrameData, Model, Msg, RectangleObject,
 use crate::message::{AppPanelMessage, Message};
 use crate::panel_content::PanelContent;
 use crate::panels;
+use crate::panels::inspector::InspectorUiState;
 use crate::panels::project::{ProjectData, ProjectUiState};
 use crate::services::render_service::{RenderConnection, build_render_stream};
 use crate::theme;
@@ -71,6 +72,9 @@ pub struct NadeApp {
 	/// プロジェクトUI状態
 	project_ui: ProjectUiState,
 
+	/// インスペクターUI状態
+	inspector_ui: InspectorUiState,
+
 	/// コンポジション（シーンオブジェクト管理）
 	composition: Arc<std::sync::Mutex<Composition>>,
 }
@@ -97,6 +101,7 @@ impl NadeApp {
 			status_bar: status_bar::StatusBar::new(),
 			project_data: ProjectData::default(),
 			project_ui: ProjectUiState::default(),
+			inspector_ui: InspectorUiState::new(),
 			composition: Arc::new(std::sync::Mutex::new(Self::create_sample_composition())),
 		};
 
@@ -116,10 +121,10 @@ impl NadeApp {
 	fn create_panel_layout() -> PanelSystem<PanelContent> {
 		let mut builder = LayoutBuilder::new();
 
-		// 左側: Project + Properties (縦分割)
+		// 左側: Project + Inspector (縦分割)
 		let project = builder.panel("Project", PanelContent::Project);
-		let properties = builder.panel("Properties", PanelContent::Properties);
-		let left_side = LayoutBuilder::<PanelContent>::vsplit(project, properties, 0.5);
+		let inspector = builder.panel("Inspector", PanelContent::Inspector);
+		let left_side = LayoutBuilder::<PanelContent>::vsplit(project, inspector, 0.35);
 
 		// 右側: Preview + Timeline (縦分割)
 		let preview = builder.panel("Preview", PanelContent::MainPreview);
@@ -252,6 +257,8 @@ impl NadeApp {
 				// 再生中のみフレームを進める
 				if self.current_model.preview.is_playing {
 					self.apply_core_msg(Msg::Tick);
+					self.inspector_ui
+						.evaluate(self.current_model.preview.time as f64);
 				}
 				Task::none()
 			}
@@ -286,32 +293,14 @@ impl NadeApp {
 								self.apply_core_msg(Msg::SetTime(self.current_model.preview.time));
 							}
 						}
-						AppPanelMessage::Property(prop_msg) => {
-							let updated_selection = if let Some(selection) =
-								&mut self.current_model.preview.selection
-							{
-								match prop_msg {
-									crate::message::PropertyMessage::Position(axis, val) => {
-										selection.position[*axis] = *val;
-									}
-									crate::message::PropertyMessage::Rotation(axis, val) => {
-										selection.rotation[*axis] = *val;
-									}
-									crate::message::PropertyMessage::Scale(axis, val) => {
-										selection.scale[*axis] = *val;
-									}
-									crate::message::PropertyMessage::Opacity(val) => {
-										selection.opacity = *val;
-									}
-								}
-								Some(*selection)
-							} else {
-								None
-							};
-
-							if let Some(selection) = updated_selection {
-								// 変更をCoreに通知
-								self.apply_core_msg(Msg::UpdateTransform(selection));
+						AppPanelMessage::Inspector(inspector_msg) => {
+							let updated = self.inspector_ui.update(
+								inspector_msg.clone(),
+								self.current_model.preview.time as f64,
+								self.current_model.preview.selection,
+							);
+							if let Some(transform) = updated {
+								self.apply_core_msg(Msg::UpdateTransform(transform));
 							}
 						}
 						AppPanelMessage::Project(proj_msg) => match proj_msg {
@@ -325,6 +314,7 @@ impl NadeApp {
 							crate::message::ProjectMessage::Select(id) => {
 								self.project_ui.selected_id = Some(*id);
 							}
+							crate::message::ProjectMessage::OpenItem(_id) => {}
 						},
 					}
 				}
@@ -380,8 +370,8 @@ impl NadeApp {
 			PanelContent::Timeline => {
 				panels::timeline::view(&self.timeline, self.current_model.preview.time)
 			}
-			PanelContent::Properties => {
-				panels::properties::view(self.current_model.preview.selection.as_ref())
+			PanelContent::Inspector => {
+				panels::inspector::view(&self.inspector_ui, self.current_model.preview.time)
 			}
 			PanelContent::Project => panels::project::view(&self.project_data, &self.project_ui),
 		}

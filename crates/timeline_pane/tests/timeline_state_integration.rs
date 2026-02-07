@@ -7,7 +7,7 @@ fn approx_eq_f32(a: f32, b: f32) {
 }
 
 #[test]
-fn sync_with_composition_builds_single_objects_track() {
+fn sync_with_composition_builds_per_object_tracks() {
 	let mut composition = Composition::new();
 	let id_a = composition.add_rectangle(
 		RectangleObject::new("Title")
@@ -24,19 +24,27 @@ fn sync_with_composition_builds_single_objects_track() {
 	let mut timeline = TimelineState::new();
 	timeline.sync_with_composition(&composition);
 
-	assert_eq!(timeline.tracks.len(), 1);
-	assert_eq!(timeline.tracks[0].name, "Objects");
-	assert_eq!(timeline.tracks[0].clips.len(), 2);
+	assert_eq!(timeline.tracks.len(), 2);
+	assert_eq!(timeline.tracks[0].clips.len(), 1);
+	assert_eq!(timeline.tracks[1].clips.len(), 1);
 
-	let clip_a = &timeline.tracks[0].clips[0];
+	let clip_a = timeline
+		.tracks
+		.iter()
+		.flat_map(|track| track.clips.iter())
+		.find(|clip| clip.scene_object_id == Some(id_a))
+		.expect("clip for Title should exist");
 	assert_eq!(clip_a.name, "Title");
-	assert_eq!(clip_a.scene_object_id, Some(id_a));
 	approx_eq_f32(clip_a.start_time, 0.5);
 	approx_eq_f32(clip_a.duration, 1.5);
 
-	let clip_b = &timeline.tracks[0].clips[1];
+	let clip_b = timeline
+		.tracks
+		.iter()
+		.flat_map(|track| track.clips.iter())
+		.find(|clip| clip.scene_object_id == Some(id_b))
+		.expect("clip for Subtitle should exist");
 	assert_eq!(clip_b.name, "Subtitle");
-	assert_eq!(clip_b.scene_object_id, Some(id_b));
 	approx_eq_f32(clip_b.start_time, 3.0);
 	approx_eq_f32(clip_b.duration, 4.0);
 }
@@ -58,22 +66,19 @@ fn apply_clip_changes_to_composition_updates_matching_objects() {
 	let mut timeline = TimelineState::new();
 	timeline.sync_with_composition(&composition);
 
-	let track = timeline
+	let clip_a = timeline
 		.tracks
-		.first_mut()
-		.expect("sync_with_composition should create one track");
-
-	let clip_a = track
-		.clips
 		.iter_mut()
+		.flat_map(|track| track.clips.iter_mut())
 		.find(|clip| clip.scene_object_id == Some(id_a))
 		.expect("clip for A should exist");
 	clip_a.start_time = 8.0;
 	clip_a.duration = 3.25;
 
-	let clip_b = track
-		.clips
+	let clip_b = timeline
+		.tracks
 		.iter_mut()
+		.flat_map(|track| track.clips.iter_mut())
 		.find(|clip| clip.scene_object_id == Some(id_b))
 		.expect("clip for B should exist");
 	clip_b.start_time = 0.0;
