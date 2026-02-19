@@ -1,0 +1,3 @@
+[target.'cfg(target_os = "darwin")']
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
