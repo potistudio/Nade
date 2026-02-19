@@ -102,12 +102,12 @@ pub fn render_frame_with_composition(
 	// 暗いグレーの背景
 	let mut img = ImageBuffer::from_pixel(width, height, Rgba([30, 30, 30, 255]));
 
-	// 可視オブジェクトを取得して描画
-	for obj in composition.visible_objects_at(time) {
-		if let Some(rect) = obj.as_rectangle() {
-			draw_rectangle(&mut img, rect, width, height);
-		}
-	}
+	// // 可視オブジェクトを取得して描画
+	// for obj in composition.visible_objects_at(time) {
+	// 	if let Some(rect) = obj.as_rectangle() {
+	// 		draw_rectangle(&mut img, rect, width, height);
+	// 	}
+	// }
 
 	img
 }

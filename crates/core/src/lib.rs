@@ -2,6 +2,11 @@
 //!
 //! Nadeアプリケーションで共有される基本型とトレイトを提供します。
 
+pub use core::{
+	AssetId, EvalContext, EvalError, Image, NodeId, NodeState, OperatorState, Output, OutputType,
+	Value, ValueKind, ValueParam,
+};
+
 // =============================================================================
 // 基本型
 // =============================================================================
@@ -71,26 +76,28 @@ pub struct RenderContext {
 // エフェクト
 // =============================================================================
 
+mod asset;
 pub mod composition;
 pub mod core;
 pub mod graph;
 mod hash;
+mod instance;
 pub mod object;
 pub mod ops;
+mod project;
+pub mod timeline;
 
-// コンポジション型の再エクスポート
+pub use asset::{Asset, AssetType};
 pub use composition::Composition;
-pub use core::{
-	EvalContext, EvalError, Image, NodeId, NodeState, OperatorState, Output, OutputType, Value,
-	ValueKind, ValueParam,
-};
 pub use graph::{Graph, Node};
+pub use instance::{Instance, InstanceId};
+pub use object::{RectangleObject, SceneObject, SceneObjectData, SceneObjectId};
 pub use ops::{
 	EvalAccess, Operator, ParamDescriptor, ParamKind, ParamValue, ResolvedHashes, ResolvedOp,
 	ValueParamUi,
 };
-// シーンオブジェクト型の再エクスポート
-pub use object::{RectangleObject, SceneObject, SceneObjectData, SceneObjectId};
+pub use project::Project;
+pub use timeline::{TimelineClip, TimelineModel, TimelineTrack};
 
 // =============================================================================
 // アプリケーション状態 (Core/Model)
@@ -174,52 +181,6 @@ pub enum CoreEffect {
 }
 
 // =============================================================================
-// Update Logic
-// =============================================================================
-
-pub fn update(mut model: Model, msg: Msg) -> (Model, Vec<CoreEffect>) {
-	let mut effects = Vec::new();
-
-	match msg {
-		Msg::Tick => {
-			if model.preview.is_playing {
-				// シンプルな 60fps シミュレーション
-				model.preview.time += 1.0 / 60.0;
-				// Render request
-				effects.push(CoreEffect::RenderFrame {
-					time: model.preview.time,
-					width: model.preview.width,
-					height: model.preview.height,
-				});
-			}
-		}
-		Msg::SetTime(t) => {
-			model.preview.time = t;
-			// Seek したらレンダリング
-			effects.push(CoreEffect::RenderFrame {
-				time: model.preview.time,
-				width: model.preview.width,
-				height: model.preview.height,
-			});
-		}
-		Msg::TogglePlay => {
-			model.preview.is_playing = !model.preview.is_playing;
-		}
-		Msg::Shutdown => {
-			// No-op for now
-		}
-		Msg::FrameRendered(frame) => {
-			model.preview.frame = Some(frame);
-		}
-		Msg::UpdateTransform(transform) => {
-			model.preview.selection = Some(transform);
-		}
-	}
-
-	(model, effects)
-}
-
-// =============================================================================
 // トランスフォーム
 // =============================================================================
 
@@ -240,164 +201,5 @@ impl Default for Transform {
 			scale: [1.0, 1.0, 1.0],
 			opacity: 1.0,
 		}
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	fn approx_eq_f32(a: f32, b: f32) {
-		assert!((a - b).abs() < 1e-6, "left: {a}, right: {b}");
-	}
-
-	#[test]
-	fn test_rectangle_object_visibility() {
-		let rect = RectangleObject::new("Test")
-			.with_start_time(1.0)
-			.with_duration(3.0);
-
-		assert!(!rect.is_visible_at(0.5));
-		assert!(rect.is_visible_at(1.0));
-		assert!(rect.is_visible_at(2.5));
-		assert!(!rect.is_visible_at(4.0));
-	}
-
-	#[test]
-	fn test_composition_add_and_get() {
-		let mut comp = Composition::new();
-		let id = comp.add_rectangle(RectangleObject::new("Rect1"));
-
-		assert_eq!(comp.len(), 1);
-		assert!(comp.get(id).is_some());
-		assert_eq!(comp.get(id).unwrap().name(), "Rect1");
-	}
-
-	#[test]
-	fn test_composition_visible_objects() {
-		let mut comp = Composition::new();
-		comp.add_rectangle(
-			RectangleObject::new("Early")
-				.with_start_time(0.0)
-				.with_duration(2.0),
-		);
-		comp.add_rectangle(
-			RectangleObject::new("Late")
-				.with_start_time(3.0)
-				.with_duration(2.0),
-		);
-
-		let visible_at_1 = comp.visible_objects_at(1.0);
-		assert_eq!(visible_at_1.len(), 1);
-		assert_eq!(visible_at_1[0].name(), "Early");
-
-		let visible_at_4 = comp.visible_objects_at(4.0);
-		assert_eq!(visible_at_4.len(), 1);
-		assert_eq!(visible_at_4[0].name(), "Late");
-	}
-
-	#[test]
-	fn test_update_tick_advances_time_and_emits_render_when_playing() {
-		let mut model = Model::default();
-		model.preview.is_playing = true;
-		model.preview.width = 1920;
-		model.preview.height = 1080;
-
-		let (updated, effects) = update(model, Msg::Tick);
-
-		approx_eq_f32(updated.preview.time, 1.0 / 60.0);
-		assert_eq!(effects.len(), 1);
-		match &effects[0] {
-			CoreEffect::RenderFrame {
-				time,
-				width,
-				height,
-			} => {
-				approx_eq_f32(*time, updated.preview.time);
-				assert_eq!(*width, 1920);
-				assert_eq!(*height, 1080);
-			}
-		}
-	}
-
-	#[test]
-	fn test_update_tick_does_nothing_when_paused() {
-		let model = Model::default();
-
-		let (updated, effects) = update(model, Msg::Tick);
-
-		approx_eq_f32(updated.preview.time, 0.0);
-		assert!(effects.is_empty());
-	}
-
-	#[test]
-	fn test_update_set_time_updates_model_and_requests_render() {
-		let mut model = Model::default();
-		model.preview.width = 800;
-		model.preview.height = 450;
-
-		let (updated, effects) = update(model, Msg::SetTime(3.25));
-
-		approx_eq_f32(updated.preview.time, 3.25);
-		assert_eq!(effects.len(), 1);
-		match &effects[0] {
-			CoreEffect::RenderFrame {
-				time,
-				width,
-				height,
-			} => {
-				approx_eq_f32(*time, 3.25);
-				assert_eq!(*width, 800);
-				assert_eq!(*height, 450);
-			}
-		}
-	}
-
-	#[test]
-	fn test_update_toggle_play_flips_state() {
-		let model = Model::default();
-
-		let (playing_model, effects) = update(model, Msg::TogglePlay);
-		assert!(playing_model.preview.is_playing);
-		assert!(effects.is_empty());
-
-		let (paused_model, effects) = update(playing_model, Msg::TogglePlay);
-		assert!(!paused_model.preview.is_playing);
-		assert!(effects.is_empty());
-	}
-
-	#[test]
-	fn test_update_frame_rendered_sets_latest_frame() {
-		let frame = FrameData {
-			width: 2,
-			height: 1,
-			pixels: bytes::Bytes::from_static(&[1, 2, 3, 4, 5, 6, 7, 8]),
-		};
-
-		let (updated, effects) = update(Model::default(), Msg::FrameRendered(frame));
-
-		assert!(effects.is_empty());
-		let stored = updated
-			.preview
-			.frame
-			.expect("frame should be stored after Msg::FrameRendered");
-		assert_eq!(stored.width, 2);
-		assert_eq!(stored.height, 1);
-		assert_eq!(stored.pixels.as_ref(), &[1, 2, 3, 4, 5, 6, 7, 8]);
-	}
-
-	#[test]
-	fn test_update_transform_updates_selection() {
-		let transform = Transform {
-			position: [10.0, 20.0, -3.0],
-			rotation: [0.0, 45.0, 90.0],
-			scale: [1.2, 0.8, 1.0],
-			opacity: 0.75,
-		};
-
-		let (updated, effects) = update(Model::default(), Msg::UpdateTransform(transform));
-
-		assert!(effects.is_empty());
-		assert_eq!(updated.preview.selection, Some(transform));
 	}
 }

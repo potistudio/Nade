@@ -9,7 +9,7 @@ use crate::Transform;
 ///
 /// 指定された位置、サイズ、色で矩形を描画します。
 /// トランスフォーム（位置、回転、スケール）を適用可能です。
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct RectangleObject {
 	/// オブジェクトID
 	pub id: SceneObjectId,
@@ -120,10 +120,6 @@ impl SceneObject for RectangleObject {
 }
 
 impl SceneObjectData for RectangleObject {
-	fn clone_box(&self) -> Box<dyn SceneObjectData> {
-		Box::new(self.clone())
-	}
-
 	fn as_rectangle(&self) -> Option<&RectangleObject> {
 		Some(self)
 	}

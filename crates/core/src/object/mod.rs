@@ -59,13 +59,8 @@ pub trait SceneObject: Send + Sync {
 // シーンオブジェクトデータトレイト
 // =============================================================================
 
-/// SceneObjectをCloneableにするためのラッパートレイト
-///
-/// `dyn SceneObject` を `Clone` 可能にするため、このトレイトを経由してボックス化します。
+/// SceneObjectを型消去して扱うためのトレイト
 pub trait SceneObjectData: SceneObject + std::fmt::Debug {
-	/// ボックス化されたクローンを作成
-	fn clone_box(&self) -> Box<dyn SceneObjectData>;
-
 	/// 矩形オブジェクトとしてダウンキャスト（参照）
 	fn as_rectangle(&self) -> Option<&RectangleObject> {
 		None
@@ -74,11 +69,5 @@ pub trait SceneObjectData: SceneObject + std::fmt::Debug {
 	/// 矩形オブジェクトとしてダウンキャスト（可変参照）
 	fn as_rectangle_mut(&mut self) -> Option<&mut RectangleObject> {
 		None
-	}
-}
-
-impl Clone for Box<dyn SceneObjectData> {
-	fn clone(&self) -> Self {
-		self.clone_box()
 	}
 }

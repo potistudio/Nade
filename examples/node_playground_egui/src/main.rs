@@ -474,7 +474,7 @@ impl PlaygroundApp {
 						}
 						_ => {
 							let texture = ctx.load_texture(
-								format!("node-image-{}", node_id.0),
+								format!("node-image-{}", node_id.value()),
 								color_image,
 								TextureOptions::default(),
 							);
@@ -568,7 +568,7 @@ impl PlaygroundApp {
 				.unwrap_or(OutputType::Value);
 			let selected = self.selected == Some(entry.id);
 			ui.horizontal(|ui| {
-				let label = format!("{} (#{} )", entry.name, entry.id.0);
+				let label = format!("{} (#{} )", entry.name, entry.id.value());
 				if ui.selectable_label(selected, label).clicked() {
 					self.selected = Some(entry.id);
 					self.eval_dirty = true;
@@ -612,7 +612,7 @@ impl PlaygroundApp {
 			}
 		};
 
-		ui.label(format!("Node ID: {}", selected.0));
+		ui.label(format!("Node ID: {}", selected.value()));
 		let output_type = self
 			.graph
 			.node(selected)
@@ -625,7 +625,8 @@ impl PlaygroundApp {
 		}
 
 		let mut template = current_template.unwrap_or(OperatorTemplate::ValueConst);
-		let template_changed = eguis_combo_operator(ui, ("operator", selected.0), &mut template);
+		let template_changed =
+			eguis_combo_operator(ui, ("operator", selected.value()), &mut template);
 		let reset_clicked = ui.button("Reset Operator").clicked();
 
 		if template_changed {
@@ -1211,7 +1212,7 @@ fn image_input_editor(
 		ui.label(label);
 		let mut selected = Some(*input);
 		egui::ComboBox::from_id_salt((label, "input"))
-			.selected_text(selected.map_or("None".to_string(), |id| format!("#{}", id.0)))
+			.selected_text(selected.map_or("None".to_string(), |id| format!("#{}", id.value())))
 			.show_ui(ui, |ui| {
 				for node in image_nodes {
 					if node.id == current_node {
@@ -1268,7 +1269,7 @@ fn value_node_label_for_id(id: NodeId, value_nodes: &[ValueNodeInfo]) -> String 
 		.iter()
 		.find(|node| node.id == id)
 		.map(node_label)
-		.unwrap_or_else(|| format!("#{}", id.0))
+		.unwrap_or_else(|| format!("#{}", id.value()))
 }
 
 fn value_node_selected_label(selected: Option<NodeId>, value_nodes: &[ValueNodeInfo]) -> String {

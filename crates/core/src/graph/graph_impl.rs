@@ -35,7 +35,7 @@ impl Graph {
 	}
 
 	pub fn add_node_boxed(&mut self, operator: Box<dyn Operator>) -> NodeId {
-		let node_id = NodeId(self.next_id);
+		let node_id = NodeId::new(self.next_id as usize);
 		self.next_id += 1;
 		self.nodes.insert(
 			node_id,

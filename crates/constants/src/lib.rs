@@ -2,8 +2,9 @@
 
 mod app;
 mod engine;
-mod timeline;
+pub mod style;
+pub mod timeline;
 
 pub use app::*;
 pub use engine::*;
-pub use timeline::*;
+pub use style::*;

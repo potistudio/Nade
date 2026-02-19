@@ -1,73 +1,68 @@
-use crate::object::{SceneObjectData, SceneObjectId, rectangle::RectangleObject};
+use crate::{
+	core::NodeId,
+	instance::{Instance, InstanceId},
+	object::RectangleObject,
+};
 
-/// コンポジション（シーン）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CompositionId(usize);
+
+/// Composition
 ///
-/// 複数のシーンオブジェクトを管理し、時間に応じた可視性を制御します。
-#[derive(Debug, Clone, Default)]
+/// Composition is a container that manages multiple instances and controls them over time.
+#[derive(Debug)]
 pub struct Composition {
-	/// シーンオブジェクトのリスト
-	pub objects: Vec<Box<dyn SceneObjectData>>,
-	/// 次に割り当てるオブジェクトID
-	next_id: u64,
+	/// ID of the composition
+	id: CompositionId,
+
+	/// Vector of instances contained in the composition
+	objects: Vec<Instance>,
 }
 
 impl Composition {
-	/// 新しい空のコンポジションを作成
 	pub fn new() -> Self {
-		Self::default()
+		Self {
+			id: CompositionId(0),
+			objects: Vec::new(),
+		}
 	}
 
-	/// 次のオブジェクトIDを取得（内部使用）
-	fn next_object_id(&mut self) -> SceneObjectId {
-		let id = SceneObjectId(self.next_id);
-		self.next_id += 1;
-		id
+	pub fn add_instance(&mut self, node_id: NodeId) -> &mut Instance {
+		let next_id = InstanceId::new(self.objects.len());
+		let instance = Instance::new(next_id, node_id, "Instance", 0.0, 5.0);
+
+		self.objects.push(instance);
+		self.objects.last_mut().unwrap() // safe because we just pushed an element
 	}
 
-	/// 矩形オブジェクトを追加
-	///
-	/// オブジェクトにはユニークなIDが自動的に割り当てられます。
-	pub fn add_rectangle(&mut self, mut rect: RectangleObject) -> SceneObjectId {
-		let id = self.next_object_id();
-		rect.id = id;
-		self.objects.push(Box::new(rect));
-		id
+	/// 既存UI互換: RectangleObject からインスタンスを生成
+	pub fn add_rectangle(&mut self, rect: RectangleObject) -> InstanceId {
+		let instance = self.add_instance(NodeId::new(self.objects.len()));
+		instance.name = rect.name;
+		instance.start_time = rect.start_time;
+		instance.duration = rect.duration;
+		instance.id()
 	}
 
-	/// 指定時間で可視なオブジェクトを取得
-	pub fn visible_objects_at(&self, time: f32) -> Vec<&dyn SceneObjectData> {
-		self.objects
-			.iter()
-			.filter(|obj| obj.is_visible_at(time))
-			.map(|obj| obj.as_ref())
-			.collect()
+	/// タイムライン同期用: 全インスタンスを走査
+	pub fn all_objects(&self) -> impl Iterator<Item = &Instance> {
+		self.objects.iter()
 	}
 
 	/// IDでオブジェクトを取得
-	pub fn get(&self, id: SceneObjectId) -> Option<&dyn SceneObjectData> {
-		self.objects
-			.iter()
-			.find(|obj| obj.id() == id)
-			.map(|obj| obj.as_ref())
+	pub fn get(&self, id: InstanceId) -> Option<&Instance> {
+		self.objects.iter().find(|obj| obj.id() == id)
 	}
 
 	/// IDでオブジェクトを可変参照で取得
-	pub fn get_mut(&mut self, id: SceneObjectId) -> Option<&mut Box<dyn SceneObjectData>> {
+	pub fn get_mut(&mut self, id: InstanceId) -> Option<&mut Instance> {
 		self.objects.iter_mut().find(|obj| obj.id() == id)
 	}
 
-	/// すべてのオブジェクトを取得
-	pub fn all_objects(&self) -> &[Box<dyn SceneObjectData>] {
-		&self.objects
-	}
-
 	/// オブジェクトを削除
-	pub fn remove(&mut self, id: SceneObjectId) -> bool {
+	pub fn remove(&mut self, id: InstanceId) {
 		if let Some(pos) = self.objects.iter().position(|obj| obj.id() == id) {
 			self.objects.remove(pos);
-			true
-		} else {
-			false
 		}
 	}
 
@@ -79,5 +74,11 @@ impl Composition {
 	/// オブジェクトが空かどうか
 	pub fn is_empty(&self) -> bool {
 		self.objects.is_empty()
+	}
+}
+
+impl Default for Composition {
+	fn default() -> Self {
+		Self::new()
 	}
 }

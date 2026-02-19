@@ -268,7 +268,7 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 	/// ビューを生成
 	pub fn view<'a, F, M>(&'a self, content_view: F) -> Element<'a, PanelSystemMessage<C, M>>
 	where
-		F: Fn(&C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
+		F: Fn(usize, &C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
 		M: Clone + std::fmt::Debug + 'static,
 		C: 'a,
 	{
@@ -350,7 +350,7 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 		content_view: F,
 	) -> Element<'a, PanelSystemMessage<C, M>>
 	where
-		F: Fn(&C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
+		F: Fn(usize, &C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
 		M: Clone + std::fmt::Debug + 'static,
 	{
 		match node {
@@ -410,7 +410,7 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 		content_view: F,
 	) -> Element<'a, PanelSystemMessage<C, M>>
 	where
-		F: Fn(&C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
+		F: Fn(usize, &C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
 		M: Clone + std::fmt::Debug + 'static,
 	{
 		let container_id = tab_container.id;
@@ -443,7 +443,7 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 			});
 
 		let content = if let Some(panel) = tab_container.get_active_panel() {
-			content_view(&panel.content)
+			content_view(panel.id, &panel.content)
 		} else {
 			self.view_empty_content()
 		};

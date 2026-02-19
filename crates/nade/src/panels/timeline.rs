@@ -2,14 +2,17 @@ use crate::message::AppPanelMessage;
 use crate::panel_content::PanelContent;
 use iced::Element;
 use panel_system::PanelSystemMessage;
-use timeline_pane::TimelineWidget;
+use timeline_pane::{TimelineInteraction, TimelineModel, TimelineWidget};
 
 pub fn view<'a>(
-	timeline: &'a TimelineWidget,
+	panel_id: usize,
+	state: &'a TimelineInteraction,
+	model: &'a TimelineModel,
 	current_time: f32,
 ) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
-	timeline
+	TimelineWidget::new(state, model)
 		.view(current_time)
-		.map(AppPanelMessage::Timeline)
-		.map(PanelSystemMessage::AppMessage)
+		.map(move |message| {
+			PanelSystemMessage::AppMessage(AppPanelMessage::Timeline { panel_id, message })
+		})
 }

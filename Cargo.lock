@@ -3638,7 +3638,9 @@ dependencies = [
 name = "project_pane"
 version = "0.0.1"
 dependencies = [
+ "constants",
  "iced",
+ "nade_core",
  "uuid",
 ]
 

@@ -8,15 +8,17 @@ use timeline_pane::TimelineMessage;
 use crate::panel_content::PanelContent;
 use nade_core::FrameData;
 
-/// プロジェクトパネルメッセージ
-pub use project_pane::ProjectMessage;
+pub use project_pane::ProjectPaneMessage;
 
 /// アプリケーションパネルメッセージ（ラッパー）
 #[derive(Debug, Clone)]
 pub enum AppPanelMessage {
-	Timeline(TimelineMessage),
+	Timeline {
+		panel_id: usize,
+		message: TimelineMessage,
+	},
 	Inspector(InspectorMessage),
-	Project(ProjectMessage),
+	Project(ProjectPaneMessage),
 }
 
 /// Graphパネルメッセージ
