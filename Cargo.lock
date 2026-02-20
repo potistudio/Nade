@@ -2794,6 +2794,7 @@ dependencies = [
  "project_panel",
  "rayon",
  "renderer",
+ "serde",
  "status_bar",
  "timeline_panel",
  "tokio",

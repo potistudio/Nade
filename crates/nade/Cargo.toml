@@ -53,6 +53,7 @@ bytemuck = "1.16"
 wgpu = "27.0.1"
 iced_wgpu = "0.14"
 renderer = { path = "../renderer" }
+serde = "1.0.228"
 
 [package.metadata.bundle]
 name = "Nade"
