@@ -9,8 +9,7 @@ use nade_core::{
 	ValueParam, ValueParamUi,
 };
 use operators::{
-	ImageBlur1DOp, ImageDelay1Op, ImageMixOp, ImageSolidColorOp, ValueAddOp, ValueCompareGTOp,
-	ValueConstOp, ValueDelay1Op, ValueLfoOp, ValueMulOp, ValueSelectOp, ValueSinOp,
+	create_operator, next_operator_key, operator_definitions, operator_label, prev_operator_key,
 };
 
 const INSPECTOR_BG: iced::Color = iced::Color::from_rgb(0.128, 0.128, 0.128);
@@ -36,108 +35,6 @@ pub struct InspectorUiState {
 	operator_ids: Vec<NodeId>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum OperatorTemplate {
-	ValueConst,
-	ValueAdd,
-	ValueMul,
-	ValueSin,
-	ValueCompareGT,
-	ValueSelect,
-	ValueDelay1,
-	ValueLfo,
-	ImageSolidColor,
-	ImageMix,
-	ImageBlur1D,
-	ImageDelay1,
-}
-
-impl OperatorTemplate {
-	const ALL: [Self; 12] = [
-		Self::ValueConst,
-		Self::ValueAdd,
-		Self::ValueMul,
-		Self::ValueSin,
-		Self::ValueCompareGT,
-		Self::ValueSelect,
-		Self::ValueDelay1,
-		Self::ValueLfo,
-		Self::ImageSolidColor,
-		Self::ImageMix,
-		Self::ImageBlur1D,
-		Self::ImageDelay1,
-	];
-
-	fn all() -> &'static [Self] {
-		&Self::ALL
-	}
-
-	fn label(self) -> &'static str {
-		match self {
-			Self::ValueConst => "Value.Const",
-			Self::ValueAdd => "Value.Add",
-			Self::ValueMul => "Value.Mul",
-			Self::ValueSin => "Value.Sin",
-			Self::ValueCompareGT => "Value.CompareGT",
-			Self::ValueSelect => "Value.Select",
-			Self::ValueDelay1 => "Value.Delay1",
-			Self::ValueLfo => "Value.LFO",
-			Self::ImageSolidColor => "Image.SolidColor",
-			Self::ImageMix => "Image.Mix",
-			Self::ImageBlur1D => "Image.Blur1D",
-			Self::ImageDelay1 => "Image.Delay1",
-		}
-	}
-
-	fn from_operator(operator: &dyn Operator) -> Option<Self> {
-		if operator.as_any().is::<ValueConstOp>() {
-			Some(Self::ValueConst)
-		} else if operator.as_any().is::<ValueAddOp>() {
-			Some(Self::ValueAdd)
-		} else if operator.as_any().is::<ValueMulOp>() {
-			Some(Self::ValueMul)
-		} else if operator.as_any().is::<ValueSinOp>() {
-			Some(Self::ValueSin)
-		} else if operator.as_any().is::<ValueCompareGTOp>() {
-			Some(Self::ValueCompareGT)
-		} else if operator.as_any().is::<ValueSelectOp>() {
-			Some(Self::ValueSelect)
-		} else if operator.as_any().is::<ValueDelay1Op>() {
-			Some(Self::ValueDelay1)
-		} else if operator.as_any().is::<ValueLfoOp>() {
-			Some(Self::ValueLfo)
-		} else if operator.as_any().is::<ImageSolidColorOp>() {
-			Some(Self::ImageSolidColor)
-		} else if operator.as_any().is::<ImageMixOp>() {
-			Some(Self::ImageMix)
-		} else if operator.as_any().is::<ImageBlur1DOp>() {
-			Some(Self::ImageBlur1D)
-		} else if operator.as_any().is::<ImageDelay1Op>() {
-			Some(Self::ImageDelay1)
-		} else {
-			None
-		}
-	}
-
-	fn next(self) -> Self {
-		let all = Self::all();
-		let current = all
-			.iter()
-			.position(|template| *template == self)
-			.unwrap_or(0);
-		all[(current + 1) % all.len()]
-	}
-
-	fn prev(self) -> Self {
-		let all = Self::all();
-		let current = all
-			.iter()
-			.position(|template| *template == self)
-			.unwrap_or(0);
-		all[(current + all.len() - 1) % all.len()]
-	}
-}
-
 impl InspectorUiState {
 	pub fn new() -> Self {
 		Self {
@@ -149,7 +46,7 @@ impl InspectorUiState {
 	pub fn update(&mut self, msg: InspectorMessage) {
 		match msg {
 			InspectorMessage::AddOperator => {
-				self.add_operator(OperatorTemplate::ValueConst);
+				self.add_operator();
 			}
 			InspectorMessage::CycleOperatorPrev(node_id) => {
 				self.cycle_operator(node_id, false);
@@ -177,25 +74,33 @@ impl InspectorUiState {
 		&self.graph
 	}
 
-	fn add_operator(&mut self, template: OperatorTemplate) {
-		let operator = self.make_operator(template, None);
+	fn add_operator(&mut self) {
+		let Some(definition) = operator_definitions().first() else {
+			return;
+		};
+		let Some(operator) = self.make_operator(definition.key, None) else {
+			return;
+		};
 		let node_id = self.graph.add_node_boxed(operator);
 		self.operator_ids.push(node_id);
 		self.graph.clear_cache();
 	}
 
 	fn cycle_operator(&mut self, node_id: NodeId, forward: bool) {
-		let current = self
-			.graph
-			.node(node_id)
-			.and_then(|node| OperatorTemplate::from_operator(node.operator.as_ref()))
-			.unwrap_or(OperatorTemplate::ValueConst);
-		let next = if forward {
-			current.next()
-		} else {
-			current.prev()
+		let Some(current_key) = self.graph.node(node_id).map(|node| node.operator.key()) else {
+			return;
 		};
-		let replacement = self.make_operator(next, Some(node_id));
+		let target_key = if forward {
+			next_operator_key(current_key)
+		} else {
+			prev_operator_key(current_key)
+		};
+		let Some(target_key) = target_key else {
+			return;
+		};
+		let Some(replacement) = self.make_operator(target_key, Some(node_id)) else {
+			return;
+		};
 
 		if let Some(node) = self.graph.node_mut(node_id) {
 			node.operator = replacement;
@@ -213,91 +118,45 @@ impl InspectorUiState {
 		}
 	}
 
-	fn make_operator(
-		&self,
-		template: OperatorTemplate,
-		node_hint: Option<NodeId>,
-	) -> Box<dyn Operator> {
+	fn make_operator(&self, key: &str, node_hint: Option<NodeId>) -> Option<Box<dyn Operator>> {
 		let fallback = node_hint
 			.or_else(|| self.operator_ids.last().copied())
 			.unwrap_or_else(|| NodeId::new(1));
+		let mut operator = create_operator(key)?;
+		self.bind_image_inputs(operator.as_mut(), fallback);
+		Some(operator)
+	}
 
-		match template {
-			OperatorTemplate::ValueConst => Box::new(ValueConstOp::new(Value::Float(0.0))),
-			OperatorTemplate::ValueAdd => Box::new(ValueAddOp::new(
-				ValueParam::new(Value::Float(0.0)),
-				ValueParam::new(Value::Float(0.0)),
-			)),
-			OperatorTemplate::ValueMul => Box::new(ValueMulOp::new(
-				ValueParam::new(Value::Float(1.0)),
-				ValueParam::new(Value::Float(1.0)),
-			)),
-			OperatorTemplate::ValueSin => Box::new(ValueSinOp::new(
-				ValueParam::new(Value::Float(1.0)),
-				ValueParam::new(Value::Float(0.0)),
-			)),
-			OperatorTemplate::ValueCompareGT => Box::new(ValueCompareGTOp::new(
-				ValueParam::new(Value::Float(0.0)),
-				ValueParam::new(Value::Float(0.0)),
-			)),
-			OperatorTemplate::ValueSelect => Box::new(ValueSelectOp::new(
-				ValueParam::new(Value::Bool(false)),
-				ValueParam::new(Value::Float(0.0)),
-				ValueParam::new(Value::Float(1.0)),
-			)),
-			OperatorTemplate::ValueDelay1 => {
-				Box::new(ValueDelay1Op::new(ValueParam::new(Value::Float(0.0))))
+	fn bind_image_inputs(&self, operator: &mut dyn Operator, fallback: NodeId) {
+		let image_nodes = self.image_node_ids();
+		let mut image_input_index = 0usize;
+
+		for (index, descriptor) in operator.parameters().into_iter().enumerate() {
+			if !matches!(descriptor.kind, ParamKind::ImageInput) {
+				continue;
 			}
-			OperatorTemplate::ValueLfo => Box::new(ValueLfoOp::new(
-				ValueParam::new(Value::Float(1.0)),
-				ValueParam::new(Value::Float(1.0)),
-				ValueParam::new(Value::Float(0.0)),
-			)),
-			OperatorTemplate::ImageSolidColor => Box::new(ImageSolidColorOp::new(
-				ValueParam::new(Value::Vec4([0.2, 0.2, 0.2, 1.0])),
-				256,
-				256,
-			)),
-			OperatorTemplate::ImageMix => {
-				let (a, b) = self.default_image_pair(fallback);
-				Box::new(ImageMixOp::new(a, b, ValueParam::new(Value::Float(0.5))))
-			}
-			OperatorTemplate::ImageBlur1D => {
-				let input = self.default_image_input(fallback);
-				Box::new(ImageBlur1DOp::new(
-					input,
-					ValueParam::new(Value::Float(4.0)),
-				))
-			}
-			OperatorTemplate::ImageDelay1 => {
-				let input = self.default_image_input(fallback);
-				Box::new(ImageDelay1Op::new(input))
-			}
+
+			let target = image_nodes
+				.get(image_input_index)
+				.copied()
+				.or_else(|| image_nodes.first().copied())
+				.unwrap_or(fallback);
+
+			let _ = operator.set_parameter(index, ParamValue::ImageInput(target));
+			image_input_index += 1;
 		}
 	}
 
-	fn default_image_input(&self, fallback: NodeId) -> NodeId {
+	fn image_node_ids(&self) -> Vec<NodeId> {
 		self.operator_ids
 			.iter()
 			.copied()
-			.find(|node_id| {
+			.filter(|node_id| {
 				self.graph
 					.node(*node_id)
 					.is_some_and(|node| node.operator.output_type() == OutputType::Image)
 			})
-			.unwrap_or(fallback)
-	}
-
-	fn default_image_pair(&self, fallback: NodeId) -> (NodeId, NodeId) {
-		let mut images = self.operator_ids.iter().copied().filter(|node_id| {
-			self.graph
-				.node(*node_id)
-				.is_some_and(|node| node.operator.output_type() == OutputType::Image)
-		});
-
-		let first = images.next().unwrap_or(fallback);
-		let second = images.next().unwrap_or(first);
-		(first, second)
+			.collect()
 	}
 }
 
@@ -351,9 +210,7 @@ fn add_operator_button<'a>() -> Element<'a, InspectorMessage> {
 }
 
 fn operator_card<'a>(node_id: NodeId, operator: &dyn Operator) -> Element<'a, InspectorMessage> {
-	let operator_name = OperatorTemplate::from_operator(operator)
-		.map(OperatorTemplate::label)
-		.unwrap_or(operator.name());
+	let operator_name = operator_label(operator.key());
 
 	let mut parameters = column![].spacing(8).width(Length::Fill);
 	let mut has_parameter = false;

@@ -115,6 +115,12 @@ impl std::fmt::Debug for ResolvedOp {
 }
 
 pub trait Operator: std::fmt::Debug + Send + Sync + Any {
+	/// Stable key for dynamic tooling (inspector, serialization adapters, etc.).
+	/// Defaults to [`Self::name`].
+	fn key(&self) -> &'static str {
+		self.name()
+	}
+
 	fn name(&self) -> &'static str;
 	fn output_type(&self) -> OutputType;
 	fn value_kind(&self) -> Option<ValueKind> {
