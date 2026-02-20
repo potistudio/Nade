@@ -2,7 +2,7 @@ use crate::message::AppPanelMessage;
 use crate::panel_content::PanelContent;
 use iced::Element;
 use panel_system::PanelSystemMessage;
-use timeline_pane::{TimelineInteraction, TimelineModel, TimelineWidget};
+use timeline_panel::{TimelineInteraction, TimelineModel, TimelineWidget};
 
 pub fn view<'a>(
 	panel_id: usize,

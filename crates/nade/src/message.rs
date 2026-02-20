@@ -3,13 +3,13 @@
 //! アプリケーション全体で使用されるメッセージ型を定義します。
 
 use panel_system::PanelSystemMessage;
-use timeline_pane::TimelineMessage;
+use timeline_panel::TimelineMessage;
 
 use crate::panel_content::PanelContent;
-pub use inspector_pane::InspectorMessage;
+pub use inspector_panel::InspectorMessage;
 use nade_core::FrameData;
 
-pub use project_pane::ProjectPaneMessage;
+pub use project_panel::ProjectPaneMessage;
 
 /// アプリケーションパネルメッセージ（ラッパー）
 #[derive(Debug, Clone)]

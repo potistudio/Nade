@@ -1,6 +1,6 @@
 [package]
-name = "timeline_pane"
-description = "Timeline pane"
+name = "timeline_panel"
+description = "Timeline panel"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

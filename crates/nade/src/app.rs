@@ -13,10 +13,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Instant;
 
-use timeline_pane::TimelineInteraction;
+use timeline_panel::TimelineInteraction;
 
 use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
-use inspector_pane::InspectorUiState;
+use inspector_panel::InspectorUiState;
 use nade_core::{
 	AssetType, Composition, CoreEffect, FrameData, InstanceId, Model, Msg, Project,
 	RectangleObject, TimelineClip, TimelineModel, TimelineTrack,
@@ -26,7 +26,7 @@ use crate::message::{AppPanelMessage, Message};
 use crate::panel_content::PanelContent;
 use crate::panels;
 use crate::services::render_service::{RenderConnection, build_render_stream};
-use project_pane::ProjectPaneState;
+use project_panel::ProjectPaneState;
 
 // =============================================================================
 // テーマ設定
@@ -428,7 +428,7 @@ impl NadeApp {
 	fn handle_timeline_message(
 		&mut self,
 		panel_id: usize,
-		message: timeline_pane::TimelineMessage,
+		message: timeline_panel::TimelineMessage,
 	) {
 		let timeline_update = {
 			let current_time = self.global_state.preview.time;
@@ -548,7 +548,7 @@ impl NadeApp {
 					self.global_state.preview.time,
 				)
 			}
-			PanelContent::Inspector => inspector_pane::view(&self.inspector_ui)
+			PanelContent::Inspector => inspector_panel::view(&self.inspector_ui)
 				.map(|msg| PanelSystemMessage::AppMessage(AppPanelMessage::Inspector(msg))),
 			PanelContent::Project => panels::project::view(&self.project, &self.project_ui),
 		}

@@ -4,7 +4,7 @@ use iced::Element;
 use panel_system::PanelSystemMessage;
 
 use nade_core::Project;
-use project_pane::{ProjectPaneState, ProjectPaneWidget};
+use project_panel::{ProjectPaneState, ProjectPaneWidget};
 
 pub fn view<'a>(
 	project: &'a Project,

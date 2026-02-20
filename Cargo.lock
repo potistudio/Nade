@@ -2349,7 +2349,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "inspector_pane"
+name = "inspector_panel"
 version = "0.0.1"
 dependencies = [
  "iced",
@@ -2787,15 +2787,15 @@ dependencies = [
  "iced",
  "iced_wgpu",
  "image",
- "inspector_pane",
+ "inspector_panel",
  "log",
  "nade_core",
  "panel_system",
- "project_pane",
+ "project_panel",
  "rayon",
  "renderer",
  "status_bar",
- "timeline_pane",
+ "timeline_panel",
  "tokio",
  "wgpu",
 ]
@@ -3644,7 +3644,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "project_pane"
+name = "project_panel"
 version = "0.0.1"
 dependencies = [
  "constants",
@@ -4386,7 +4386,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "timeline_pane"
+name = "timeline_panel"
 version = "0.0.1"
 dependencies = [
  "constants",

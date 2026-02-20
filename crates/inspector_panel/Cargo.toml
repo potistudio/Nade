@@ -1,6 +1,6 @@
 [package]
-name = "inspector_pane"
-description = "Inspector pane UI for operator editing"
+name = "inspector_panel"
+description = "Inspector panel UI for operator editing"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
