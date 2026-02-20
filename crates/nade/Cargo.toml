@@ -41,10 +41,10 @@ iced = { version = "0.14", features = [
 ] }
 status_bar = { path = "../status_bar" }
 nade_core = { path = "../core" }
-operators = { path = "../operators" }
 panel_system = { path = "../panel_system" }
 timeline_pane = { path = "../timeline_pane" }
 project_pane = { path = "../project_pane" }
+inspector_pane = { path = "../inspector_pane" }
 rayon = "1.10"
 crossbeam-channel = "0.5.15"
 tokio = { version = "1.48.0", features = ["full"] }

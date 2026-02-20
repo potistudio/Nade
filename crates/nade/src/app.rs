@@ -16,6 +16,7 @@ use std::time::Instant;
 use timeline_pane::TimelineInteraction;
 
 use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
+use inspector_pane::InspectorUiState;
 use nade_core::{
 	AssetType, Composition, CoreEffect, FrameData, InstanceId, Model, Msg, Project,
 	RectangleObject, TimelineClip, TimelineModel, TimelineTrack,
@@ -24,7 +25,6 @@ use nade_core::{
 use crate::message::{AppPanelMessage, Message};
 use crate::panel_content::PanelContent;
 use crate::panels;
-use crate::panels::inspector::InspectorUiState;
 use crate::services::render_service::{RenderConnection, build_render_stream};
 use project_pane::ProjectPaneState;
 
@@ -134,7 +134,7 @@ impl NadeApp {
 	/// デフォルトのパネルレイアウトを作成
 	fn create_panel_layout() -> PanelSystem<PanelContent> {
 		let mut builder = LayoutBuilder::new();
-		let layout = builder.panel("Project", PanelContent::Project);
+		let layout = builder.panel("Inspector", PanelContent::Inspector);
 
 		PanelSystem::new().with_layout(layout)
 	}
@@ -476,14 +476,7 @@ impl NadeApp {
 							self.handle_timeline_message(*panel_id, message.clone());
 						}
 						AppPanelMessage::Inspector(inspector_msg) => {
-							let updated = self.inspector_ui.update(
-								inspector_msg.clone(),
-								self.global_state.preview.time as f64,
-								self.global_state.preview.selection,
-							);
-							if let Some(transform) = updated {
-								self.apply_core_msg(Msg::UpdateTransform(transform));
-							}
+							self.inspector_ui.update(inspector_msg.clone());
 						}
 						AppPanelMessage::Project(proj_msg) => match proj_msg {
 							crate::message::ProjectPaneMessage::ToggleExpand(id) => {
@@ -555,9 +548,8 @@ impl NadeApp {
 					self.global_state.preview.time,
 				)
 			}
-			PanelContent::Inspector => {
-				panels::inspector::view(&self.inspector_ui, self.global_state.preview.time)
-			}
+			PanelContent::Inspector => inspector_pane::view(&self.inspector_ui)
+				.map(|msg| PanelSystemMessage::AppMessage(AppPanelMessage::Inspector(msg))),
 			PanelContent::Project => panels::project::view(&self.project, &self.project_ui),
 		}
 	}

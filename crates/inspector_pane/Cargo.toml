@@ -1,0 +1,16 @@
+[package]
+name = "inspector_pane"
+description = "Inspector pane UI for operator editing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+iced.workspace = true
+nade_core.workspace = true
+operators.workspace = true

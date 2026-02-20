@@ -6,6 +6,7 @@ use panel_system::PanelSystemMessage;
 use timeline_pane::TimelineMessage;
 
 use crate::panel_content::PanelContent;
+pub use inspector_pane::InspectorMessage;
 use nade_core::FrameData;
 
 pub use project_pane::ProjectPaneMessage;
@@ -19,38 +20,6 @@ pub enum AppPanelMessage {
 	},
 	Inspector(InspectorMessage),
 	Project(ProjectPaneMessage),
-}
-
-/// Graphパネルメッセージ
-#[derive(Debug, Clone)]
-pub enum GraphMessage {
-	FreqChanged(f32),
-	PhaseChanged(f32),
-	BlurBaseChanged(f32),
-	BlurScaleChanged(f32),
-	ColorAChanged(usize, f32),
-	ColorBChanged(usize, f32),
-	EvalFpsChanged(f32),
-	UseValueDelay(bool),
-	UseImageDelay(bool),
-	Evaluate,
-}
-
-/// インスペクターパネルメッセージ
-#[derive(Debug, Clone)]
-pub enum InspectorMessage {
-	AttachTransformOperator,
-	Property(PropertyMessage),
-	Graph(GraphMessage),
-}
-
-/// プロパティパネルメッセージ
-#[derive(Debug, Clone)]
-pub enum PropertyMessage {
-	Position(usize, f32), // axis (0=x, 1=y, 2=z), value
-	Rotation(usize, f32),
-	Scale(usize, f32),
-	Opacity(f32),
 }
 
 /// アプリケーションメッセージ

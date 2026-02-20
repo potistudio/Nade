@@ -2349,6 +2349,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "inspector_pane"
+version = "0.0.1"
+dependencies = [
+ "iced",
+ "nade_core",
+ "operators",
+]
+
+[[package]]
 name = "interpolate_name"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2778,9 +2787,9 @@ dependencies = [
  "iced",
  "iced_wgpu",
  "image",
+ "inspector_pane",
  "log",
  "nade_core",
- "operators",
  "panel_system",
  "project_pane",
  "rayon",
