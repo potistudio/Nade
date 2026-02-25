@@ -889,6 +889,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "core"
+version = "0.0.1"
+dependencies = [
+ "bytes",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1135,6 +1142,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "domain"
+version = "0.0.1"
+dependencies = [
+ "core",
+]
+
+[[package]]
 name = "downcast-rs"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1161,9 +1175,9 @@ name = "effects"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "core",
  "env_logger",
  "log",
- "nade_core",
 ]
 
 [[package]]
@@ -1300,9 +1314,9 @@ name = "encoder"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "core",
  "env_logger",
  "log",
- "nade_core",
 ]
 
 [[package]]
@@ -2352,8 +2366,8 @@ dependencies = [
 name = "inspector_panel"
 version = "0.0.1"
 dependencies = [
+ "core",
  "iced",
- "nade_core",
  "operators",
 ]
 
@@ -2782,14 +2796,15 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "bytes",
+ "core",
  "crossbeam-channel",
+ "domain",
  "env_logger",
  "iced",
  "iced_wgpu",
  "image",
  "inspector_panel",
  "log",
- "nade_core",
  "panel_system",
  "project_panel",
  "rayon",
@@ -2807,13 +2822,6 @@ version = "0.0.1"
 dependencies = [
  "constants",
  "log",
-]
-
-[[package]]
-name = "nade_core"
-version = "0.0.1"
-dependencies = [
- "bytes",
 ]
 
 [[package]]
@@ -2895,11 +2903,11 @@ dependencies = [
 name = "node_playground_egui"
 version = "0.0.1"
 dependencies = [
+ "core",
  "eframe",
  "egui",
  "env_logger",
  "log",
- "nade_core",
  "operators",
 ]
 
@@ -3381,7 +3389,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 name = "operators"
 version = "0.0.1"
 dependencies = [
- "nade_core",
+ "core",
 ]
 
 [[package]]
@@ -3649,8 +3657,8 @@ name = "project_panel"
 version = "0.0.1"
 dependencies = [
  "constants",
+ "domain",
  "iced",
- "nade_core",
  "uuid",
 ]
 
@@ -3898,12 +3906,13 @@ name = "renderer"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "core",
+ "domain",
  "effects",
  "encoder",
  "env_logger",
  "image",
  "log",
- "nade_core",
  "rayon",
 ]
 
@@ -4391,8 +4400,8 @@ name = "timeline_panel"
 version = "0.0.1"
 dependencies = [
  "constants",
+ "core",
  "iced",
- "nade_core",
 ]
 
 [[package]]

@@ -9,4 +9,4 @@ authors.workspace = true
 anyhow.workspace = true
 env_logger.workspace = true
 log.workspace = true
-nade_core = { path = "../core" }
+core = { path = "../core" }

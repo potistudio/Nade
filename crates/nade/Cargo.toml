@@ -40,7 +40,8 @@ iced = { version = "0.14", features = [
 	"advanced",
 ] }
 status_bar = { path = "../status_bar" }
-nade_core = { path = "../core" }
+core = { path = "../core" }
+domain.workspace = true
 panel_system = { path = "../panel_system" }
 timeline_panel = { path = "../timeline_panel" }
 project_panel = { path = "../project_panel" }

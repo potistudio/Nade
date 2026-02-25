@@ -1,6 +1,6 @@
 use super::*;
 use anyhow::Result;
-use nade_core::FrameBuffer;
+use core::FrameBuffer;
 use std::{
 	io::Write,
 	process::{Command, Stdio},

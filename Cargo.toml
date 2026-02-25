@@ -25,6 +25,7 @@ env_logger = "0.11.8"
 constants = { path = "crates/constants" }
 nade-engine = { path = "crates/engine" }
 nade-timeline = { path = "crates/timeline_panel" }
-nade_core = { path = "crates/core" }
+core = { path = "crates/core" }
+domain = { path = "crates/domain" }
 operators = { path = "crates/operators" }
 uuid = { version = "1.19.0", features = ["v4", "serde"] }

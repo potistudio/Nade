@@ -3,7 +3,7 @@ mod hash;
 pub mod image;
 pub mod value;
 
-use nade_core::{NodeId, Value, ValueParam};
+use core::{NodeId, Value, ValueParam};
 
 pub use image::{ImageBlur1DOp, ImageDelay1Op, ImageMixOp, ImageSolidColorOp};
 pub use value::{
@@ -11,7 +11,7 @@ pub use value::{
 	ValueSelectOp, ValueSinOp,
 };
 
-pub use nade_core::{EvalAccess, Operator, ResolvedHashes, ResolvedOp};
+pub use core::{EvalAccess, Operator, ResolvedHashes, ResolvedOp};
 
 pub struct OperatorDefinition {
 	pub key: &'static str,

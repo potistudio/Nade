@@ -2,9 +2,9 @@ use crate::message::AppPanelMessage;
 use crate::panel_content::PanelContent;
 use crate::theme::TEXT_PRIMARY;
 use crate::widgets::video_view::VideoView;
+use core::PreviewModel;
 use iced::widget::{column, container, row, shader, text};
 use iced::{Color, Element, Length};
-use nade_core::PreviewModel;
 use panel_system::PanelSystemMessage;
 
 /// プレビューパネルのビュー

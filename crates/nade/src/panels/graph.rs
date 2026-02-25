@@ -6,7 +6,7 @@ use crate::widgets::draggable_number::draggable_number;
 use crate::widgets::video_view::VideoView;
 use iced::widget::{Space, button, checkbox, column, container, row, shader, text};
 use iced::{Alignment, Element, Length};
-use nade_core::{EvalContext, FrameData, Graph, Image, NodeId, Value, ValueParam};
+use core::{EvalContext, FrameData, Graph, Image, NodeId, Value, ValueParam};
 use operators::{
 	ImageBlur1DOp, ImageDelay1Op, ImageMixOp, ImageSolidColorOp, ValueAddOp, ValueConstOp,
 	ValueDelay1Op, ValueMulOp, ValueSinOp,

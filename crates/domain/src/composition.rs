@@ -1,8 +1,4 @@
-use crate::{
-	core::NodeId,
-	instance::{Instance, InstanceId},
-	object::RectangleObject,
-};
+use crate::{Instance, InstanceId, NodeId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CompositionId(usize);
@@ -27,21 +23,16 @@ impl Composition {
 		}
 	}
 
+	pub fn id(&self) -> CompositionId {
+		self.id
+	}
+
 	pub fn add_instance(&mut self, node_id: NodeId) -> &mut Instance {
 		let next_id = InstanceId::new(self.objects.len());
 		let instance = Instance::new(next_id, node_id, "Instance", 0.0, 5.0);
 
 		self.objects.push(instance);
 		self.objects.last_mut().unwrap() // safe because we just pushed an element
-	}
-
-	/// 既存UI互換: RectangleObject からインスタンスを生成
-	pub fn add_rectangle(&mut self, rect: RectangleObject) -> InstanceId {
-		let instance = self.add_instance(NodeId::new(self.objects.len()));
-		instance.name = rect.name;
-		instance.start_time = rect.start_time;
-		instance.duration = rect.duration;
-		instance.id()
 	}
 
 	/// タイムライン同期用: 全インスタンスを走査

@@ -3,11 +3,12 @@
 //! エフェクトベースのレンダリングシステムを提供します。
 
 use anyhow::Result;
+use core::{FrameBuffer, RectangleObject, RenderContext, RgbColor};
+use domain::Composition;
 use effects::Effect;
 use effects::WaveEffect;
 use encoder::Encoder;
 use image::{ImageBuffer, Rgba};
-use nade_core::{FrameBuffer, RenderContext, RgbColor};
 use rayon::prelude::*;
 
 /// 指定されたフレーム番号に対応する画像を生成
@@ -76,8 +77,6 @@ pub fn render_frame_with_effect(
 // =============================================================================
 // シーンオブジェクトレンダリング
 // =============================================================================
-
-use nade_core::{Composition, RectangleObject};
 
 /// コンポジションからフレームを生成
 ///

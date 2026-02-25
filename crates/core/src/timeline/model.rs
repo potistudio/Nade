@@ -1,6 +1,4 @@
-use crate::Composition;
-
-use super::{TimelineClip, TimelineTrack};
+use super::TimelineTrack;
 
 /// タイムラインのドメインモデル
 #[derive(Debug, Default, Clone)]

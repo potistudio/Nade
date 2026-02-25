@@ -17,10 +17,10 @@ use timeline_panel::TimelineInteraction;
 
 use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use inspector_panel::InspectorUiState;
-use nade_core::{
-	AssetType, Composition, CoreEffect, FrameData, InstanceId, Model, Msg, Project,
-	RectangleObject, TimelineClip, TimelineModel, TimelineTrack,
+use core::{
+	CoreEffect, FrameData, Model, Msg, RectangleObject, TimelineClip, TimelineModel, TimelineTrack,
 };
+use domain::{AssetType, Composition, InstanceId, Project};
 
 use crate::message::{AppPanelMessage, Message};
 use crate::panel_content::PanelContent;
@@ -265,27 +265,31 @@ impl NadeApp {
 	fn create_sample_composition() -> Composition {
 		let mut composition = Composition::new();
 
-		composition.add_rectangle(
-			RectangleObject::new("Blue Rectangle")
-				.with_start_time(0.0)
-				.with_duration(5.0)
-				.with_size(200.0, 150.0)
-				.with_fill_color(0.2, 0.6, 1.0, 1.0),
-		);
+		let rect = RectangleObject::new("Blue Rectangle")
+			.with_start_time(0.0)
+			.with_duration(5.0)
+			.with_size(200.0, 150.0)
+			.with_fill_color(0.2, 0.6, 1.0, 1.0);
+		let instance = composition.add_instance(core::NodeId::new(composition.len()));
+		instance.name = rect.name;
+		instance.start_time = rect.start_time;
+		instance.duration = rect.duration;
 
-		composition.add_rectangle(
-			RectangleObject::new("Red Rectangle")
-				.with_start_time(3.0)
-				.with_duration(5.0)
-				.with_size(100.0, 100.0)
-				.with_fill_color(1.0, 0.3, 0.3, 0.8)
-				.with_transform(nade_core::Transform {
-					position: [100.0, 50.0, 0.0],
-					rotation: [0.0, 0.0, 30.0],
-					scale: [1.0, 1.0, 1.0],
-					opacity: 1.0,
-				}),
-		);
+		let rect = RectangleObject::new("Red Rectangle")
+			.with_start_time(3.0)
+			.with_duration(5.0)
+			.with_size(100.0, 100.0)
+			.with_fill_color(1.0, 0.3, 0.3, 0.8)
+			.with_transform(core::Transform {
+				position: [100.0, 50.0, 0.0],
+				rotation: [0.0, 0.0, 30.0],
+				scale: [1.0, 1.0, 1.0],
+				opacity: 1.0,
+			});
+		let instance = composition.add_instance(core::NodeId::new(composition.len()));
+		instance.name = rect.name;
+		instance.start_time = rect.start_time;
+		instance.duration = rect.duration;
 
 		composition
 	}

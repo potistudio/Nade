@@ -1,9 +1,9 @@
-use eframe::egui;
-use egui::{ColorImage, TextureHandle, TextureOptions};
-use nade_core::{
+use core::{
 	EvalContext, Graph, Image, NodeId, NodeState, Operator, OutputType, ParamKind, ParamValue,
 	Value, ValueKind, ValueParam, ValueParamUi,
 };
+use eframe::egui;
+use egui::{ColorImage, TextureHandle, TextureOptions};
 use operators::{
 	ImageBlur1DOp, ImageDelay1Op, ImageMixOp, ImageSolidColorOp, ValueAddOp, ValueCompareGTOp,
 	ValueConstOp, ValueDelay1Op, ValueMulOp, ValueSelectOp, ValueSinOp,

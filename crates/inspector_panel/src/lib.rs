@@ -4,7 +4,7 @@ use draggable_number::draggable_number;
 use iced::widget::button as button_widget;
 use iced::widget::{button, checkbox, column, container, row, scrollable, text};
 use iced::{Alignment, Element, Length};
-use nade_core::{
+use core::{
 	Graph, NodeId, NodeState, Operator, OutputType, ParamDescriptor, ParamKind, ParamValue, Value,
 	ValueParam, ValueParamUi,
 };

@@ -13,5 +13,5 @@ workspace = true
 [dependencies]
 iced.workspace = true
 uuid.workspace = true
-nade_core.workspace = true
+domain.workspace = true
 constants.workspace = true

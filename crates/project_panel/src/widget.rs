@@ -1,10 +1,9 @@
 use crate::{ProjectPaneMessage, ProjectPaneState};
 use constants::style::*;
+use domain::{Asset, AssetId, AssetType, Project};
 use iced::widget::container::Style;
 use iced::widget::{column, container, mouse_area, row, text};
 use iced::{Color, Element, Length};
-use nade_core::Project;
-use nade_core::{Asset, AssetId, AssetType};
 
 #[derive(Debug)]
 pub struct ProjectPaneWidget<'a> {

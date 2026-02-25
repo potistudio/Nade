@@ -1,7 +1,7 @@
+use core::FrameData;
 use iced::advanced::graphics::Viewport;
 use iced::widget::shader::{Pipeline, Primitive, Program};
 use iced::{Rectangle, mouse};
-use nade_core::FrameData;
 use std::fmt::Debug;
 
 // Need wgpu types

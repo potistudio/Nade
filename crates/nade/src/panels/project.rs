@@ -1,9 +1,8 @@
 use crate::message::AppPanelMessage;
 use crate::panel_content::PanelContent;
+use domain::Project;
 use iced::Element;
 use panel_system::PanelSystemMessage;
-
-use nade_core::Project;
 use project_panel::{ProjectPaneState, ProjectPaneWidget};
 
 pub fn view<'a>(

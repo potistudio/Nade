@@ -1,6 +1,6 @@
 //! # Core Loop
 //!
-//! nade_core のロジックループを実行するモジュールです。
+//! core のロジックループを実行するモジュールです。
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -8,7 +8,7 @@ use std::thread;
 use std::time::Instant;
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
-use nade_core::{CoreEffect, FrameData, Model, Msg, update};
+use core::{CoreEffect, FrameData, Model, Msg, update};
 
 use crate::renderer;
 

@@ -1,7 +1,7 @@
 use crate::message::Message;
 use iced::futures::stream::BoxStream;
 use iced::futures::{SinkExt, StreamExt};
-use nade_core::Model;
+use core::Model;
 use std::sync::{Arc, Mutex};
 
 /// Coreへの接続状態（Subscription用）

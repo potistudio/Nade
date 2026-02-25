@@ -1,4 +1,4 @@
-use nade_core::core::AssetId;
+use domain::AssetId;
 
 /// Messsages that the project pane can send.
 #[derive(Debug, Clone)]

@@ -1,6 +1,4 @@
-use crate::AssetId;
-use crate::asset::{Asset, AssetType};
-use crate::composition::Composition;
+use crate::{Asset, AssetId, AssetType, Composition};
 
 #[derive(Debug, Default)]
 pub struct Project {
@@ -9,6 +7,10 @@ pub struct Project {
 }
 
 impl Project {
+	pub fn compositions(&self) -> &[Composition] {
+		&self.compositions
+	}
+
 	pub fn add_asset(&mut self, name: String, kind: AssetType) -> AssetId {
 		let id = AssetId::new(self.assets.len());
 		let asset = Asset::new(id, name, kind, None);

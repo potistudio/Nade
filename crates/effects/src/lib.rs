@@ -1,7 +1,7 @@
 pub mod wave;
 pub use wave::WaveEffect;
 
-use nade_core::{RenderContext, RgbColor};
+use core::{RenderContext, RgbColor};
 
 // =============================================================================
 // エフェクトトレイト

@@ -12,5 +12,5 @@ workspace = true
 
 [dependencies]
 iced.workspace = true
-nade_core.workspace = true
+core.workspace = true
 operators.workspace = true

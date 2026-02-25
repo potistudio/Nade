@@ -4,7 +4,7 @@ use crate::theme::panel::PROPERTIES_BG;
 use crate::theme::{TEXT_MUTED, TEXT_PRIMARY};
 use iced::widget::{column, container, row, text};
 use iced::{Element, Length};
-use nade_core::Transform;
+use core::Transform;
 use panel_system::PanelSystemMessage;
 
 pub fn view<'a>(

@@ -1,6 +1,6 @@
 use crate::common::{resolve_value_param, set_value_param, value_param_descriptor};
 use crate::hash::value::{hash_f32, hash_f32_pair};
-use nade_core::{
+use core::{
 	EvalAccess, EvalContext, EvalError, NodeState, Operator, Output, OutputType, ParamDescriptor,
 	ParamValue, ResolvedOp, Value, ValueKind, ValueParam, ValueParamUi,
 };

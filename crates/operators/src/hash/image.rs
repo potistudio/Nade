@@ -1,7 +1,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use nade_core::Image;
+use core::Image;
 
 pub(crate) fn hash_color_size(color: [f32; 4], width: u32, height: u32) -> u64 {
 	let mut hasher = DefaultHasher::new();

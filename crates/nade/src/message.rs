@@ -6,8 +6,8 @@ use panel_system::PanelSystemMessage;
 use timeline_panel::TimelineMessage;
 
 use crate::panel_content::PanelContent;
+use core::FrameData;
 pub use inspector_panel::InspectorMessage;
-use nade_core::FrameData;
 
 pub use project_panel::ProjectPaneMessage;
 

@@ -7,7 +7,7 @@ use iced::{
 };
 
 use constants::timeline::*;
-use nade_core::{TimelineClip, TimelineModel};
+use core::{TimelineClip, TimelineModel};
 
 use crate::widget::{TimelineCanvasEvent, TimelineMessage, TimelineUpdate};
 

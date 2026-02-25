@@ -4,7 +4,7 @@ use crate::common::{
 };
 use crate::hash::image::hash_image_pair;
 use crate::hash::value::hash_f32;
-use nade_core::{
+use core::{
 	EvalAccess, EvalContext, EvalError, Image, NodeId, NodeState, Operator, Output, OutputType,
 	ParamDescriptor, ParamValue, ResolvedOp, ValueKind, ValueParam, ValueParamUi,
 };

@@ -11,6 +11,7 @@ encoder = { path = "../encoder" }
 anyhow.workspace = true
 env_logger.workspace = true
 log.workspace = true
-nade_core = { path = "../core" }
+core = { path = "../core" }
+domain.workspace = true
 image = "0.25.9"
 rayon = "1.11.0"

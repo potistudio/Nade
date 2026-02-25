@@ -1,4 +1,4 @@
-use crate::core::NodeId;
+use crate::NodeId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InstanceId(usize);
@@ -54,6 +54,10 @@ impl Instance {
 
 	pub fn id(&self) -> InstanceId {
 		self.id
+	}
+
+	pub fn target_node_id(&self) -> NodeId {
+		self.target_node_id
 	}
 
 	pub fn name(&self) -> &str {
