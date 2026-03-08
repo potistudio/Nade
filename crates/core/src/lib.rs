@@ -83,6 +83,7 @@ pub mod object;
 pub mod ops;
 pub mod timeline;
 
+pub use core::*;
 pub use graph::{Graph, Node};
 pub use object::{RectangleObject, SceneObject, SceneObjectData, SceneObjectId};
 pub use ops::{

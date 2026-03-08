@@ -29,3 +29,4 @@ core = { path = "crates/core" }
 domain = { path = "crates/domain" }
 operators = { path = "crates/operators" }
 uuid = { version = "1.19.0", features = ["v4", "serde"] }
+serde = { version = "1.0.228", features = ["derive"] }

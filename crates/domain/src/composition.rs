@@ -1,75 +1,75 @@
-use crate::{Instance, InstanceId, NodeId};
+use core::{CompositionId, NodeId, id::InstanceId};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CompositionId(usize);
+use crate::instance::Instance;
 
-/// Composition
-///
 /// Composition is a container that manages multiple instances and controls them over time.
 #[derive(Debug)]
 pub struct Composition {
 	/// ID of the composition
 	id: CompositionId,
 
-	/// Vector of instances contained in the composition
-	objects: Vec<Instance>,
+	/// Name of the composition
+	name: String,
+
+	/// Vector of instances in the composition
+	instances: Vec<Instance>,
 }
 
 impl Composition {
-	pub fn new() -> Self {
+	//==== Constructor =========================================================
+	/// Creates a new composition with the given ID and name
+	pub fn new(id: CompositionId, name: impl Into<String>) -> Self {
 		Self {
-			id: CompositionId(0),
-			objects: Vec::new(),
+			id,
+			name: name.into(),
+			instances: Vec::new(),
 		}
 	}
 
+	//==== Getter ==============================================================
+	/// Returns the ID of the composition
 	pub fn id(&self) -> CompositionId {
 		self.id
 	}
 
+	//==== Add Method ==========================================================
 	pub fn add_instance(&mut self, node_id: NodeId) -> &mut Instance {
-		let next_id = InstanceId::new(self.objects.len());
+		let next_id = InstanceId::new(self.instances.len());
 		let instance = Instance::new(next_id, node_id, "Instance", 0.0, 5.0);
 
-		self.objects.push(instance);
-		self.objects.last_mut().unwrap() // safe because we just pushed an element
+		self.instances.push(instance);
+		self.instances.last_mut().unwrap() // safe because we just pushed an element
 	}
 
 	/// タイムライン同期用: 全インスタンスを走査
 	pub fn all_objects(&self) -> impl Iterator<Item = &Instance> {
-		self.objects.iter()
+		self.instances.iter()
 	}
 
 	/// IDでオブジェクトを取得
 	pub fn get(&self, id: InstanceId) -> Option<&Instance> {
-		self.objects.iter().find(|obj| obj.id() == id)
+		self.instances.iter().find(|obj| obj.id() == id)
 	}
 
 	/// IDでオブジェクトを可変参照で取得
 	pub fn get_mut(&mut self, id: InstanceId) -> Option<&mut Instance> {
-		self.objects.iter_mut().find(|obj| obj.id() == id)
+		self.instances.iter_mut().find(|obj| obj.id() == id)
 	}
 
 	/// オブジェクトを削除
 	pub fn remove(&mut self, id: InstanceId) {
-		if let Some(pos) = self.objects.iter().position(|obj| obj.id() == id) {
-			self.objects.remove(pos);
+		if let Some(pos) = self.instances.iter().position(|obj| obj.id() == id) {
+			self.instances.remove(pos);
 		}
 	}
 
 	/// オブジェクトの数を取得
 	pub fn len(&self) -> usize {
-		self.objects.len()
+		self.instances.len()
 	}
 
 	/// オブジェクトが空かどうか
 	pub fn is_empty(&self) -> bool {
-		self.objects.is_empty()
-	}
-}
-
-impl Default for Composition {
-	fn default() -> Self {
-		Self::new()
+		self.instances.is_empty()
 	}
 }

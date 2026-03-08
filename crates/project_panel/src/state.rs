@@ -1,4 +1,4 @@
-use domain::AssetId;
+use core::AssetId;
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Default)]

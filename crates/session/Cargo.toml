@@ -1,6 +1,6 @@
 [package]
-name = "project_panel"
-description = "Project panel"
+name = "session"
+description = "Editor session state and document orchestration"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,8 +11,5 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-iced.workspace = true
-uuid.workspace = true
-domain.workspace = true
-constants.workspace = true
 core = { workspace = true }
+operators = { workspace = true }

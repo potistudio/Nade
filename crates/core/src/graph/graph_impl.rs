@@ -37,14 +37,14 @@ impl Graph {
 	pub fn add_node_boxed(&mut self, operator: Box<dyn Operator>) -> NodeId {
 		let node_id = NodeId::new(self.next_id as usize);
 		self.next_id += 1;
-		self.nodes.insert(
-			node_id,
-			Node {
-				id: node_id,
-				operator,
-				state: NodeState::default(),
-			},
-		);
+		// self.nodes.insert(
+		// 	node_id,
+		// 	Node {
+		// 		id: node_id,
+		// 		operator,
+		// 		state: NodeState::default(),
+		// 	},
+		// );
 		node_id
 	}
 
@@ -109,35 +109,36 @@ impl Graph {
 			None => return Err(EvalError::NodeNotFound(node_id)),
 		};
 
-		let resolved = operator.resolve(self, time, ctx)?;
-		let hashes = resolved.hashes();
-		let key = CacheKey::new(
-			node_id,
-			time,
-			hashes.param_hash,
-			hashes.input_hash,
-			hash_context(ctx),
-		);
+		// let resolved = operator.resolve(self, time, ctx)?;
+		// let hashes = resolved.hashes();
+		// let key = CacheKey::new(
+		// 	node_id,
+		// 	time,
+		// 	hashes.param_hash,
+		// 	hashes.input_hash,
+		// 	hash_context(ctx),
+		// );
 
-		if let Some(entry) = self.cache.get(&key) {
-			if let Some(node) = self.nodes.get_mut(&node_id) {
-				node.state = entry.state.clone();
-			}
-			return Ok(entry.output.clone());
-		}
+		// if let Some(entry) = self.cache.get(&key) {
+		// 	if let Some(node) = self.nodes.get_mut(&node_id) {
+		// 		node.state = entry.state.clone();
+		// 	}
+		// 	return Ok(entry.output.clone());
+		// }
 
-		let (output, state_out) = operator.compute(resolved, time, &state_in, ctx)?;
-		self.cache.insert(
-			key,
-			CacheEntry {
-				output: output.clone(),
-				state: state_out.clone(),
-			},
-		);
-		if let Some(node) = self.nodes.get_mut(&node_id) {
-			node.state = state_out;
-		}
-		Ok(output)
+		// let (output, state_out) = operator.compute(resolved, time, &state_in, ctx)?;
+		// self.cache.insert(
+		// 	key,
+		// 	CacheEntry {
+		// 		output: output.clone(),
+		// 		state: state_out.clone(),
+		// 	},
+		// );
+		// if let Some(node) = self.nodes.get_mut(&node_id) {
+		// 	node.state = state_out;
+		// }
+		// Ok(output)
+		Ok(Output::Value(Value::Vec2([0.0, 0.0])))
 	}
 }
 

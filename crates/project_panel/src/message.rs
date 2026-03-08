@@ -1,4 +1,4 @@
-use domain::AssetId;
+use core::AssetId;
 
 /// Messsages that the project pane can send.
 #[derive(Debug, Clone)]

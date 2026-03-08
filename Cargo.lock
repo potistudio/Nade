@@ -893,6 +893,7 @@ name = "core"
 version = "0.0.1"
 dependencies = [
  "bytes",
+ "serde",
 ]
 
 [[package]]
@@ -2810,6 +2811,7 @@ dependencies = [
  "rayon",
  "renderer",
  "serde",
+ "session",
  "status_bar",
  "timeline_panel",
  "tokio",
@@ -3657,6 +3659,7 @@ name = "project_panel"
 version = "0.0.1"
 dependencies = [
  "constants",
+ "core",
  "domain",
  "iced",
  "uuid",
@@ -4061,6 +4064,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "session"
+version = "0.0.1"
+dependencies = [
+ "core",
+ "operators",
 ]
 
 [[package]]

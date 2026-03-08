@@ -1,6 +1,8 @@
+use core::AssetId;
+
 use crate::{ProjectPaneMessage, ProjectPaneState};
 use constants::style::*;
-use domain::{Asset, AssetId, AssetType, Project};
+use domain::{Asset, AssetType, Project};
 use iced::widget::container::Style;
 use iced::widget::{column, container, mouse_area, row, text};
 use iced::{Color, Element, Length};
@@ -45,7 +47,7 @@ impl<'a> ProjectPaneWidget<'a> {
 
 		let tree = column(root_assets.iter().filter_map(|id| {
 			project
-				.get_asset(id)
+				.asset(id)
 				.map(|asset| view_item(project, asset, state, 0))
 		}))
 		.spacing(4);
@@ -81,7 +83,7 @@ fn summarize_items(project: &Project, items: &[AssetId]) -> ProjectSummary {
 	fn walk(project: &Project, asset_id: &AssetId, summary: &mut ProjectSummary) {
 		summary.total += 1;
 
-		if let Some(asset) = project.get_asset(asset_id) {
+		if let Some(asset) = project.asset(asset_id) {
 			match asset.kind() {
 				AssetType::Folder => summary.folders += 1,
 				AssetType::Composition => summary.compositions += 1,
@@ -202,7 +204,7 @@ fn view_item<'a>(
 
 	if is_expanded {
 		for child in &asset.children {
-			if let Some(child_asset) = project.get_asset(child) {
+			if let Some(child_asset) = project.asset(child) {
 				children.push(view_item(project, child_asset, state, depth + 1));
 			}
 		}

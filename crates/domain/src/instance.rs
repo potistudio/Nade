@@ -1,17 +1,4 @@
-use crate::NodeId;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct InstanceId(usize);
-
-impl InstanceId {
-	pub fn new(id: usize) -> Self {
-		Self(id)
-	}
-
-	pub fn value(&self) -> usize {
-		self.0
-	}
-}
+use core::{NodeId, id::InstanceId};
 
 /// タイムラインクリップ
 ///

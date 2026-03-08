@@ -1,6 +1,4 @@
 //! # Nade - Entry Point
-//!
-//! Nadeアプリケーションのエントリーポイント。
 
 mod app;
 mod message;
@@ -10,10 +8,12 @@ mod services;
 mod theme;
 mod widgets;
 
+use app::NadeApp;
+use iced::Theme;
+
 const INTER_FONT: &[u8] = include_bytes!("../../../assets/fonts/Inter/Inter_regular.otf");
 
 fn load_app_icon() -> Option<iced::window::Icon> {
-	// アイコンファイルのパス（実行ファイルからの相対パス）
 	let icon_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
 		.parent()?
 		.parent()?
@@ -33,14 +33,14 @@ pub fn run_app() -> iced::Result {
 		..Default::default()
 	};
 
-	iced::application(app::NadeApp::new, app::NadeApp::update, app::NadeApp::view)
-		.subscription(app::NadeApp::subscription)
-		.theme(app::theme)
+	iced::application(NadeApp::new, NadeApp::update, NadeApp::view)
+		.subscription(NadeApp::subscription)
+		.theme(Theme::Dracula)
 		.font(INTER_FONT)
 		.default_font(iced::Font::with_name("Inter"))
 		.title("Nade")
 		.window(window_settings)
-		.exit_on_close_request(false)
+		.exit_on_close_request(true)
 		.run()
 }
 
@@ -63,6 +63,5 @@ pub fn main() -> iced::Result {
 
 	env_logger::init();
 
-	// UIスレッドを中心にし、重い処理のみをバックグラウンドへ逃がす
 	run_app()
 }

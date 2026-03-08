@@ -1,4 +1,4 @@
-use crate::AssetId;
+use core::AssetId;
 
 #[derive(Debug)]
 pub enum AssetType {

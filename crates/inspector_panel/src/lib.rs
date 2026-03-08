@@ -1,16 +1,14 @@
 mod draggable_number;
 
+use core::{
+	Graph, NodeId, Operator, ParamDescriptor, ParamKind, ParamValue, Value, ValueParam,
+	ValueParamUi,
+};
 use draggable_number::draggable_number;
 use iced::widget::button as button_widget;
 use iced::widget::{button, checkbox, column, container, row, scrollable, text};
 use iced::{Alignment, Element, Length};
-use core::{
-	Graph, NodeId, NodeState, Operator, OutputType, ParamDescriptor, ParamKind, ParamValue, Value,
-	ValueParam, ValueParamUi,
-};
-use operators::{
-	create_operator, next_operator_key, operator_definitions, operator_label, prev_operator_key,
-};
+use operators::operator_label;
 
 const INSPECTOR_BG: iced::Color = iced::Color::from_rgb(0.128, 0.128, 0.128);
 const TEXT_PRIMARY: iced::Color = iced::Color::WHITE;
@@ -29,147 +27,10 @@ pub enum InspectorMessage {
 	},
 }
 
-#[derive(Debug)]
-pub struct InspectorUiState {
-	graph: Graph,
-	operator_ids: Vec<NodeId>,
-}
-
-impl InspectorUiState {
-	pub fn new() -> Self {
-		Self {
-			graph: Graph::new(),
-			operator_ids: Vec::new(),
-		}
-	}
-
-	pub fn update(&mut self, msg: InspectorMessage) {
-		match msg {
-			InspectorMessage::AddOperator => {
-				self.add_operator();
-			}
-			InspectorMessage::CycleOperatorPrev(node_id) => {
-				self.cycle_operator(node_id, false);
-			}
-			InspectorMessage::CycleOperatorNext(node_id) => {
-				self.cycle_operator(node_id, true);
-			}
-			InspectorMessage::SetOperatorParameter {
-				node_id,
-				index,
-				value,
-			} => {
-				self.set_parameter(node_id, index, value);
-			}
-		}
-	}
-
-	pub fn evaluate(&mut self, _time: f64) {}
-
-	fn operator_ids(&self) -> &[NodeId] {
-		&self.operator_ids
-	}
-
-	fn graph(&self) -> &Graph {
-		&self.graph
-	}
-
-	fn add_operator(&mut self) {
-		let Some(definition) = operator_definitions().first() else {
-			return;
-		};
-		let Some(operator) = self.make_operator(definition.key, None) else {
-			return;
-		};
-		let node_id = self.graph.add_node_boxed(operator);
-		self.operator_ids.push(node_id);
-		self.graph.clear_cache();
-	}
-
-	fn cycle_operator(&mut self, node_id: NodeId, forward: bool) {
-		let Some(current_key) = self.graph.node(node_id).map(|node| node.operator.key()) else {
-			return;
-		};
-		let target_key = if forward {
-			next_operator_key(current_key)
-		} else {
-			prev_operator_key(current_key)
-		};
-		let Some(target_key) = target_key else {
-			return;
-		};
-		let Some(replacement) = self.make_operator(target_key, Some(node_id)) else {
-			return;
-		};
-
-		if let Some(node) = self.graph.node_mut(node_id) {
-			node.operator = replacement;
-			node.state = NodeState::default();
-			self.graph.clear_cache();
-		}
-	}
-
-	fn set_parameter(&mut self, node_id: NodeId, index: usize, value: ParamValue) {
-		if let Some(node) = self.graph.node_mut(node_id)
-			&& node.operator.set_parameter(index, value)
-		{
-			node.state = NodeState::default();
-			self.graph.clear_cache();
-		}
-	}
-
-	fn make_operator(&self, key: &str, node_hint: Option<NodeId>) -> Option<Box<dyn Operator>> {
-		let fallback = node_hint
-			.or_else(|| self.operator_ids.last().copied())
-			.unwrap_or_else(|| NodeId::new(1));
-		let mut operator = create_operator(key)?;
-		self.bind_image_inputs(operator.as_mut(), fallback);
-		Some(operator)
-	}
-
-	fn bind_image_inputs(&self, operator: &mut dyn Operator, fallback: NodeId) {
-		let image_nodes = self.image_node_ids();
-		let mut image_input_index = 0usize;
-
-		for (index, descriptor) in operator.parameters().into_iter().enumerate() {
-			if !matches!(descriptor.kind, ParamKind::ImageInput) {
-				continue;
-			}
-
-			let target = image_nodes
-				.get(image_input_index)
-				.copied()
-				.or_else(|| image_nodes.first().copied())
-				.unwrap_or(fallback);
-
-			let _ = operator.set_parameter(index, ParamValue::ImageInput(target));
-			image_input_index += 1;
-		}
-	}
-
-	fn image_node_ids(&self) -> Vec<NodeId> {
-		self.operator_ids
-			.iter()
-			.copied()
-			.filter(|node_id| {
-				self.graph
-					.node(*node_id)
-					.is_some_and(|node| node.operator.output_type() == OutputType::Image)
-			})
-			.collect()
-	}
-}
-
-impl Default for InspectorUiState {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
-pub fn view<'a>(state: &'a InspectorUiState) -> Element<'a, InspectorMessage> {
+pub fn view<'a>(graph: &'a Graph, operator_ids: &'a [NodeId]) -> Element<'a, InspectorMessage> {
 	let add_button = add_operator_button();
 
-	let body: Element<'_, InspectorMessage> = if state.operator_ids().is_empty() {
+	let body: Element<'_, InspectorMessage> = if operator_ids.is_empty() {
 		container(add_button)
 			.width(Length::Fill)
 			.height(Length::Fill)
@@ -178,9 +39,9 @@ pub fn view<'a>(state: &'a InspectorUiState) -> Element<'a, InspectorMessage> {
 			.into()
 	} else {
 		let mut list = column![add_button].spacing(10).width(Length::Fill);
-		for node_id in state.operator_ids() {
-			if let Some(node) = state.graph().node(*node_id) {
-				list = list.push(operator_card(*node_id, node.operator.as_ref()));
+		for node_id in operator_ids {
+			if let Some(node) = graph.node(*node_id) {
+				// list = list.push(operator_card(*node_id, node.operator.as_ref()));
 			}
 		}
 

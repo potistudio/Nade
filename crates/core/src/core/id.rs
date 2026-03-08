@@ -1,7 +1,10 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct NodeId(usize);
+use serde::{Deserialize, Serialize};
 
-impl NodeId {
+/// ID for asset
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct AssetId(usize);
+
+impl AssetId {
 	pub fn new(id: usize) -> Self {
 		Self(id)
 	}
@@ -11,10 +14,39 @@ impl NodeId {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AssetId(usize);
+/// ID for composition
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct CompositionId(usize);
 
-impl AssetId {
+impl CompositionId {
+	pub fn new(id: usize) -> Self {
+		Self(id)
+	}
+
+	pub fn value(&self) -> usize {
+		self.0
+	}
+}
+
+/// ID for node
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct InstanceId(usize);
+
+impl InstanceId {
+	pub fn new(id: usize) -> Self {
+		Self(id)
+	}
+
+	pub fn value(&self) -> usize {
+		self.0
+	}
+}
+
+/// ID for node
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct NodeId(usize);
+
+impl NodeId {
 	pub fn new(id: usize) -> Self {
 		Self(id)
 	}

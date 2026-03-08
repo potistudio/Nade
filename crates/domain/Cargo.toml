@@ -6,4 +6,4 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-core.workspace = true
+core = { workspace = true }
