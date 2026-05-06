@@ -1,3 +1,3 @@
-pub mod preview;
-pub mod project;
+pub mod browser;
+pub mod inspector;
 pub mod timeline;

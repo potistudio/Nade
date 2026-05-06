@@ -7,19 +7,15 @@ use timeline_panel::TimelineMessage;
 
 use crate::panel_content::PanelContent;
 use core::FrameData;
-pub use inspector_panel::InspectorMessage;
 
-pub use project_panel::ProjectPaneMessage;
+pub use browser_panel::ProjectPaneMessage;
 
 /// アプリケーションパネルメッセージ（ラッパー）
 #[derive(Debug, Clone)]
 pub enum AppPanelMessage {
-	Timeline {
-		panel_id: usize,
-		message: TimelineMessage,
-	},
-	Inspector(InspectorMessage),
+	Timeline { panel_id: usize, message: TimelineMessage },
 	Project(ProjectPaneMessage),
+	Inspector(inspector_panel::InspectorMessage),
 }
 
 /// アプリケーションメッセージ

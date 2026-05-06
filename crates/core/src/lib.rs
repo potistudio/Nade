@@ -6,6 +6,11 @@ pub use core::{
 	AssetId, EvalContext, EvalError, Image, NodeId, NodeState, OperatorState, Output, OutputType,
 	Value, ValueKind, ValueParam,
 };
+pub mod bitdepth;
+pub mod sample_rate;
+
+pub use bitdepth::BitDepth;
+pub use sample_rate::SampleRate;
 
 // =============================================================================
 // 基本型
@@ -77,14 +82,12 @@ pub struct RenderContext {
 // =============================================================================
 
 pub mod core;
-pub mod graph;
 mod hash;
 pub mod object;
 pub mod ops;
 pub mod timeline;
 
 pub use core::*;
-pub use graph::{Graph, Node};
 pub use object::{RectangleObject, SceneObject, SceneObjectData, SceneObjectId};
 pub use ops::{
 	EvalAccess, Operator, ParamDescriptor, ParamKind, ParamValue, ResolvedHashes, ResolvedOp,

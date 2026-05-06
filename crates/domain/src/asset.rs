@@ -1,6 +1,6 @@
 use core::AssetId;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AssetType {
 	Image,
 	Video,
@@ -34,7 +34,7 @@ impl Asset {
 		self.id
 	}
 
-	pub fn kind(&self) -> &AssetType {
-		&self.kind
+	pub fn kind(&self) -> AssetType {
+		self.kind
 	}
 }

@@ -1,6 +1,7 @@
 mod asset;
 mod composition;
 mod instance;
+mod node;
 mod project;
 
 pub use asset::{Asset, AssetType};

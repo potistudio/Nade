@@ -2,8 +2,8 @@ use crate::message::AppPanelMessage;
 use crate::panel_content::PanelContent;
 use domain::Project;
 use iced::Element;
+use browser_panel::{ProjectPaneState, ProjectPaneWidget};
 use panel_system::PanelSystemMessage;
-use project_panel::{ProjectPaneState, ProjectPaneWidget};
 
 pub fn view<'a>(
 	project: &'a Project,

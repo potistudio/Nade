@@ -23,7 +23,7 @@ publish.workspace = true
 workspace = true
 
 [[bin]]
-name = "nade"
+name = "Nade"
 path = "src/main.rs"
 
 [dependencies]
@@ -39,12 +39,12 @@ iced = { version = "0.14", features = [
 	"canvas",
 	"advanced",
 ] }
-status_bar = { path = "../status_bar" }
-core = { path = "../core" }
+browser_panel = { path = "../browser_panel" }
+constants = { workspace = true }
+core = { workspace = true }
 domain.workspace = true
 panel_system = { path = "../panel_system" }
 timeline_panel = { path = "../timeline_panel" }
-project_panel = { path = "../project_panel" }
 inspector_panel = { path = "../inspector_panel" }
 rayon = "1.10"
 crossbeam-channel = "0.5.15"
@@ -54,7 +54,6 @@ bytemuck = "1.16"
 wgpu = "27.0.1"
 iced_wgpu = "0.14"
 renderer = { path = "../renderer" }
-session = { path = "../session" }
 serde = "1.0.228"
 
 [package.metadata.bundle]

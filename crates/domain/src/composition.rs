@@ -11,6 +11,21 @@ pub struct Composition {
 	/// Name of the composition
 	name: String,
 
+	/// Width of the composition in pixels
+	width: u32,
+
+	/// Height of the composition in pixels
+	height: u32,
+
+	/// Frame rate of the composition
+	fps: f32,
+
+	/// Start time of the composition in seconds
+	start_time: f64,
+
+	/// End time of the composition in seconds
+	end_time: f64,
+
 	/// Vector of instances in the composition
 	instances: Vec<Instance>,
 }
@@ -18,10 +33,21 @@ pub struct Composition {
 impl Composition {
 	//==== Constructor =========================================================
 	/// Creates a new composition with the given ID and name
-	pub fn new(id: CompositionId, name: impl Into<String>) -> Self {
+	pub fn new(
+		id: CompositionId,
+		name: impl Into<String>,
+		width: u32,
+		height: u32,
+		fps: f32,
+	) -> Self {
 		Self {
 			id,
 			name: name.into(),
+			width,
+			height,
+			fps,
+			start_time: 0.0,
+			end_time: 10.0, // デフォルトの終了時間は10秒
 			instances: Vec::new(),
 		}
 	}

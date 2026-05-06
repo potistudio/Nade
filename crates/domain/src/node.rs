@@ -1,5 +1,4 @@
-use crate::core::{NodeId, NodeState};
-use crate::ops::Operator;
+use core::{NodeId, NodeState, Operator};
 
 /// Node represents a processing unit in the graph, which can contain multiple operators and maintain its state.
 #[derive(Debug)]
@@ -9,7 +8,6 @@ pub struct Node {
 
 	/// Vector of operators in the node
 	pub operator: Vec<Box<dyn Operator>>,
-
 	pub state: NodeState,
 }
 

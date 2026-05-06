@@ -1,6 +1,6 @@
 [package]
-name = "session"
-description = "Editor session state and document orchestration"
+name = "browser_panel"
+description = "Browser panel"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,5 +11,8 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+iced.workspace = true
+uuid.workspace = true
+domain.workspace = true
+constants.workspace = true
 core = { workspace = true }
-operators = { workspace = true }

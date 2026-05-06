@@ -1,16 +1,24 @@
-use core::{AssetId, CompositionId, Node, NodeId};
-use std::{collections::HashMap, hash::Hash};
+use core::{AssetId, BitDepth, CompositionId, NodeId, SampleRate};
+use std::collections::HashMap;
 
 use crate::{
 	asset::{Asset, AssetType},
 	composition::Composition,
+	node::Node,
 };
 
 /// Project is the top-level container that holds all compositions, assets, and nodes in a project.
 #[derive(Debug)]
 pub struct Project {
 	/// Name of the project
-	pub name: String,
+	name: String,
+
+	/// File path of the project. None if the project is unsaved.
+	path: Option<std::path::PathBuf>,
+
+	bitdepth: BitDepth,
+
+	sample_rate: SampleRate,
 
 	/// Vector of compositions in the project
 	compositions: HashMap<CompositionId, Composition>,
@@ -25,9 +33,12 @@ pub struct Project {
 impl Project {
 	//==== Constructor =========================================================
 	/// Creates a new project with the given name
-	pub fn new(name: impl Into<String>) -> Self {
+	pub fn new(name: impl Into<String>, bitdepth: BitDepth, sample_rate: SampleRate) -> Self {
 		Self {
 			name: name.into(),
+			path: None,
+			bitdepth,
+			sample_rate,
 			compositions: HashMap::new(),
 			assets: Vec::new(),
 			nodes: Vec::new(),
@@ -35,6 +46,26 @@ impl Project {
 	}
 
 	//==== Getter ==============================================================
+	/// Returns a reference to the name of the project
+	pub fn name(&self) -> &str {
+		&self.name
+	}
+
+	/// Returns a reference to the file path of the project. None if the project is unsaved.
+	pub fn path(&self) -> Option<&std::path::PathBuf> {
+		self.path.as_ref()
+	}
+
+	/// Returns the bit depth of the project
+	pub fn bitdepth(&self) -> BitDepth {
+		self.bitdepth
+	}
+
+	/// Returns the sample rate of the project
+	pub fn sample_rate(&self) -> SampleRate {
+		self.sample_rate
+	}
+
 	/// Returns a reference to the list of compositions in the project
 	pub fn compositions(&self) -> Vec<CompositionId> {
 		self.compositions.values().map(|comp| comp.id()).collect()
@@ -52,19 +83,25 @@ impl Project {
 
 	//==== Factory Method ======================================================
 	/// Adds a new asset to the project with the given name and type, and returns its ID
-	pub fn create_asset(&mut self, name: String, kind: AssetType) -> AssetId {
+	pub fn create_asset(&mut self, name: impl Into<String>, kind: AssetType) -> AssetId {
 		let id = AssetId::new(self.assets.len());
-		let asset = Asset::new(id, name, kind, None);
+		let asset = Asset::new(id, name.into(), kind, None);
 
 		self.assets.push(asset);
 
 		id
 	}
 
-	/// Adds a new composition to the project with the given name and returns its ID
-	pub fn create_composition(&mut self, name: impl Into<String>) -> CompositionId {
+	/// Adds a new composition to the project with the given description and returns its ID
+	pub fn create_composition(
+		&mut self,
+		name: impl Into<String>,
+		width: u32,
+		height: u32,
+		fps: f32,
+	) -> CompositionId {
 		let id = CompositionId::new(self.compositions.len());
-		let composition = Composition::new(id, name);
+		let composition = Composition::new(id, name, width, height, fps);
 
 		self.compositions.insert(id, composition);
 
@@ -83,13 +120,13 @@ impl Project {
 
 	//==== Find Method =========================================================
 	/// Returns a reference to the asset with the given ID
-	pub fn asset(&self, id: &AssetId) -> Option<&Asset> {
-		self.assets.iter().find(|asset| asset.id() == *id)
+	pub fn asset(&self, id: AssetId) -> Option<&Asset> {
+		self.assets.iter().find(|asset| asset.id() == id)
 	}
 
 	/// Returns a mutable reference to the asset with the given ID.
-	pub fn asset_mut(&mut self, id: &AssetId) -> Option<&mut Asset> {
-		self.assets.iter_mut().find(|asset| asset.id() == *id)
+	pub fn asset_mut(&mut self, id: AssetId) -> Option<&mut Asset> {
+		self.assets.iter_mut().find(|asset| asset.id() == id)
 	}
 
 	/// Returns a reference to the composition with the given ID.
@@ -115,10 +152,57 @@ impl Project {
 	pub fn node_mut(&mut self, id: &NodeId) -> Option<&mut Node> {
 		self.nodes.iter_mut().find(|node| node.id() == *id)
 	}
+
+	//==== Update Method =======================================================
+	pub fn save(&self) -> Result<(), std::io::Error> {
+		Ok(())
+	}
+
+	/// Saves the project to the given file path. If the project is already saved, it updates the file path.
+	pub fn save_as(&mut self, path: impl Into<std::path::PathBuf>) -> Result<(), std::io::Error> {
+		//TODO: Implement save logic here
+
+		self.path = Some(path.into());
+		Ok(())
+	}
 }
 
 impl Default for Project {
 	fn default() -> Self {
-		Self::new("Untitled Project")
+		Self::new("Untitled Project", BitDepth::I8, SampleRate::Hz48000)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_create_project() {
+		let bitdepth_case = BitDepth::I8;
+		let sample_rate_case = SampleRate::Hz48000;
+
+		let project = Project::new("Test Project", bitdepth_case, sample_rate_case);
+
+		assert_eq!(project.name, "Test Project");
+		assert_eq!(project.bitdepth, bitdepth_case);
+		assert_eq!(project.sample_rate, sample_rate_case);
+		assert!(project.path.is_none());
+		assert!(project.compositions.is_empty());
+		assert!(project.assets.is_empty());
+		assert!(project.nodes.is_empty());
+	}
+
+	#[test]
+	fn test_create_asset() {
+		let mut project = Project::default();
+		let asset_id = project.create_asset("Test Asset", AssetType::Video);
+
+		assert_eq!(asset_id, AssetId::new(0));
+		assert_eq!(project.assets.len(), 1);
+		project.asset(asset_id).expect("");
+		assert_eq!(project.asset(asset_id).unwrap().id(), asset_id);
+		assert_eq!(project.asset(asset_id).unwrap().name, "Test Asset");
+		assert_eq!(project.asset(asset_id).unwrap().kind(), AssetType::Video);
 	}
 }

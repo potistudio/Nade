@@ -4,15 +4,15 @@ members = ["apps/*", "crates/*", "examples/*"]
 default-members = ["crates/nade"]
 
 [workspace.package]
+authors = ["potistudio <potistudio@proton.me>"]
 version = "0.0.1"
-edition = "2024"
 license = "MIT"
-authors = ["POTI <potistudio@proton.me>"]
 publish = false
+edition = "2024"
 
 [profile.release]
-lto = true
 codegen-units = 1
+lto = true
 
 [workspace.lints.clippy]
 all = "warn"
@@ -26,7 +26,10 @@ constants = { path = "crates/constants" }
 nade-engine = { path = "crates/engine" }
 nade-timeline = { path = "crates/timeline_panel" }
 core = { path = "crates/core" }
+inspector_panel = { path = "crates/inspector_panel" }
 domain = { path = "crates/domain" }
 operators = { path = "crates/operators" }
 uuid = { version = "1.19.0", features = ["v4", "serde"] }
 serde = { version = "1.0.228", features = ["derive"] }
+effects = { path = "crates/effects" }
+encoder = { path = "crates/encoder" }

@@ -12,7 +12,7 @@ pub struct ProjectPaneWidget<'a> {
 	project: &'a Project,
 }
 
-/// -------- Public API --------
+//* -------- Public API -------- */
 impl<'a> ProjectPaneWidget<'a> {
 	pub fn new(project: &'a Project) -> Self {
 		Self { project }
@@ -26,9 +26,7 @@ impl<'a> ProjectPaneWidget<'a> {
 		let header = container(
 			column![
 				text("PROJECT HUB").size(22).color(TEXT_PRIMARY_COLOR),
-				text("Assets and compositions")
-					.size(12)
-					.color(TEXT_PRIMARY_COLOR),
+				text("Assets and compositions").size(12).color(TEXT_PRIMARY_COLOR),
 				row![
 					info_pill(format!("{} Items", summary.total)),
 					info_pill(format!("{} Folders", summary.folders)),
@@ -45,11 +43,11 @@ impl<'a> ProjectPaneWidget<'a> {
 			..Default::default()
 		});
 
-		let tree = column(root_assets.iter().filter_map(|id| {
-			project
-				.asset(id)
-				.map(|asset| view_item(project, asset, state, 0))
-		}))
+		let tree = column(
+			root_assets
+				.iter()
+				.filter_map(|id| project.asset(*id).map(|asset| view_item(project, asset, state, 0))),
+		)
 		.spacing(4);
 
 		let clear_area = mouse_area(container(text("")).width(Length::Fill).height(Length::Fill))
@@ -76,11 +74,11 @@ impl<'a> ProjectPaneWidget<'a> {
 	}
 }
 
-// -------- Private API --------
+//* -------- Private API -------- */
 fn summarize_items(project: &Project, items: &[AssetId]) -> ProjectSummary {
 	let mut summary = ProjectSummary::default();
 
-	fn walk(project: &Project, asset_id: &AssetId, summary: &mut ProjectSummary) {
+	fn walk(project: &Project, asset_id: AssetId, summary: &mut ProjectSummary) {
 		summary.total += 1;
 
 		if let Some(asset) = project.asset(asset_id) {
@@ -91,13 +89,13 @@ fn summarize_items(project: &Project, items: &[AssetId]) -> ProjectSummary {
 			}
 
 			for child in &asset.children {
-				walk(project, child, summary);
+				walk(project, *child, summary);
 			}
 		}
 	}
 
 	for item in items {
-		walk(project, item, &mut summary);
+		walk(project, *item, &mut summary);
 	}
 
 	summary
@@ -113,7 +111,11 @@ fn view_item<'a>(
 	let is_selected = state.selected_id == Some(asset.id());
 	let has_children = !asset.children.is_empty();
 	let expander_symbol = if has_children {
-		if is_expanded { "▾" } else { "▸" }
+		if is_expanded {
+			"▾"
+		} else {
+			"▸"
+		}
 	} else {
 		"·"
 	};
@@ -204,7 +206,7 @@ fn view_item<'a>(
 
 	if is_expanded {
 		for child in &asset.children {
-			if let Some(child_asset) = project.asset(child) {
+			if let Some(child_asset) = project.asset(*child) {
 				children.push(view_item(project, child_asset, state, depth + 1));
 			}
 		}

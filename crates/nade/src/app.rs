@@ -38,7 +38,7 @@ struct TimelinePanelState {
 }
 
 /// Main application state managing the UI, rendering, and project data
-pub struct NadeApp {
+pub(super) struct NadeApp {
 	/// Project data (assets, metadata, etc.)
 	project: Project,
 	// / パネルシステム
@@ -405,12 +405,12 @@ impl NadeApp {
 //==== Iced API ================================================================
 impl NadeApp {
 	/// Initializes the application. Origin point for all state setup and background tasks.
-	pub fn new() -> (Self, Task<Message>) {
+	pub(super) fn new() -> (Self, Task<Message>) {
 		//TODO: Generating Sample Project
 		let mut project = Project::default();
-		project.create_asset("hogehoge image".into(), AssetType::Image);
-		project.create_asset("0001-0004.mov".into(), AssetType::Video);
-		project.create_asset("16mm Burn 6.mov".into(), AssetType::Video);
+		project.create_asset("hogehoge image", AssetType::Image);
+		project.create_asset("0001-0004.mov", AssetType::Video);
+		project.create_asset("16mm Burn 6.mov", AssetType::Video);
 
 		// let panel_system = Self::create_panel_layout();
 		// let (render_tx, render_rx) = unbounded::<FrameData>();
@@ -446,7 +446,7 @@ impl NadeApp {
 		(app, Task::none())
 	}
 
-	pub fn update(&mut self, message: Message) -> Task<Message> {
+	pub(super) fn update(&mut self, message: Message) -> Task<Message> {
 		match message {
 			Message::RenderCompleted(frame) => {
 				// self.handle_render_completed(frame);
@@ -525,18 +525,19 @@ impl NadeApp {
 		}
 	}
 
-	pub fn view(&self) -> Element<'_, Message> {
-		// let panel_view = self
-		// 	.panel_system
-		// 	.view(|panel_id, content| self.view_panel_content(panel_id, content));
-
-		// container(panel_view.map(Message::PanelSystem))
-		// 	.width(Length::Fill)
-		// 	.height(Length::Fill)
-		// 	.into()
-
+	pub(super) fn view(&self) -> Element<'_, Message> {
 		text("Hello, Nade!").into()
 	}
+	/*
+	let panel_view = self
+		.panel_system
+		.view(|panel_id, content| self.view_panel_content(panel_id, content));
+
+	container(panel_view.map(Message::PanelSystem))
+		.width(Length::Fill)
+		.height(Length::Fill)
+		.into()
+	*/
 
 	// / パネルコンテンツをレンダリング
 	// fn view_panel_content<'a>(
@@ -567,51 +568,53 @@ impl NadeApp {
 	// 	}
 	// }
 
-	pub fn subscription(&self) -> Subscription<Message> {
-		// let render_rx = self.render_rx.clone();
-		// let shutdown_rx = self.render_shutdown_rx.clone();
-		// let render_subscription = Subscription::run_with(
-		// 	RenderConnection(render_rx, shutdown_rx),
-		// 	build_render_stream,
-		// );
-
-		// 	// キーボードサブスクリプション：スペースキーで再生/一時停止
-		// 	let keyboard_subscription: Subscription<Message> =
-		// 		iced::event::listen_with(|event, _status, _id| {
-		// 			if let iced::Event::Keyboard(keyboard::Event::KeyPressed {
-		// 				key: keyboard::Key::Named(keyboard::key::Named::Space),
-		// 				..
-		// 			}) = event
-		// 			{
-		// 				Some(Message::TogglePlay)
-		// 			} else {
-		// 				None
-		// 			}
-		// 		});
-
-		// 	// 再生中のみTickを送信 (60fps)
-		// 	let tick_subscription: Subscription<Message> = if self.global_state.preview.is_playing {
-		// 		time::every(std::time::Duration::from_millis(16)).map(|_| Message::Tick)
-		// 	} else {
-		// 		Subscription::none()
-		// 	};
-
-		// 	// ウィンドウイベントの監視
-		// 	let window_subscription = iced::event::listen_with(|event, _status, id| {
-		// 		if let iced::Event::Window(iced::window::Event::CloseRequested) = event {
-		// 			Some(Message::WindowClosed(id))
-		// 		} else {
-		// 			None
-		// 		}
-		// 	});
-
-		// 	Subscription::batch([
-		// 		render_subscription,
-		// 		keyboard_subscription,
-		// 		tick_subscription,
-		// 		window_subscription,
-		// 	])
-
+	pub(super) fn subscription(&self) -> Subscription<Message> {
 		Subscription::none()
 	}
+	/*
+		let render_rx = self.render_rx.clone();
+		let shutdown_rx = self.render_shutdown_rx.clone();
+		let render_subscription = Subscription::run_with(
+			RenderConnection(render_rx, shutdown_rx),
+			build_render_stream,
+		);
+
+		// キーボードサブスクリプション：スペースキーで再生/一時停止
+		let keyboard_subscription: Subscription<Message> =
+			iced::event::listen_with(|event, _status, _id| {
+				if let iced::Event::Keyboard(keyboard::Event::KeyPressed {
+					key: keyboard::Key::Named(keyboard::key::Named::Space),
+					..
+				}) = event
+				{
+					Some(Message::TogglePlay)
+				} else {
+					None
+				}
+			});
+
+		// 再生中のみTickを送信 (60fps)
+		let tick_subscription: Subscription<Message> = if self.global_state.preview.is_playing {
+			time::every(std::time::Duration::from_millis(16)).map(|_| Message::Tick)
+		} else {
+			Subscription::none()
+		};
+
+		// ウィンドウイベントの監視
+		let window_subscription = iced::event::listen_with(|event, _status, id| {
+			if let iced::Event::Window(iced::window::Event::CloseRequested) = event {
+				Some(Message::WindowClosed(id))
+			} else {
+				None
+			}
+		});
+
+		Subscription::batch([
+			render_subscription,
+			keyboard_subscription,
+			tick_subscription,
+			window_subscription,
+		])
+	}
+	*/
 }
