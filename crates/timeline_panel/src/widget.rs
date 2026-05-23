@@ -29,6 +29,7 @@ pub enum TimelineMessage {
 	PlayheadChanged(f32),
 	ClipModified,
 	CanvasEvent(TimelineCanvasEvent),
+	ReorderTrack { from_index: usize, to_index: usize },
 }
 
 /// Canvasから通知されるタイムライン入力イベント
@@ -52,6 +53,7 @@ pub enum TimelineCanvasEvent {
 		modifiers: keyboard::Modifiers,
 	},
 	KeyReleased {
+		key: Key,
 		modifiers: keyboard::Modifiers,
 	},
 }
@@ -61,6 +63,7 @@ pub enum TimelineCanvasEvent {
 pub struct TimelineUpdate {
 	pub playhead_time: Option<f32>,
 	pub clip_modified: bool,
+	pub track_reordered: Option<(usize, usize)>,
 }
 
 /// Iced Widget for the timeline pane
@@ -69,9 +72,12 @@ pub struct TimelineWidget<'a> {
 	state: &'a TimelineInteraction,
 	model: &'a TimelineModel,
 	current_time: f32,
+	reorder_preview: Option<(usize, usize)>,
+	/// Track that should glow (from mouse release animation)
+	glowing_track: Option<(usize, f32)>,
 }
 
-// -------- Public API --------
+//* -------- Public API -------- */
 impl<'a> TimelineWidget<'a> {
 	/// Create a new TimelineWidget
 	pub fn new(state: &'a TimelineInteraction, model: &'a TimelineModel) -> Self {
@@ -79,17 +85,41 @@ impl<'a> TimelineWidget<'a> {
 			state,
 			model,
 			current_time: 0.0,
+			reorder_preview: None,
+			glowing_track: None,
+		}
+	}
+
+	/// Create a new TimelineWidget with reorder preview
+	pub fn with_reorder_preview(
+		state: &'a TimelineInteraction,
+		model: &'a TimelineModel,
+		current_time: f32,
+		reorder_preview: Option<(usize, usize)>,
+	) -> Self {
+		Self {
+			state,
+			model,
+			current_time,
+			reorder_preview,
+			glowing_track: state.reorder_glow,
 		}
 	}
 
 	/// Create the view element
 	pub fn view(self, current_time: f32) -> Element<'a, TimelineMessage> {
+		Self::with_reorder_preview(self.state, self.model, current_time, None).view_internal()
+	}
+
+	pub fn view_internal(self) -> Element<'a, TimelineMessage> {
 		let time_scale = self.state.time_scale;
 		let zoom_controls = Self::zoom_control_view(time_scale);
 		let timeline_canvas: Element<'a, TimelineMessage> = Canvas::new(Self {
 			state: self.state,
 			model: self.model,
-			current_time,
+			current_time: self.current_time,
+			reorder_preview: self.reorder_preview,
+			glowing_track: self.glowing_track,
 		})
 		.width(Length::Fill)
 		.height(Length::Fill)
@@ -99,7 +129,7 @@ impl<'a> TimelineWidget<'a> {
 	}
 }
 
-// -------- Private API --------
+//* -------- Private API -------- */
 impl TimelineWidget<'_> {
 	fn zoom_control_view(time_scale: f32) -> Element<'static, TimelineMessage> {
 		let zoom_percent = (time_scale * 100.0) as i32;
@@ -157,13 +187,7 @@ impl TimelineWidget<'_> {
 	fn draw_ruler(&self, frame: &mut canvas::Frame, state: &TimelineInteraction, rect: Rectangle) {
 		frame.fill_rectangle(rect.position(), rect.size(), colors::RULER_BG);
 
-		self.draw_horizontal_line(
-			frame,
-			rect.x,
-			rect.x + rect.width,
-			rect.y + rect.height,
-			colors::BORDER,
-		);
+		self.draw_horizontal_line(frame, rect.x, rect.x + rect.width, rect.y + rect.height, colors::BORDER);
 
 		let visible_start_time = state.x_to_time(rect.x, rect.x).max(0.0);
 		let visible_end_time = state.x_to_time(rect.x + rect.width, rect.x);
@@ -219,16 +243,22 @@ impl TimelineWidget<'_> {
 	) {
 		frame.fill_rectangle(rect.position(), rect.size(), colors::TRACK_LABEL_BG);
 
-		self.draw_vertical_line(
-			frame,
-			rect.x + rect.width,
-			rect.y,
-			rect.y + rect.height,
-			colors::BORDER,
-		);
+		self.draw_vertical_line(frame, rect.x + rect.width, rect.y, rect.y + rect.height, colors::BORDER);
+
+		let reorder_preview = self.reorder_preview;
+		let insert_before_idx =
+			reorder_preview.map(|(from_idx, to_idx)| if to_idx < from_idx { to_idx } else { to_idx + 1 });
 
 		for (i, track) in model.tracks.iter().enumerate() {
-			let y = rect.y + (i as f32 * TRACK_HEIGHT) + state.scroll_offset.y;
+			// Calculate offset if this track should be shifted due to reordering
+			let mut y_offset = 0.0;
+			if let Some(insert_idx) = insert_before_idx
+				&& i >= insert_idx
+			{
+				y_offset = TRACK_HEIGHT; // Shift down
+			}
+
+			let y = rect.y + (i as f32 * TRACK_HEIGHT) + state.scroll_offset.y + y_offset;
 
 			if !state.is_track_visible(y, rect) {
 				continue;
@@ -239,11 +269,31 @@ impl TimelineWidget<'_> {
 			} else {
 				colors::TRACK_LABEL_BG_ALT
 			};
-			frame.fill_rectangle(
-				Point::new(rect.x, y),
-				Size::new(rect.width, TRACK_HEIGHT),
-				bg_color,
-			);
+			frame.fill_rectangle(Point::new(rect.x, y), Size::new(rect.width, TRACK_HEIGHT), bg_color);
+
+			// Draw track reorder handle on the left side (vertical grip)
+			let handle_width = 8.0;
+			let handle_rect = Rectangle {
+				x: rect.x,
+				y,
+				width: handle_width,
+				height: TRACK_HEIGHT,
+			};
+			frame.fill_rectangle(handle_rect.position(), handle_rect.size(), colors::TRACK_REORDER_HANDLE);
+
+			// Draw vertical grip lines (3 vertical lines)
+			let grip_center_x = rect.x + handle_width / 2.0;
+			for line_i in 0..3 {
+				let line_x = grip_center_x - 1.5 + (line_i as f32 * 1.5);
+				self.draw_vertical_line_with_width(
+					frame,
+					line_x,
+					y + 4.0,
+					y + TRACK_HEIGHT - 4.0,
+					colors::TEXT_MUTED,
+					1.0,
+				);
+			}
 
 			let text_color = if track.muted {
 				colors::TEXT_MUTED
@@ -252,7 +302,7 @@ impl TimelineWidget<'_> {
 			};
 			frame.fill_text(Text {
 				content: track.name.clone(),
-				position: Point::new(rect.x + 10.0, y + TRACK_HEIGHT / 2.0 - 6.0),
+				position: Point::new(rect.x + 14.0, y + TRACK_HEIGHT / 2.0 - 6.0),
 				color: text_color,
 				size: 12.0.into(),
 				..Text::default()
@@ -266,6 +316,44 @@ impl TimelineWidget<'_> {
 				colors::BORDER_SUBTLE,
 			);
 		}
+
+		// Draw gap indicator if reordering
+		if let Some((from_idx, to_idx)) = reorder_preview {
+			let insert_idx = if to_idx < from_idx { to_idx } else { to_idx + 1 };
+			let gap_y = rect.y + (insert_idx as f32 * TRACK_HEIGHT) + state.scroll_offset.y;
+
+			// Draw highlight in the gap
+			frame.fill_rectangle(
+				Point::new(rect.x, gap_y),
+				Size::new(rect.width, TRACK_HEIGHT),
+				Color::from_rgba(1.0, 1.0, 1.0, 0.15),
+			);
+
+			// Draw border
+			let gap_path = Path::rectangle(Point::new(rect.x, gap_y), Size::new(rect.width, TRACK_HEIGHT));
+			frame.stroke(
+				&gap_path,
+				Stroke::default().with_color(colors::PLAYHEAD).with_width(2.0),
+			);
+		}
+
+		// Draw glow effect for track that was just reordered
+		if let Some((track_idx, alpha)) = self.glowing_track {
+			let glow_y = rect.y + (track_idx as f32 * TRACK_HEIGHT) + state.scroll_offset.y;
+			let glow_color = Color::from_rgba(1.0, 1.0, 1.0, alpha * 0.5);
+
+			frame.fill_rectangle(
+				Point::new(rect.x, glow_y),
+				Size::new(rect.width, TRACK_HEIGHT),
+				glow_color,
+			);
+
+			let glow_path = Path::rectangle(Point::new(rect.x, glow_y), Size::new(rect.width, TRACK_HEIGHT));
+			frame.stroke(
+				&glow_path,
+				Stroke::default().with_color(colors::PLAYHEAD).with_width(3.0),
+			);
+		}
 	}
 
 	fn draw_timeline_content(
@@ -277,8 +365,20 @@ impl TimelineWidget<'_> {
 	) {
 		frame.fill_rectangle(rect.position(), rect.size(), colors::TIMELINE_BG);
 
+		let reorder_preview = self.reorder_preview;
+		let insert_before_idx =
+			reorder_preview.map(|(from_idx, to_idx)| if to_idx < from_idx { to_idx } else { to_idx + 1 });
+
 		for (track_index, track) in model.tracks.iter().enumerate() {
-			let y = rect.y + (track_index as f32 * TRACK_HEIGHT) + state.scroll_offset.y;
+			// Calculate offset if this track should be shifted due to reordering
+			let mut y_offset = 0.0;
+			if let Some(insert_idx) = insert_before_idx
+				&& track_index >= insert_idx
+			{
+				y_offset = TRACK_HEIGHT; // Shift down
+			}
+
+			let y = rect.y + (track_index as f32 * TRACK_HEIGHT) + state.scroll_offset.y + y_offset;
 
 			if !state.is_track_visible(y, rect) {
 				continue;
@@ -289,11 +389,7 @@ impl TimelineWidget<'_> {
 			} else {
 				colors::TIMELINE_BG_ALT2
 			};
-			frame.fill_rectangle(
-				Point::new(rect.x, y),
-				Size::new(rect.width, TRACK_HEIGHT),
-				bg_color,
-			);
+			frame.fill_rectangle(Point::new(rect.x, y), Size::new(rect.width, TRACK_HEIGHT), bg_color);
 
 			for clip in &track.clips {
 				self.draw_clip(frame, state, rect, clip, y, track_index);
@@ -305,6 +401,32 @@ impl TimelineWidget<'_> {
 				rect.x + rect.width,
 				y + TRACK_HEIGHT,
 				colors::BORDER_DARK,
+			);
+		}
+
+		// Draw gap indicator in timeline content area if reordering
+		if let Some((_, to_idx)) = reorder_preview {
+			let insert_idx = if to_idx < model.tracks.len() {
+				if to_idx < reorder_preview.unwrap().0 {
+					to_idx
+				} else {
+					to_idx + 1
+				}
+			} else {
+				model.tracks.len()
+			};
+			let gap_y = rect.y + (insert_idx as f32 * TRACK_HEIGHT) + state.scroll_offset.y;
+
+			frame.fill_rectangle(
+				Point::new(rect.x, gap_y),
+				Size::new(rect.width, TRACK_HEIGHT),
+				Color::from_rgba(1.0, 1.0, 1.0, 0.15),
+			);
+
+			let gap_path = Path::rectangle(Point::new(rect.x, gap_y), Size::new(rect.width, TRACK_HEIGHT));
+			frame.stroke(
+				&gap_path,
+				Stroke::default().with_color(colors::PLAYHEAD).with_width(2.0),
 			);
 		}
 	}
@@ -341,22 +463,16 @@ impl TimelineWidget<'_> {
 		};
 
 		let corner_radius: Radius = CLIP_CORNER_RADIUS.into();
-		let clip_path =
-			Path::rounded_rectangle(clip_rect.position(), clip_rect.size(), corner_radius);
+		let clip_path = Path::rounded_rectangle(clip_rect.position(), clip_rect.size(), corner_radius);
 
 		frame.fill(&clip_path, clip_color);
 		frame.stroke(
 			&clip_path,
-			Stroke::default()
-				.with_color(colors::CLIP_OUTLINE)
-				.with_width(1.0),
+			Stroke::default().with_color(colors::CLIP_OUTLINE).with_width(1.0),
 		);
 
 		if is_selected {
-			frame.stroke(
-				&clip_path,
-				Stroke::default().with_color(Color::WHITE).with_width(2.0),
-			);
+			frame.stroke(&clip_path, Stroke::default().with_color(Color::WHITE).with_width(2.0));
 			self.draw_resize_handles(frame, clip_rect);
 		}
 
@@ -370,10 +486,7 @@ impl TimelineWidget<'_> {
 			colors::RESIZE_HANDLE,
 		);
 		frame.fill_rectangle(
-			Point::new(
-				clip_rect.x + clip_rect.width - RESIZE_HANDLE_VISUAL_WIDTH,
-				clip_rect.y,
-			),
+			Point::new(clip_rect.x + clip_rect.width - RESIZE_HANDLE_VISUAL_WIDTH, clip_rect.y),
 			Size::new(RESIZE_HANDLE_VISUAL_WIDTH, clip_rect.height),
 			colors::RESIZE_HANDLE,
 		);
@@ -443,26 +556,12 @@ impl TimelineWidget<'_> {
 	// 描画ヘルパー
 	// -------------------------------------------------------------------------
 
-	fn draw_horizontal_line(
-		&self,
-		frame: &mut canvas::Frame,
-		x1: f32,
-		x2: f32,
-		y: f32,
-		color: Color,
-	) {
+	fn draw_horizontal_line(&self, frame: &mut canvas::Frame, x1: f32, x2: f32, y: f32, color: Color) {
 		let line = Path::line(Point::new(x1, y), Point::new(x2, y));
 		frame.stroke(&line, Stroke::default().with_color(color).with_width(1.0));
 	}
 
-	fn draw_vertical_line(
-		&self,
-		frame: &mut canvas::Frame,
-		x: f32,
-		y1: f32,
-		y2: f32,
-		color: Color,
-	) {
+	fn draw_vertical_line(&self, frame: &mut canvas::Frame, x: f32, y1: f32, y2: f32, color: Color) {
 		let line = Path::line(Point::new(x, y1), Point::new(x, y2));
 		frame.stroke(&line, Stroke::default().with_color(color).with_width(1.0));
 	}
@@ -534,39 +633,35 @@ impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
 		match event {
 			Event::Mouse(mouse_event) => match mouse_event {
 				mouse::Event::ButtonPressed(mouse::Button::Left) => cursor_pos.map(|position| {
-					canvas::Action::publish(TimelineMessage::CanvasEvent(
-						TimelineCanvasEvent::MousePressed { position, bounds },
-					))
+					canvas::Action::publish(TimelineMessage::CanvasEvent(TimelineCanvasEvent::MousePressed {
+						position,
+						bounds,
+					}))
 				}),
 				mouse::Event::ButtonReleased(mouse::Button::Left) => Some(canvas::Action::publish(
 					TimelineMessage::CanvasEvent(TimelineCanvasEvent::MouseReleased),
 				)),
 				mouse::Event::CursorMoved { .. } => cursor_pos.map(|position| {
-					canvas::Action::publish(TimelineMessage::CanvasEvent(
-						TimelineCanvasEvent::MouseMoved { position, bounds },
-					))
+					canvas::Action::publish(TimelineMessage::CanvasEvent(TimelineCanvasEvent::MouseMoved {
+						position,
+						bounds,
+					}))
 				}),
-				mouse::Event::WheelScrolled { delta } if cursor_pos.is_some() => {
-					Some(canvas::Action::publish(TimelineMessage::CanvasEvent(
-						TimelineCanvasEvent::MouseWheelScrolled {
-							delta: *delta,
-							bounds,
-						},
-					)))
-				}
+				mouse::Event::WheelScrolled { delta } if cursor_pos.is_some() => Some(canvas::Action::publish(
+					TimelineMessage::CanvasEvent(TimelineCanvasEvent::MouseWheelScrolled { delta: *delta, bounds }),
+				)),
 				_ => None,
 			},
 			Event::Keyboard(key_event) => match key_event {
-				keyboard::Event::KeyPressed { key, modifiers, .. } => {
-					Some(canvas::Action::publish(TimelineMessage::CanvasEvent(
-						TimelineCanvasEvent::KeyPressed {
-							key: key.clone(),
-							modifiers: *modifiers,
-						},
-					)))
-				}
-				keyboard::Event::KeyReleased { modifiers, .. } => Some(canvas::Action::publish(
+				keyboard::Event::KeyPressed { key, modifiers, .. } => Some(canvas::Action::publish(
+					TimelineMessage::CanvasEvent(TimelineCanvasEvent::KeyPressed {
+						key: key.clone(),
+						modifiers: *modifiers,
+					}),
+				)),
+				keyboard::Event::KeyReleased { key, modifiers, .. } => Some(canvas::Action::publish(
 					TimelineMessage::CanvasEvent(TimelineCanvasEvent::KeyReleased {
+						key: key.clone(),
 						modifiers: *modifiers,
 					}),
 				)),
@@ -585,11 +680,8 @@ impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
 		cursor
 			.position_in(bounds)
 			.map(|pos| {
-				self.state.get_mouse_interaction(
-					self.model,
-					Point::new(bounds.x + pos.x, bounds.y + pos.y),
-					bounds,
-				)
+				self.state
+					.get_mouse_interaction(self.model, Point::new(bounds.x + pos.x, bounds.y + pos.y), bounds)
 			})
 			.unwrap_or_default()
 	}

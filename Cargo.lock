@@ -4550,6 +4550,7 @@ dependencies = [
  "constants",
  "core",
  "iced",
+ "log",
 ]
 
 [[package]]

@@ -19,6 +19,7 @@ pub const RESIZE_HANDLE_VISUAL_WIDTH: f32 = 4.0;
 pub const SCROLL_MULTIPLIER: f32 = 20.0;
 pub const MIN_CLIP_DURATION: f32 = 0.1;
 pub const CLIP_CORNER_RADIUS: f32 = 1.0;
+pub const TRACK_REORDER_HANDLE_HEIGHT: f32 = 6.0;
 
 // Color constants
 pub mod colors {
@@ -47,4 +48,5 @@ pub mod colors {
 
 	pub const CLIP_OUTLINE: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.2);
 	pub const RESIZE_HANDLE: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.4);
+	pub const TRACK_REORDER_HANDLE: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.15);
 }

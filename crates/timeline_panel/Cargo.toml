@@ -14,3 +14,4 @@ workspace = true
 core = { workspace = true }
 constants = { workspace = true }
 iced = { workspace = true }
+log = { workspace = true }

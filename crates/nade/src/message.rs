@@ -31,4 +31,6 @@ pub enum Message {
 	RenderCompleted(FrameData),
 	/// ウィンドウが閉じられた
 	WindowClosed(iced::window::Id),
+	/// タイムラインパネルメッセージ
+	Timeline(TimelineMessage),
 }

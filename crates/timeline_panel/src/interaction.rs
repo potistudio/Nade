@@ -1,4 +1,4 @@
-//! タイムラインインタラクション状態の定義
+//! タイムラインインタラクション状态的定义
 
 use iced::{
 	Point, Rectangle, Vector,
@@ -34,6 +34,10 @@ pub(crate) enum DragState {
 	Panning {
 		start_offset: Vector,
 		start_cursor: Point,
+	},
+	ReorderTrack {
+		from_index: usize,
+		current_index: usize,
 	},
 }
 
@@ -102,9 +106,15 @@ pub struct TimelineInteraction {
 	pub scroll_offset: Vector,
 	pub time_scale: f32,
 	pub selected_clip: Option<(usize, usize)>,
+	pub selected_track_index: Option<usize>,
 	pub(crate) drag_state: DragState,
 	pub(crate) ctrl_pressed: bool,
+	pub(crate) alt_pressed: bool,
 	pub(crate) viewport_width: f32,
+	/// Animation for reorder glow effect (track_index, remaining_alpha)
+	pub(crate) reorder_glow: Option<(usize, f32)>,
+	/// Pending reorder to be applied on mouse release
+	pub(crate) pending_reorder: Option<(usize, usize)>,
 }
 
 impl Default for TimelineInteraction {
@@ -113,9 +123,13 @@ impl Default for TimelineInteraction {
 			scroll_offset: Vector::ZERO,
 			time_scale: 1.0,
 			selected_clip: None,
+			selected_track_index: None,
 			drag_state: DragState::None,
 			ctrl_pressed: false,
+			alt_pressed: false,
 			viewport_width: 800.0,
+			reorder_glow: None,
+			pending_reorder: None,
 		}
 	}
 }
@@ -150,12 +164,7 @@ impl TimelineInteraction {
 		((x - timeline_left) - self.scroll_offset.x) / (PIXELS_PER_SECOND * self.time_scale)
 	}
 
-	pub(crate) fn find_clip_at(
-		&self,
-		model: &TimelineModel,
-		pos: Point,
-		bounds: Rectangle,
-	) -> Option<(usize, usize)> {
+	pub(crate) fn find_clip_at(&self, model: &TimelineModel, pos: Point, bounds: Rectangle) -> Option<(usize, usize)> {
 		let timeline_left = bounds.x + TRACK_LABEL_WIDTH;
 		let timeline_top = bounds.y + RULER_HEIGHT;
 
@@ -178,11 +187,7 @@ impl TimelineInteraction {
 		None
 	}
 
-	pub(crate) fn find_clip(
-		model: &TimelineModel,
-		track_id: usize,
-		clip_id: usize,
-	) -> Option<&TimelineClip> {
+	pub(crate) fn find_clip(model: &TimelineModel, track_id: usize, clip_id: usize) -> Option<&TimelineClip> {
 		model
 			.tracks
 			.get(track_id)
@@ -312,13 +317,17 @@ impl TimelineInteraction {
 			TimelineMessage::PlayheadChanged(time) => TimelineUpdate {
 				playhead_time: Some(time),
 				clip_modified: false,
+				track_reordered: None,
 			},
 			TimelineMessage::ClipModified => TimelineUpdate {
 				playhead_time: None,
 				clip_modified: true,
+				track_reordered: None,
 			},
-			TimelineMessage::CanvasEvent(event) => {
-				self.handle_canvas_event(model, event, current_time)
+			TimelineMessage::CanvasEvent(event) => self.handle_canvas_event(model, event, current_time),
+			TimelineMessage::ReorderTrack { .. } => {
+				// Handled via pending_reorder in handle_mouse_release
+				TimelineUpdate::default()
 			}
 		}
 	}
@@ -336,6 +345,7 @@ impl TimelineInteraction {
 				TimelineUpdate {
 					playhead_time,
 					clip_modified: false,
+					track_reordered: None,
 				}
 			}
 			TimelineCanvasEvent::MouseReleased => {
@@ -344,16 +354,17 @@ impl TimelineInteraction {
 				TimelineUpdate {
 					playhead_time,
 					clip_modified: was_dragging_clip,
+					track_reordered: None,
 				}
 			}
 			TimelineCanvasEvent::MouseMoved { position, bounds } => {
 				self.update_viewport_width(bounds.width);
 				let timeline_left = TimelineLayout::from_bounds_absolute(bounds).timeline_left();
-				let (handled, playhead_time) =
-					self.handle_mouse_move(model, position, timeline_left);
+				let (handled, playhead_time) = self.handle_mouse_move(model, position, timeline_left, bounds);
 				TimelineUpdate {
 					playhead_time,
 					clip_modified: handled && self.is_dragging_clip(),
+					track_reordered: None,
 				}
 			}
 			TimelineCanvasEvent::MouseWheelScrolled { delta, bounds } => {
@@ -362,11 +373,19 @@ impl TimelineInteraction {
 				TimelineUpdate::default()
 			}
 			TimelineCanvasEvent::KeyPressed { key, modifiers } => {
+				let is_alt_key = matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::Alt));
 				self.update_modifiers(modifiers);
+				if is_alt_key {
+					self.alt_pressed = true;
+				}
 				self.handle_keyboard(key, modifiers, current_time);
 				TimelineUpdate::default()
 			}
-			TimelineCanvasEvent::KeyReleased { modifiers } => {
+			TimelineCanvasEvent::KeyReleased { key, modifiers } => {
+				let is_alt_key = matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::Alt));
+				if is_alt_key {
+					self.alt_pressed = false;
+				}
 				self.update_modifiers(modifiers);
 				TimelineUpdate::default()
 			}
@@ -378,9 +397,7 @@ impl TimelineInteraction {
 	pub fn is_dragging_clip(&self) -> bool {
 		matches!(
 			self.drag_state,
-			DragState::Clip { .. }
-				| DragState::ClipResizeLeft { .. }
-				| DragState::ClipResizeRight { .. }
+			DragState::Clip { .. } | DragState::ClipResizeLeft { .. } | DragState::ClipResizeRight { .. }
 		)
 	}
 
@@ -395,6 +412,33 @@ impl TimelineInteraction {
 		bounds: Rectangle,
 	) -> (bool, Option<f32>) {
 		let layout = TimelineLayout::from_bounds_absolute(bounds);
+
+		// Check if clicking on track label area for reordering
+		if layout.track_labels.contains(pos) {
+			let track_labels_top = bounds.y + RULER_HEIGHT;
+			let track_index = ((pos.y - track_labels_top - self.scroll_offset.y) / TRACK_HEIGHT).floor() as usize;
+
+			if track_index < model.tracks.len() {
+				let track_left = bounds.x;
+				let handle_right = track_left + 8.0; // Handle width is 8px
+
+				// Check if click is in the reorder handle area (left side)
+				if pos.x >= track_left && pos.x <= handle_right {
+					log::info!("Track reorder started: track_index={}", track_index);
+					self.selected_track_index = Some(track_index);
+					// from_index is the gap position (same as track index when not moved yet)
+					self.drag_state = DragState::ReorderTrack {
+						from_index: track_index,
+						current_index: track_index,
+					};
+					return (true, None);
+				}
+			}
+
+			// Otherwise just select the track
+			self.selected_track_index = Some(track_index);
+			return (true, None);
+		}
 
 		if layout.ruler.contains(pos) {
 			let time = self.x_to_time(pos.x, layout.timeline_left()).max(0.0);
@@ -457,6 +501,7 @@ impl TimelineInteraction {
 		model: &mut TimelineModel,
 		pos: Point,
 		timeline_left: f32,
+		bounds: Rectangle,
 	) -> (bool, Option<f32>) {
 		match self.drag_state.clone() {
 			DragState::Playhead => {
@@ -468,9 +513,122 @@ impl TimelineInteraction {
 				clip_id,
 				offset,
 			} => {
-				let time = self.x_to_time(pos.x, timeline_left) + offset;
-				if let Some(clip) = Self::find_clip_mut(model, track_id, clip_id) {
-					clip.start_time = time.max(0.0);
+				let proposed = self.x_to_time(pos.x, timeline_left) + offset;
+				let proposed = proposed.max(0.0);
+
+				// Get clip duration
+				let clip_duration = model
+					.tracks
+					.get(track_id)
+					.and_then(|t| t.clips.iter().find(|c| c.id == clip_id))
+					.map(|c| c.duration)
+					.unwrap_or(1.0);
+
+				// Get current start to determine drag direction
+				let current_start = model
+					.tracks
+					.get(track_id)
+					.and_then(|t| t.clips.iter().find(|c| c.id == clip_id))
+					.map(|c| c.start_time)
+					.unwrap_or(0.0);
+
+				let drag_direction = proposed - current_start;
+
+				if self.alt_pressed {
+					// Alt held: stretch the OTHER clip (the one being collided with)
+					if let Some(track) = model.tracks.get_mut(track_id) {
+						// Sort clips by start time
+						let mut clips: Vec<_> = track.clips.iter_mut().filter(|c| c.id != clip_id).collect();
+						clips.sort_by(|a, b| {
+							a.start_time
+								.partial_cmp(&b.start_time)
+								.unwrap_or(std::cmp::Ordering::Equal)
+						});
+
+						if drag_direction > 0.0 {
+							// Moving right: find clip we're overlapping and stretch it
+							for c in clips.iter_mut() {
+								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
+									// We're colliding with clip c - stretch c's right edge
+									let overlap_end = (proposed + clip_duration).min(c.start_time + c.duration);
+									let additional_time = proposed + clip_duration - overlap_end;
+									c.duration += additional_time.max(0.0);
+									break;
+								}
+							}
+						} else if drag_direction < 0.0 {
+							// Moving left: find clip we're overlapping and stretch it
+							for c in clips.iter_mut() {
+								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
+									// We're colliding with clip c - stretch c's left edge
+									c.start_time = proposed;
+									c.duration = (c.start_time + c.duration - proposed).max(MIN_CLIP_DURATION);
+									break;
+								}
+							}
+						}
+					}
+					// Move the dragged clip normally
+					if let Some(track) = model.tracks.get_mut(track_id)
+						&& let Some(clip) = track.clips.iter_mut().find(|c| c.id == clip_id)
+					{
+						clip.start_time = proposed;
+					}
+				} else {
+					// Normal mode: snap to avoid overlap, don't place if no room
+					let mut constrained_time = proposed;
+					let mut could_place = true;
+
+					if let Some(track) = model.tracks.get(track_id) {
+						// Sort clips by start time to process in order
+						let mut clips: Vec<_> = track.clips.iter().filter(|c| c.id != clip_id).collect();
+						clips.sort_by(|a, b| {
+							a.start_time
+								.partial_cmp(&b.start_time)
+								.unwrap_or(std::cmp::Ordering::Equal)
+						});
+
+						if drag_direction > 0.0 {
+							// Moving right: find first clip that overlaps and would block
+							for c in clips.iter() {
+								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
+									// Overlap detected - try to place before this clip
+									let target_pos = c.start_time - clip_duration;
+									if target_pos >= current_start {
+										// There's room before the clip
+										constrained_time = target_pos;
+									} else {
+										// No room - stay at current position
+										could_place = false;
+									}
+									break;
+								}
+							}
+						} else if drag_direction < 0.0 {
+							// Moving left: find first clip that overlaps
+							for c in clips.iter() {
+								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
+									// Overlap detected - try to place after this clip
+									let target_pos = c.start_time + c.duration;
+									if target_pos <= c.start_time {
+										// There's no room after - stay at current position
+										could_place = false;
+									} else {
+										constrained_time = target_pos;
+									}
+									break;
+								}
+							}
+						}
+					}
+
+					// Apply the constrained position only if valid
+					if could_place
+						&& let Some(track) = model.tracks.get_mut(track_id)
+						&& let Some(clip) = track.clips.iter_mut().find(|c| c.id == clip_id)
+					{
+						clip.start_time = constrained_time.max(0.0);
+					}
 				}
 				(true, None)
 			}
@@ -505,6 +663,38 @@ impl TimelineInteraction {
 				self.clamp_scroll_offset();
 				(true, None)
 			}
+			DragState::ReorderTrack {
+				from_index: _,
+				current_index: _,
+			} => {
+				// Calculate gap index based on mouse Y position
+				// Gap 0 = before track 0, Gap 1 = between track 0 and 1, etc.
+				let track_labels_top = bounds.y + RULER_HEIGHT;
+				let mut relative_y = pos.y - track_labels_top - self.scroll_offset.y;
+
+				// Adjust for preview gap if tracks are shifted
+				if let Some((from_idx, to_idx)) = self.get_reorder_indices() {
+					let insert_idx = if to_idx < from_idx { to_idx } else { to_idx + 1 };
+					let gap_position = (relative_y / TRACK_HEIGHT).floor() as usize;
+					if gap_position > insert_idx {
+						relative_y += TRACK_HEIGHT; // Compensate for shifted tracks
+					}
+				}
+
+				let gap_index = ((relative_y + TRACK_HEIGHT * 0.5) / TRACK_HEIGHT).floor() as isize;
+				let num_gaps = model.tracks.len() as isize + 1;
+
+				let clamped_gap = gap_index.clamp(0, num_gaps - 1);
+
+				if let DragState::ReorderTrack {
+					from_index: _,
+					current_index,
+				} = &mut self.drag_state
+				{
+					*current_index = clamped_gap as usize;
+				}
+				(true, None)
+			}
 			DragState::None => (false, None),
 		}
 	}
@@ -513,11 +703,41 @@ impl TimelineInteraction {
 	///
 	/// プレイヘッドドラッグ終了時は最終時間を返す
 	pub(crate) fn handle_mouse_release(&mut self) -> (bool, Option<f32>) {
+		if let DragState::ReorderTrack {
+			from_index,
+			current_index,
+		} = self.drag_state
+		{
+			if from_index != current_index {
+				self.pending_reorder = Some((from_index, current_index));
+			}
+			// Trigger glow animation on the final position
+			self.reorder_glow = Some((current_index, 1.0));
+			self.drag_state = DragState::None;
+			return (true, None);
+		}
+
 		if !matches!(self.drag_state, DragState::None) {
 			self.drag_state = DragState::None;
 			return (true, None);
 		}
 		(false, None)
+	}
+
+	/// Get the current reorder indices if reordering is in progress
+	pub fn get_reorder_indices(&self) -> Option<(usize, usize)> {
+		match &self.drag_state {
+			DragState::ReorderTrack {
+				from_index,
+				current_index,
+			} if from_index != current_index => Some((*from_index, *current_index)),
+			_ => None,
+		}
+	}
+
+	/// Get pending reorder and clear it
+	pub fn take_reorder(&mut self) -> Option<(usize, usize)> {
+		self.pending_reorder.take()
 	}
 
 	pub(crate) fn handle_scroll(&mut self, delta: mouse::ScrollDelta, current_time: f32) -> bool {
@@ -547,14 +767,10 @@ impl TimelineInteraction {
 
 	pub(crate) fn update_modifiers(&mut self, modifiers: keyboard::Modifiers) {
 		self.ctrl_pressed = modifiers.command();
+		self.alt_pressed = modifiers.alt();
 	}
 
-	pub(crate) fn handle_keyboard(
-		&mut self,
-		key: Key,
-		modifiers: keyboard::Modifiers,
-		current_time: f32,
-	) -> bool {
+	pub(crate) fn handle_keyboard(&mut self, key: Key, modifiers: keyboard::Modifiers, current_time: f32) -> bool {
 		if modifiers.command() {
 			match key {
 				Key::Character(ref c) if c == "=" || c == "+" => {

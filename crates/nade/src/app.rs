@@ -3,14 +3,15 @@
 //! NadeのメインUIアプリケーション実装です。
 
 use core::id::InstanceId;
-use iced::widget::text;
+use iced::widget::{column, container, row, text};
 use iced::{Element, Length, Subscription, Task, Theme};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use timeline_panel::TimelineInteraction;
+use timeline_panel::{TimelineClip, TimelineInteraction, TimelineModel, TimelineTrack, TimelineWidget};
 
 use core::{
-	CoreEffect, FrameData, Model, Msg, RectangleObject, TimelineClip, TimelineModel, TimelineTrack,
+	CoreEffect, FrameData, Model, Msg, RectangleObject, TimelineClip as CoreClip, TimelineModel as CoreModel,
+	TimelineTrack as CoreTrack,
 };
 use domain::{AssetType, Composition, Project};
 
@@ -30,376 +31,56 @@ pub fn theme(_state: &NadeApp) -> Theme {
 // アプリケーション状態
 // =============================================================================
 
-#[derive(Debug)]
+/// タイムラインパネル状態
 struct TimelinePanelState {
 	state: TimelineInteraction,
 	model: TimelineModel,
-	clip_bindings: HashMap<usize, InstanceId>,
+}
+
+impl Default for TimelinePanelState {
+	fn default() -> Self {
+		let mut model = TimelineModel::new();
+		// サンプルトラックとクリップを追加
+		let track1 = TimelineTrack::new("Video 1");
+		let track2 = TimelineTrack::new("Audio 1");
+		let track3 = TimelineTrack::new("Video 2");
+		model.add_track(track1);
+		model.add_track(track2);
+		model.add_track(track3);
+
+		// サンプルクリップを追加
+		if let Some(track) = model.tracks.get_mut(0) {
+			track.add_clip(TimelineClip::new(0, "Clip A", 0.0, 3.0));
+			track.add_clip(TimelineClip::new(1, "Clip B", 4.0, 2.5));
+			track.add_clip(TimelineClip::new(2, "Clip D", 7.0, 1.0));
+		}
+		if let Some(track) = model.tracks.get_mut(1) {
+			track.add_clip(TimelineClip::new(2, "Audio Clip 1", 0.5, 4.0));
+		}
+		if let Some(track) = model.tracks.get_mut(2) {
+			track.add_clip(TimelineClip::new(3, "Clip C", 2.0, 5.0));
+		}
+
+		Self {
+			state: TimelineInteraction::new(),
+			model,
+		}
+	}
 }
 
 /// Main application state managing the UI, rendering, and project data
 pub(super) struct NadeApp {
 	/// Project data (assets, metadata, etc.)
 	project: Project,
-	// / パネルシステム
-	// panel_system: PanelSystem<PanelContent>,
 
-	// / レンダリング結果送信用チャンネル
-	// render_tx: Sender<FrameData>,
-	// / レンダリング結果受信用チャンネル（Subscriptionで使用）
-	// render_rx: Arc<std::sync::Mutex<Receiver<FrameData>>>,
-	// / レンダリングServiceのシャットダウン通知
-	// render_shutdown_tx: Option<Sender<()>>,
-	// / レンダリングServiceのシャットダウン受信機（Serviceへ渡す）
-	// render_shutdown_rx: Arc<std::sync::Mutex<Receiver<()>>>,
+	/// 現在の再生時間
+	current_time: f32,
 
-	// / 現在のモデル（UIスレッドで更新）
-	// global_state: Model,
-	// / バックグラウンドレンダリング中かどうか
-	// is_rendering: Arc<AtomicBool>,
+	/// 再生中かどうか
+	is_playing: bool,
 
-	// / FPS計算用カウンタ
-	// frame_count: u32,
-
-	// / FPS更新の基準時刻
-	// fps_update_time: Instant,
-
-	// / タイムラインパネルごとのUI状態
-	// timeline_panels: HashMap<usize, TimelinePanelState>,
-
-	// / プロジェクトUI状態
-	// project_ui: ProjectPaneState,
-
-	// / 編集セッション（Graph/演算子リストの正本）
-	// editor_session: EditorSession,
-}
-
-//==== Public API ==============================================================
-impl NadeApp {
-	//==== Constructor =========================================================
-
-	// fn create_panel_layout() -> PanelSystem<PanelContent> {
-	// 	let mut builder = LayoutBuilder::new();
-	// 	let layout = builder.panel("Inspector", PanelContent::Inspector);
-
-	// 	PanelSystem::new().with_layout(layout)
-	// }
-
-	// fn build_timeline_panel_instances(
-	// 	root: &DockNode<PanelContent>,
-	// 	composition: &Composition,
-	// ) -> HashMap<usize, TimelinePanelState> {
-	// 	let mut timeline_ids = Vec::new();
-	// 	Self::collect_timeline_panel_ids(root, &mut timeline_ids);
-
-	// 	timeline_ids
-	// 		.into_iter()
-	// 		.map(|panel_id| (panel_id, Self::build_timeline_panel_state(composition)))
-	// 		.collect()
-	// }
-
-	// fn build_timeline_panel_state(composition: &Composition) -> TimelinePanelState {
-	// 	let (model, clip_bindings) = Self::build_timeline_model_from_composition(composition);
-	// 	TimelinePanelState {
-	// 		state: TimelineInteraction::new(),
-	// 		model,
-	// 		clip_bindings,
-	// 	}
-	// }
-
-	// fn build_timeline_model_from_composition(
-	// 	composition: &Composition,
-	// ) -> (TimelineModel, HashMap<usize, InstanceId>) {
-	// 	let mut model = TimelineModel::new();
-	// 	let mut clip_bindings = HashMap::new();
-	// 	let mut next_clip_id = 0usize;
-
-	// 	for object in composition.all_objects() {
-	// 		let mut track = TimelineTrack::new(object.name());
-	// 		let clip_id = next_clip_id;
-	// 		next_clip_id += 1;
-	// 		let clip = TimelineClip::new(
-	// 			clip_id,
-	// 			object.name(),
-	// 			object.start_time(),
-	// 			object.duration(),
-	// 		);
-	// 		clip_bindings.insert(clip_id, object.id());
-	// 		track.add_clip(clip);
-	// 		model.add_track(track);
-	// 	}
-
-	// 	(model, clip_bindings)
-	// }
-
-	// fn apply_timeline_model_to_composition(
-	// 	model: &TimelineModel,
-	// 	clip_bindings: &HashMap<usize, InstanceId>,
-	// 	composition: &mut Composition,
-	// ) {
-	// 	for track in &model.tracks {
-	// 		for clip in &track.clips {
-	// 			if let Some(instance_id) = clip_bindings.get(&clip.id).copied()
-	// 				&& let Some(object) = composition.get_mut(instance_id)
-	// 			{
-	// 				object.set_start_time(clip.start_time);
-	// 				object.set_duration(clip.duration);
-	// 			}
-	// 		}
-	// 	}
-	// }
-
-	// fn collect_timeline_panel_ids(node: &DockNode<PanelContent>, ids: &mut Vec<usize>) {
-	// 	match node {
-	// 		DockNode::Empty => {}
-	// 		DockNode::Leaf(container) => {
-	// 			for panel in &container.panels {
-	// 				if panel.content == PanelContent::Timeline {
-	// 					ids.push(panel.id);
-	// 				}
-	// 			}
-	// 		}
-	// 		DockNode::Split { first, second, .. } => {
-	// 			Self::collect_timeline_panel_ids(first, ids);
-	// 			Self::collect_timeline_panel_ids(second, ids);
-	// 		}
-	// 	}
-	// }
-
-	// fn ensure_timeline_panel_state(&mut self, panel_id: usize) -> &mut TimelinePanelState {
-	// 	if !self.timeline_panels.contains_key(&panel_id) {
-	// 		let comp = self
-	// 			.composition
-	// 			.lock()
-	// 			.expect("composition lock should be available");
-	// 		self.timeline_panels
-	// 			.insert(panel_id, Self::build_timeline_panel_state(&comp));
-	// 	}
-
-	// 	self.timeline_panels
-	// 		.get_mut(&panel_id)
-	// 		.expect("timeline panel should exist")
-	// }
-
-	// fn reconcile_timeline_panels(&mut self) {
-	// 	let mut timeline_ids = Vec::new();
-	// 	Self::collect_timeline_panel_ids(self.panel_system.root(), &mut timeline_ids);
-	// 	let timeline_set: HashSet<usize> = timeline_ids.iter().copied().collect();
-
-	// 	self.timeline_panels
-	// 		.retain(|panel_id, _| timeline_set.contains(panel_id));
-
-	// 	if timeline_ids
-	// 		.iter()
-	// 		.any(|panel_id| !self.timeline_panels.contains_key(panel_id))
-	// 	{
-	// 		let comp = self
-	// 			.composition
-	// 			.lock()
-	// 			.expect("composition lock should be available");
-	// 		for panel_id in timeline_ids {
-	// 			if self.timeline_panels.contains_key(&panel_id) {
-	// 				continue;
-	// 			}
-	// 			self.timeline_panels
-	// 				.insert(panel_id, Self::build_timeline_panel_state(&comp));
-	// 		}
-	// 	}
-	// }
-
-	// / CoreロジックをUIスレッドで適用し、副作用のみを非同期実行する
-	// fn apply_core_msg(&mut self, msg: Msg) {
-	// 	let (next_model, effects) = Self::reduce_core(self.global_state.clone(), msg);
-	// 	self.global_state = next_model;
-	// 	self.handle_effects(effects);
-	// }
-
-	// / Coreメッセージをモデルへ反映し、副作用を生成する
-	// fn reduce_core(mut model: Model, msg: Msg) -> (Model, Vec<CoreEffect>) {
-	// 	let mut effects = Vec::new();
-
-	// 	match msg {
-	// 		Msg::Tick => {
-	// 			if model.preview.is_playing {
-	// 				model.preview.time += 1.0 / 60.0;
-	// 				effects.push(CoreEffect::RenderFrame {
-	// 					time: model.preview.time,
-	// 					width: model.preview.width,
-	// 					height: model.preview.height,
-	// 				});
-	// 			}
-	// 		}
-	// 		Msg::SetTime(time) => {
-	// 			model.preview.time = time;
-	// 			effects.push(CoreEffect::RenderFrame {
-	// 				time: model.preview.time,
-	// 				width: model.preview.width,
-	// 				height: model.preview.height,
-	// 			});
-	// 		}
-	// 		Msg::TogglePlay => {
-	// 			model.preview.is_playing = !model.preview.is_playing;
-	// 		}
-	// 		Msg::Shutdown => {}
-	// 		Msg::FrameRendered(frame) => {
-	// 			model.preview.frame = Some(frame);
-	// 		}
-	// 		Msg::UpdateTransform(transform) => {
-	// 			model.preview.selection = Some(transform);
-	// 		}
-	// 	}
-
-	// 	(model, effects)
-	// }
-
-	// / CoreEffectの実行（重い処理のみバックグラウンドへ）
-	// fn handle_effects(&mut self, effects: Vec<CoreEffect>) {
-	// 	for effect in effects {
-	// 		match effect {
-	// 			CoreEffect::RenderFrame {
-	// 				time,
-	// 				width,
-	// 				height,
-	// 			} => {
-	// 				if self.is_rendering.load(Ordering::SeqCst) {
-	// 					log::trace!("Skipping frame render - previous render still in progress");
-	// 					continue;
-	// 				}
-	// 				self.spawn_render(time, width, height);
-	// 			}
-	// 		}
-	// 	}
-	// }
-
-	// / レンダリングだけを別スレッドで実行する
-	// fn spawn_render(&self, time: f32, width: u32, height: u32) {
-	// 	self.is_rendering.store(true, Ordering::SeqCst);
-	// 	let is_rendering = Arc::clone(&self.is_rendering);
-	// 	let render_tx = self.render_tx.clone();
-	// 	let composition = Arc::clone(&self.composition);
-
-	// 	thread::spawn(move || {
-	// 		// Compositionをロックしてレンダリング
-	// 		let comp = composition.lock().unwrap();
-	// 		let img_buffer = renderer::render_frame_with_composition(&comp, time, width, height);
-	// 		drop(comp); // ロックを早期解放
-
-	// 		let raw = img_buffer.into_raw();
-
-	// 		let frame_data = FrameData {
-	// 			width,
-	// 			height,
-	// 			pixels: bytes::Bytes::from(raw),
-	// 		};
-
-	// 		if render_tx.send(frame_data).is_err() {
-	// 			log::info!("Render thread: receiver dropped before frame delivery.");
-	// 		}
-	// 		is_rendering.store(false, Ordering::SeqCst);
-	// 	});
-	// }
-
-	// / バックグラウンドレンダリング完了を処理する
-	// fn handle_render_completed(&mut self, frame: FrameData) {
-	// 	self.apply_core_msg(Msg::FrameRendered(frame));
-
-	// 	// FPS計算
-	// 	self.frame_count += 1;
-	// 	let now = Instant::now();
-	// 	let elapsed = now.duration_since(self.fps_update_time).as_secs_f32();
-	// 	if elapsed >= 0.5 {
-	// 		self.global_state.preview.fps = self.frame_count as f32 / elapsed;
-	// 		self.frame_count = 0;
-	// 		self.fps_update_time = now;
-	// 	}
-	// }
-
-	// fn sync_timeline_changes_to_composition(&mut self, source_panel_id: usize) {
-	// 	{
-	// 		let Some(source_panel) = self.timeline_panels.get(&source_panel_id) else {
-	// 			return;
-	// 		};
-
-	// 		let mut comp = self.composition.lock().unwrap();
-	// 		Self::apply_timeline_model_to_composition(
-	// 			&source_panel.model,
-	// 			&source_panel.clip_bindings,
-	// 			&mut comp,
-	// 		);
-	// 	}
-
-	// 	{
-	// 		let comp = self.composition.lock().unwrap();
-	// 		for (panel_id, panel) in &mut self.timeline_panels {
-	// 			if *panel_id == source_panel_id {
-	// 				continue;
-	// 			}
-	// 			let (model, clip_bindings) = Self::build_timeline_model_from_composition(&comp);
-	// 			panel.model = model;
-	// 			panel.clip_bindings = clip_bindings;
-	// 			panel.state.clear_selection();
-	// 		}
-	// 	}
-	// }
-
-	// fn handle_timeline_message(
-	// 	&mut self,
-	// 	panel_id: usize,
-	// 	message: timeline_panel::TimelineMessage,
-	// ) {
-	// 	let timeline_update = {
-	// 		let current_time = self.global_state.preview.time;
-	// 		let panel = self.ensure_timeline_panel_state(panel_id);
-	// 		panel
-	// 			.state
-	// 			.apply_message(&mut panel.model, message, current_time)
-	// 	};
-
-	// 	if let Some(time) = timeline_update.playhead_time {
-	// 		self.apply_core_msg(Msg::SetTime(time));
-	// 	}
-
-	// 	if timeline_update.clip_modified {
-	// 		self.sync_timeline_changes_to_composition(panel_id);
-	// 		self.apply_core_msg(Msg::SetTime(self.global_state.preview.time));
-	// 	}
-	// }
-
-	// fn handle_inspector_message(&mut self, message: inspector_panel::InspectorMessage) {
-	// 	match message {
-	// 		inspector_panel::InspectorMessage::AddOperator => {
-	// 			match self.editor_session.add_operator() {
-	// 				Some(node_id) => log::debug!("Added operator: {}", node_id.value()),
-	// 				None => log::error!("Failed to add operator: no operator definition found"),
-	// 			}
-	// 		}
-	// 		inspector_panel::InspectorMessage::CycleOperatorPrev(node_id) => {
-	// 			if let Err(e) = self.editor_session.cycle_operator_prev(node_id) {
-	// 				log::error!("Failed to cycle operator prev for {}: {e}", node_id.value());
-	// 			}
-	// 		}
-	// 		inspector_panel::InspectorMessage::CycleOperatorNext(node_id) => {
-	// 			if let Err(e) = self.editor_session.cycle_operator_next(node_id) {
-	// 				log::error!("Failed to cycle operator next for {}: {e}", node_id.value());
-	// 			}
-	// 		}
-	// 		inspector_panel::InspectorMessage::SetOperatorParameter {
-	// 			node_id,
-	// 			index,
-	// 			value,
-	// 		} => {
-	// 			if let Err(e) = self
-	// 				.editor_session
-	// 				.set_operator_parameter(node_id, index, value)
-	// 			{
-	// 				log::error!(
-	// 					"Failed to set parameter {index} on {}: {e}",
-	// 					node_id.value()
-	// 				);
-	// 			}
-	// 		}
-	// 	}
-	// }
+	/// タイムラインパネル
+	timeline: TimelinePanelState,
 }
 
 //==== Iced API ================================================================
@@ -426,18 +107,9 @@ impl NadeApp {
 
 		let app = Self {
 			project,
-			// panel_system,
-			// render_tx,
-			// render_rx: Arc::new(std::sync::Mutex::new(render_rx)),
-			// render_shutdown_tx: Some(shutdown_tx),
-			// render_shutdown_rx: Arc::new(std::sync::Mutex::new(shutdown_rx)),
-			// global_state: Model::default(),
-			// is_rendering: Arc::new(AtomicBool::new(false)),
-			// frame_count: 0,
-			// fps_update_time: now,
-			// timeline_panels,
-			// project_ui: ProjectPaneState::default(),
-			// editor_session: EditorSession::new(),
+			current_time: 0.0,
+			is_playing: false,
+			timeline: TimelinePanelState::default(),
 		};
 
 		// 初期フレームを描画するためのトリガー
@@ -456,19 +128,41 @@ impl NadeApp {
 			}
 
 			Message::TogglePlay => {
-				// self.apply_core_msg(Msg::TogglePlay);
-
-				log::debug!("Toggling play/pause");
+				self.is_playing = !self.is_playing;
+				log::debug!("Toggling play/pause: {}", self.is_playing);
 				Task::none()
 			}
 
 			Message::Tick => {
-				// 再生中のみフレームを進める
-				// if self.global_state.preview.is_playing {
-				// 	self.apply_core_msg(Msg::Tick);
-				// }
+				if self.is_playing {
+					self.current_time += 1.0 / 60.0;
+				}
+				// Decay glow animation
+				log::debug!("Tick: {}", self.current_time);
+				Task::none()
+			}
 
-				log::debug!("Tick");
+			Message::Timeline(msg) => {
+				let timeline_update =
+					self.timeline
+						.state
+						.apply_message(&mut self.timeline.model, msg, self.current_time);
+
+				if let Some(time) = timeline_update.playhead_time {
+					self.current_time = time;
+				}
+
+				// Handle pending track reorder (after mouse release)
+				if let Some((from_index, to_index)) = self.timeline.state.take_reorder()
+					&& from_index != to_index
+					&& from_index < self.timeline.model.tracks.len()
+					&& to_index < self.timeline.model.tracks.len()
+				{
+					let track = self.timeline.model.tracks.remove(from_index);
+					self.timeline.model.tracks.insert(to_index, track);
+				}
+
+				log::debug!("Timeline message: {:?}", timeline_update);
 				Task::none()
 			}
 
@@ -526,7 +220,16 @@ impl NadeApp {
 	}
 
 	pub(super) fn view(&self) -> Element<'_, Message> {
-		text("Hello, Nade!").into()
+		let reorder_preview = self.timeline.state.get_reorder_indices();
+
+		TimelineWidget::with_reorder_preview(
+			&self.timeline.state,
+			&self.timeline.model,
+			self.current_time,
+			reorder_preview,
+		)
+		.view_internal()
+		.map(Message::Timeline)
 	}
 	/*
 	let panel_view = self
@@ -569,52 +272,7 @@ impl NadeApp {
 	// }
 
 	pub(super) fn subscription(&self) -> Subscription<Message> {
-		Subscription::none()
+		// Always need tick for glow decay animation
+		iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::Tick)
 	}
-	/*
-		let render_rx = self.render_rx.clone();
-		let shutdown_rx = self.render_shutdown_rx.clone();
-		let render_subscription = Subscription::run_with(
-			RenderConnection(render_rx, shutdown_rx),
-			build_render_stream,
-		);
-
-		// キーボードサブスクリプション：スペースキーで再生/一時停止
-		let keyboard_subscription: Subscription<Message> =
-			iced::event::listen_with(|event, _status, _id| {
-				if let iced::Event::Keyboard(keyboard::Event::KeyPressed {
-					key: keyboard::Key::Named(keyboard::key::Named::Space),
-					..
-				}) = event
-				{
-					Some(Message::TogglePlay)
-				} else {
-					None
-				}
-			});
-
-		// 再生中のみTickを送信 (60fps)
-		let tick_subscription: Subscription<Message> = if self.global_state.preview.is_playing {
-			time::every(std::time::Duration::from_millis(16)).map(|_| Message::Tick)
-		} else {
-			Subscription::none()
-		};
-
-		// ウィンドウイベントの監視
-		let window_subscription = iced::event::listen_with(|event, _status, id| {
-			if let iced::Event::Window(iced::window::Event::CloseRequested) = event {
-				Some(Message::WindowClosed(id))
-			} else {
-				None
-			}
-		});
-
-		Subscription::batch([
-			render_subscription,
-			keyboard_subscription,
-			tick_subscription,
-			window_subscription,
-		])
-	}
-	*/
 }
