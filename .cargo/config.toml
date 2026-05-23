@@ -1,3 +1,13 @@
-[target.'cfg(target_os = "darwin")']
+[target.x86_64-unknown-linux-gnu]
 linker = "clang"
 rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[unstable]
+codegen-backend = true
+
+[profile.dev]
+codegen-backend = "cranelift"
+split-debuginfo = "unpacked"
+
+[build]
+rustc-wrapper = "sccache"
