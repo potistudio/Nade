@@ -629,11 +629,16 @@ impl TimelineInteraction {
 								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
 									// Overlap detected - try to place before this clip
 									let target_pos = c.start_time - clip_duration;
-									if target_pos >= current_start {
-										// There's room before the clip
+									// Verify the snap position doesn't collide with another clip
+									let has_room = target_pos >= 0.0
+										&& clips.iter().all(|other| {
+											other.id == c.id
+												|| target_pos >= other.start_time + other.duration
+												|| target_pos + clip_duration <= other.start_time
+										});
+									if has_room {
 										constrained_time = target_pos;
 									} else {
-										// No room - stay at current position
 										could_place = false;
 									}
 									break;
@@ -645,11 +650,16 @@ impl TimelineInteraction {
 								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
 									// Overlap detected - try to place after this clip
 									let target_pos = c.start_time + c.duration;
-									if target_pos <= c.start_time {
-										// There's no room after - stay at current position
-										could_place = false;
-									} else {
+									// Verify the snap position doesn't collide with another clip
+									let has_room = clips.iter().all(|other| {
+										other.id == c.id
+											|| target_pos >= other.start_time + other.duration
+											|| target_pos + clip_duration <= other.start_time
+									});
+									if has_room {
 										constrained_time = target_pos;
+									} else {
+										could_place = false;
 									}
 									break;
 								}
