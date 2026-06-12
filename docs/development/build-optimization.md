@@ -22,8 +22,9 @@ rustup component add rustc-codegen-cranelift-preview --toolchain nightly
 [unstable]
 codegen-backend = true
 
-[profile.dev]
-codegen-backend = "cranelift"
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-Z", "codegen-backend=cranelift"]
 ```
 
 ### 2. `mold`

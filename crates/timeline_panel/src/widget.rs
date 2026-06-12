@@ -17,7 +17,64 @@ use crate::{
 	interaction::{TimelineInteraction, TimelineLayout},
 	utils::{format_time, lighten_color},
 };
-use constants::timeline::*;
+use constants::timeline::{colors::CLIP_RESIZE_HANDLE, *};
+
+fn squircle_path(center: Point, width: f32, height: f32, corner_radius: f32) -> Path {
+	// コーナー半径は短辺の半分を超えられない
+	let r = corner_radius.min(width / 2.0).min(height / 2.0);
+	let n = 5.0f32; // iOS近似
+
+	let hw = width / 2.0;
+	let hh = height / 2.0;
+
+	// 各コーナーの中心
+	let corners = [
+		Point::new(center.x + hw - r, center.y - hh + r), // 右上
+		Point::new(center.x + hw - r, center.y + hh - r), // 右下
+		Point::new(center.x - hw + r, center.y + hh - r), // 左下
+		Point::new(center.x - hw + r, center.y - hh + r), // 左上
+	];
+
+	// コーナーごとの開始角度（ラジアン）
+	let start_angles = [
+		-std::f32::consts::FRAC_PI_2, // 上→右
+		0.0,                          // 右→下
+		std::f32::consts::FRAC_PI_2,  // 下→左
+		std::f32::consts::PI,         // 左→上
+	];
+
+	let corner_steps = 64usize;
+
+	Path::new(|builder| {
+		let mut first = true;
+
+		for (corner, &start_angle) in corners.iter().zip(start_angles.iter()) {
+			for i in 0..=corner_steps {
+				// 0..=corner_steps で π/2 を分割
+				let local_t = (i as f32) / (corner_steps as f32); // 0.0..=1.0
+				let angle = start_angle + local_t * std::f32::consts::FRAC_PI_2;
+
+				let cos_a = angle.cos();
+				let sin_a = angle.sin();
+
+				// 超楕円の曲線を単位円に適用してからrでスケール
+				let lx = cos_a.abs().powf(2.0 / n) * cos_a.signum() * r;
+				let ly = sin_a.abs().powf(2.0 / n) * sin_a.signum() * r;
+
+				let point = Point::new(corner.x + lx, corner.y + ly);
+
+				if first {
+					builder.move_to(point);
+					first = false;
+				} else {
+					builder.line_to(point);
+				}
+			}
+		}
+
+		builder.close();
+	})
+}
 
 /// Messages that can be sent by the TimelineWidget
 #[derive(Debug, Clone)]
@@ -455,6 +512,9 @@ impl TimelineWidget<'_> {
 		};
 
 		let is_selected = state.is_clip_selected(track_index, clip.id);
+		let is_hovered = state.is_clip_hovered(track_index, clip.id);
+		// Duplicate clips (id >= 10000) are shown semi-transparent during drag
+		let is_duplicate = clip.id >= 10000;
 		let base_color = Self::clip_base_color(track_index, clip.id);
 		let clip_color = if is_selected {
 			lighten_color(base_color, 0.2)
@@ -462,57 +522,82 @@ impl TimelineWidget<'_> {
 			base_color
 		};
 
-		let corner_radius: Radius = CLIP_CORNER_RADIUS.into();
-		let clip_path = Path::rounded_rectangle(clip_rect.position(), clip_rect.size(), corner_radius);
-
-		frame.fill(&clip_path, clip_color);
-		frame.stroke(
-			&clip_path,
-			Stroke::default().with_color(colors::CLIP_OUTLINE).with_width(1.0),
+		let clip_path = squircle_path(
+			Point::new(
+				clip_rect.x + clip_rect.width / 2.0,
+				clip_rect.y + clip_rect.height / 2.0,
+			),
+			clip_rect.width,
+			clip_rect.height,
+			CLIP_CORNER_RADIUS,
 		);
 
-		if is_selected {
-			frame.stroke(&clip_path, Stroke::default().with_color(Color::WHITE).with_width(2.0));
-			self.draw_resize_handles(frame, clip_rect);
-		}
+		// Apply transparency for duplicate clips
+		if is_duplicate {
+			let transparent_color = Color::from_rgba(
+				clip_color.r,
+				clip_color.g,
+				clip_color.b,
+				0.5, // 50% opacity
+			);
+			frame.fill(&clip_path, transparent_color);
+			frame.stroke(
+				&clip_path,
+				Stroke::default()
+					.with_color(Color::from_rgba(1.0, 1.0, 1.0, 0.5))
+					.with_width(1.0),
+			);
+		} else {
+			frame.fill(&clip_path, clip_color);
+			frame.stroke(
+				&clip_path,
+				Stroke::default().with_color(colors::CLIP_OUTLINE).with_width(1.0),
+			);
 
-		self.draw_clip_name(frame, clip, clip_rect, timeline_rect);
+			if is_selected {
+				frame.stroke(
+					&clip_path,
+					Stroke::default()
+						.with_color(Color::from_rgba(1.0, 0.34, 0.13, 1.0))
+						.with_width(1.0),
+				);
+			}
+
+			if is_hovered {
+				frame.stroke(
+					&clip_path,
+					Stroke::default()
+						.with_color(Color::from_rgba(1.0, 1.0, 1.0, 0.5))
+						.with_width(1.0),
+				);
+				self.draw_resize_handles(frame, clip_rect);
+			}
+		}
 	}
 
 	fn draw_resize_handles(&self, frame: &mut canvas::Frame, clip_rect: Rectangle) {
-		frame.fill_rectangle(
-			clip_rect.position(),
-			Size::new(RESIZE_HANDLE_VISUAL_WIDTH, clip_rect.height),
-			colors::RESIZE_HANDLE,
-		);
-		frame.fill_rectangle(
-			Point::new(clip_rect.x + clip_rect.width - RESIZE_HANDLE_VISUAL_WIDTH, clip_rect.y),
-			Size::new(RESIZE_HANDLE_VISUAL_WIDTH, clip_rect.height),
-			colors::RESIZE_HANDLE,
-		);
-	}
+		let handle_thickness = 2.0;
+		let handle_height = clip_rect.height - CLIP_CORNER_RADIUS + handle_thickness;
+		let handle_margin = CLIP_CORNER_RADIUS / 2.0 - handle_thickness / 2.0;
 
-	fn draw_clip_name(
-		&self,
-		frame: &mut canvas::Frame,
-		clip: &TimelineClip,
-		clip_rect: Rectangle,
-		timeline_rect: Rectangle,
-	) {
-		if clip_rect.width <= 20.0 {
-			return;
-		}
+		// Left handle
+		let left_handle_path = Path::rounded_rectangle(
+			Point::new(clip_rect.x + handle_margin, clip_rect.y + handle_margin),
+			Size::new(handle_thickness, handle_height),
+			handle_thickness.into(),
+		);
+		frame.fill(&left_handle_path, CLIP_RESIZE_HANDLE);
 
-		let text_x = (clip_rect.x + 6.0).max(timeline_rect.x + 6.0);
-		if text_x < clip_rect.x + clip_rect.width - 10.0 {
-			frame.fill_text(Text {
-				content: clip.name.clone(),
-				position: Point::new(text_x, clip_rect.y + clip_rect.height / 2.0 - 6.0),
-				color: Color::WHITE,
-				size: 11.0.into(),
-				..Text::default()
-			});
-		}
+		// Right handle
+		let right_handle_path = Path::rounded_rectangle(
+			Point::new(
+				clip_rect.x + clip_rect.width - handle_margin - handle_thickness,
+				clip_rect.y + handle_margin,
+			),
+			Size::new(handle_thickness, handle_height),
+			handle_thickness.into(),
+		);
+		frame.fill(&right_handle_path, CLIP_RESIZE_HANDLE);
 	}
 
 	fn draw_playhead(

@@ -21,6 +21,13 @@ pub(crate) enum DragState {
 		clip_id: usize,
 		offset: f32,
 	},
+	/// Dragging a clip with Shift held - shows ghost (original stays, drag preview moves)
+	ClipDuplicating {
+		track_id: usize,
+		clip_id: usize,
+		original_clip: TimelineClip,
+		offset: f32,
+	},
 	ClipResizeLeft {
 		track_id: usize,
 		clip_id: usize,
@@ -110,11 +117,14 @@ pub struct TimelineInteraction {
 	pub(crate) drag_state: DragState,
 	pub(crate) ctrl_pressed: bool,
 	pub(crate) alt_pressed: bool,
+	pub(crate) shift_pressed: bool,
 	pub(crate) viewport_width: f32,
 	/// Animation for reorder glow effect (track_index, remaining_alpha)
 	pub(crate) reorder_glow: Option<(usize, f32)>,
 	/// Pending reorder to be applied on mouse release
 	pub(crate) pending_reorder: Option<(usize, usize)>,
+	/// Currently hovered clip (track_index, clip_id)
+	pub(crate) hovered_clip: Option<(usize, usize)>,
 }
 
 impl Default for TimelineInteraction {
@@ -127,9 +137,11 @@ impl Default for TimelineInteraction {
 			drag_state: DragState::None,
 			ctrl_pressed: false,
 			alt_pressed: false,
+			shift_pressed: false,
 			viewport_width: 800.0,
 			reorder_glow: None,
 			pending_reorder: None,
+			hovered_clip: None,
 		}
 	}
 }
@@ -207,6 +219,10 @@ impl TimelineInteraction {
 
 	pub(crate) fn is_clip_selected(&self, track_index: usize, clip_id: usize) -> bool {
 		self.selected_clip == Some((track_index, clip_id))
+	}
+
+	pub(crate) fn is_clip_hovered(&self, track_index: usize, clip_id: usize) -> bool {
+		self.hovered_clip == Some((track_index, clip_id))
 	}
 
 	/// Clamp the scroll offset to valid bounds
@@ -350,10 +366,11 @@ impl TimelineInteraction {
 			}
 			TimelineCanvasEvent::MouseReleased => {
 				let was_dragging_clip = self.is_dragging_clip();
-				let (_handled, playhead_time) = self.handle_mouse_release();
+				let was_duplicating = self.is_duplicating_clip();
+				let (_handled, playhead_time) = self.handle_mouse_release(model);
 				TimelineUpdate {
 					playhead_time,
-					clip_modified: was_dragging_clip,
+					clip_modified: was_dragging_clip || was_duplicating,
 					track_reordered: None,
 				}
 			}
@@ -375,6 +392,7 @@ impl TimelineInteraction {
 			TimelineCanvasEvent::KeyPressed { key, modifiers } => {
 				let is_alt_key = matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::Alt));
 				self.update_modifiers(modifiers);
+				self.shift_pressed = modifiers.shift();
 				if is_alt_key {
 					self.alt_pressed = true;
 				}
@@ -386,6 +404,7 @@ impl TimelineInteraction {
 				if is_alt_key {
 					self.alt_pressed = false;
 				}
+				self.shift_pressed = modifiers.shift();
 				self.update_modifiers(modifiers);
 				TimelineUpdate::default()
 			}
@@ -397,8 +416,14 @@ impl TimelineInteraction {
 	pub fn is_dragging_clip(&self) -> bool {
 		matches!(
 			self.drag_state,
-			DragState::Clip { .. } | DragState::ClipResizeLeft { .. } | DragState::ClipResizeRight { .. }
+			DragState::Clip { .. } | DragState::ClipDuplicating { .. } | DragState::ClipResizeLeft { .. } | DragState::ClipResizeRight { .. }
 		)
+	}
+
+	/// Is a clip being duplicated (shift+drag)?
+	#[inline]
+	pub fn is_duplicating_clip(&self) -> bool {
+		matches!(self.drag_state, DragState::ClipDuplicating { .. })
 	}
 
 	/// マウスプレス時の処理
@@ -476,23 +501,33 @@ impl TimelineInteraction {
 			let x_start = self.time_to_x(clip.start_time, timeline_left);
 			let x_end = self.time_to_x(clip.end_time(), timeline_left);
 
-			self.drag_state = if pos.x < x_start + RESIZE_HANDLE_WIDTH {
-				DragState::ClipResizeLeft {
+			// Resize handles don't support duplicating
+			if pos.x < x_start + RESIZE_HANDLE_WIDTH {
+				self.drag_state = DragState::ClipResizeLeft {
 					track_id,
 					clip_id,
 					original_start: clip.start_time,
 					original_duration: clip.duration,
-				}
+				};
 			} else if pos.x > x_end - RESIZE_HANDLE_WIDTH {
-				DragState::ClipResizeRight { track_id, clip_id }
+				self.drag_state = DragState::ClipResizeRight { track_id, clip_id };
+			} else if self.shift_pressed {
+				// Shift+drag: duplicate mode - store the original clip for ghost rendering
+				let time = self.x_to_time(pos.x, timeline_left);
+				self.drag_state = DragState::ClipDuplicating {
+					track_id,
+					clip_id,
+					original_clip: clip.clone(),
+					offset: clip.start_time - time,
+				};
 			} else {
 				let time = self.x_to_time(pos.x, timeline_left);
-				DragState::Clip {
+				self.drag_state = DragState::Clip {
 					track_id,
 					clip_id,
 					offset: clip.start_time - time,
-				}
-			};
+				};
+			}
 		}
 	}
 
@@ -654,6 +689,36 @@ impl TimelineInteraction {
 				}
 				(true, None)
 			}
+			DragState::ClipDuplicating {
+				track_id,
+				clip_id: _,
+				original_clip,
+				offset,
+			} => {
+				// During duplicate drag, we add a duplicate clip to model at proposed position
+				// The original clip stays where it is, and we drag the duplicate
+				let proposed = self.x_to_time(pos.x, timeline_left) + offset;
+				let proposed = proposed.max(0.0);
+
+				if let Some(track) = model.tracks.get_mut(track_id) {
+					// Check if we already have a pending duplicate clip
+					let duplicate_exists = track.clips.iter().any(|c| c.id == original_clip.id + 10000);
+
+					if !duplicate_exists {
+						// Create a new clip as duplicate (use id + 10000 to mark as duplicate)
+						let mut duplicate = original_clip.clone();
+						duplicate.id = original_clip.id + 10000;
+						duplicate.start_time = proposed;
+						track.clips.push(duplicate);
+					} else {
+						// Update position of existing duplicate
+						if let Some(clip) = track.clips.iter_mut().find(|c| c.id == original_clip.id + 10000) {
+							clip.start_time = proposed;
+						}
+					}
+				}
+				(true, None)
+			}
 			DragState::Panning {
 				start_offset,
 				start_cursor,
@@ -695,14 +760,17 @@ impl TimelineInteraction {
 				}
 				(true, None)
 			}
-			DragState::None => (false, None),
+			DragState::None => {
+				self.hovered_clip = self.find_clip_at(model, pos, bounds);
+				(false, None)
+			}
 		}
 	}
 
 	/// マウスリリース時の処理
 	///
 	/// プレイヘッドドラッグ終了時は最終時間を返す
-	pub(crate) fn handle_mouse_release(&mut self) -> (bool, Option<f32>) {
+	pub(crate) fn handle_mouse_release(&mut self, _model: &mut TimelineModel) -> (bool, Option<f32>) {
 		if let DragState::ReorderTrack {
 			from_index,
 			current_index,
@@ -713,6 +781,21 @@ impl TimelineInteraction {
 			}
 			// Trigger glow animation on the final position
 			self.reorder_glow = Some((current_index, 1.0));
+			self.drag_state = DragState::None;
+			return (true, None);
+		}
+
+		// Handle ClipDuplicating -> finalize the duplicate
+		if let DragState::ClipDuplicating {
+			track_id: _,
+			clip_id: _,
+			original_clip: _,
+			offset: _,
+		} = &self.drag_state
+		{
+			// The duplicate was already added to model during drag (in handle_mouse_move)
+			// Just convert to regular Clip drag state for the final position
+			// The duplicate stays, original stays
 			self.drag_state = DragState::None;
 			return (true, None);
 		}
