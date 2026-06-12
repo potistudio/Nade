@@ -548,8 +548,8 @@ impl TimelineInteraction {
 				clip_id,
 				offset,
 			} => {
-				let proposed = self.x_to_time(pos.x, timeline_left) + offset;
-				let proposed = proposed.max(0.0);
+				let cursor_time = self.x_to_time(pos.x, timeline_left);
+				let proposed = (cursor_time + offset).max(0.0);
 
 				// Get clip duration
 				let clip_duration = model
@@ -627,9 +627,13 @@ impl TimelineInteraction {
 							// Moving right: find first clip that overlaps and would block
 							for c in clips.iter() {
 								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
-									// Overlap detected - try to place before this clip
-									let target_pos = c.start_time - clip_duration;
-									// Verify the snap position doesn't collide with another clip
+									// Cursor crossed past the blocker's right edge → snap after it
+									let target_pos = if cursor_time > c.start_time + c.duration {
+										c.start_time + c.duration
+									} else {
+										// Normal: snap before blocker
+										c.start_time - clip_duration
+									};
 									let has_room = target_pos >= 0.0
 										&& clips.iter().all(|other| {
 											other.id == c.id
@@ -648,14 +652,19 @@ impl TimelineInteraction {
 							// Moving left: find first clip that overlaps
 							for c in clips.iter() {
 								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
-									// Overlap detected - try to place after this clip
-									let target_pos = c.start_time + c.duration;
-									// Verify the snap position doesn't collide with another clip
-									let has_room = clips.iter().all(|other| {
-										other.id == c.id
-											|| target_pos >= other.start_time + other.duration
-											|| target_pos + clip_duration <= other.start_time
-									});
+									// Cursor crossed past the blocker's left edge → snap before it
+									let target_pos = if cursor_time < c.start_time {
+										c.start_time - clip_duration
+									} else {
+										// Normal: snap after blocker
+										c.start_time + c.duration
+									};
+									let has_room = target_pos >= 0.0
+										&& clips.iter().all(|other| {
+											other.id == c.id
+												|| target_pos >= other.start_time + other.duration
+												|| target_pos + clip_duration <= other.start_time
+										});
 									if has_room {
 										constrained_time = target_pos;
 									} else {
