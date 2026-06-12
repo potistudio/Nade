@@ -693,18 +693,55 @@ impl TimelineInteraction {
 				original_duration,
 			} => {
 				let time = self.x_to_time(pos.x, timeline_left).max(0.0);
+				let fixed_end = original_start + original_duration;
+
+				// 左にあるクリップの右端のうち最も大きいもの（左端の下限）
+				let left_bound = model
+					.tracks
+					.get(track_id)
+					.map(|t| {
+						t.clips
+							.iter()
+							.filter(|c| c.id != clip_id && c.start_time + c.duration <= fixed_end)
+							.map(|c| c.start_time + c.duration)
+							.fold(0.0_f32, f32::max)
+					})
+					.unwrap_or(0.0);
+
 				if let Some(clip) = Self::find_clip_mut(model, track_id, clip_id) {
 					let delta = time - original_start;
 					let new_duration = (original_duration - delta).max(MIN_CLIP_DURATION);
-					clip.start_time = original_start + original_duration - new_duration;
-					clip.duration = new_duration;
+					let new_start = (fixed_end - new_duration).max(left_bound).min(fixed_end - MIN_CLIP_DURATION);
+					clip.start_time = new_start;
+					clip.duration = fixed_end - new_start;
 				}
 				(true, None)
 			}
 			DragState::ClipResizeRight { track_id, clip_id } => {
 				let end_time = self.x_to_time(pos.x, timeline_left);
+
+				// 右にあるクリップの左端のうち最も小さいもの（右端の上限）
+				let clip_start = model
+					.tracks
+					.get(track_id)
+					.and_then(|t| t.clips.iter().find(|c| c.id == clip_id))
+					.map(|c| c.start_time)
+					.unwrap_or(0.0);
+				let right_bound = model
+					.tracks
+					.get(track_id)
+					.map(|t| {
+						t.clips
+							.iter()
+							.filter(|c| c.id != clip_id && c.start_time >= clip_start)
+							.map(|c| c.start_time)
+							.fold(f32::INFINITY, f32::min)
+					})
+					.unwrap_or(f32::INFINITY);
+
 				if let Some(clip) = Self::find_clip_mut(model, track_id, clip_id) {
-					clip.duration = (end_time - clip.start_time).max(MIN_CLIP_DURATION);
+					let clamped_end = end_time.min(right_bound);
+					clip.duration = (clamped_end - clip.start_time).max(MIN_CLIP_DURATION);
 				}
 				(true, None)
 			}
