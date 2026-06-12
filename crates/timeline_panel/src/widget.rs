@@ -17,7 +17,7 @@ use crate::{
 	interaction::{TimelineInteraction, TimelineLayout},
 	utils::{format_time, lighten_color},
 };
-use constants::timeline::{colors::CLIP_RESIZE_HANDLE, *};
+use constants::timeline::{colors::CLIP_RESIZE_HANDLE, CLIP_TEXT_PADDING, *};
 
 fn squircle_path(center: Point, width: f32, height: f32, corner_radius: f32) -> Path {
 	// コーナー半径は短辺の半分を超えられない
@@ -191,40 +191,46 @@ impl TimelineWidget<'_> {
 	fn zoom_control_view(time_scale: f32) -> Element<'static, TimelineMessage> {
 		let zoom_percent = (time_scale * 100.0) as i32;
 
-		let zoom_out_btn = button(text("-").size(12))
+		let zoom_out_btn = button(text("−").size(13))
 			.on_press(TimelineMessage::ZoomOut)
-			.padding([0, 4]);
+			.padding([2, 8]);
 
 		let zoom_slider = slider(0.1..=10.0, time_scale, TimelineMessage::ZoomChanged)
 			.step(0.1)
-			.width(150);
+			.width(120);
 
-		let zoom_in_btn = button(text("+").size(14))
+		let zoom_in_btn = button(text("+").size(13))
 			.on_press(TimelineMessage::ZoomIn)
-			.padding([4, 10]);
+			.padding([2, 8]);
 
-		let zoom_label = text(format!("{}%", zoom_percent)).size(12);
+		let zoom_label = text(format!("{zoom_percent}%"))
+			.size(11)
+			.width(40);
 
-		let reset_btn = button(text("Reset").size(12))
+		let reset_btn = button(text("1:1").size(11))
 			.on_press(TimelineMessage::ResetZoom)
-			.padding([4, 8]);
+			.padding([2, 6]);
 
 		let controls = row![
-			text("Zoom:").size(12),
 			zoom_out_btn,
 			zoom_slider,
 			zoom_in_btn,
 			zoom_label,
 			reset_btn,
 		]
-		.spacing(8)
+		.spacing(4)
 		.align_y(iced::Alignment::Center);
 
 		container(controls)
-			.padding(8)
+			.padding([4, 10])
 			.width(Length::Fill)
 			.style(|_theme| container::Style {
-				background: Some(colors::RULER_BG.into()),
+				background: Some(colors::BACKGROUND.into()),
+				border: iced::Border {
+					color: colors::BORDER_DARK,
+					width: 1.0,
+					radius: 0.0.into(),
+				},
 				..Default::default()
 			})
 			.into()
@@ -268,7 +274,7 @@ impl TimelineWidget<'_> {
 			let (tick_height, tick_color) = if is_major {
 				(10.0, colors::TICK_MAJOR)
 			} else {
-				(6.0, colors::TICK_MINOR)
+				(5.0, colors::TICK_MINOR)
 			};
 
 			self.draw_vertical_line(
@@ -282,9 +288,9 @@ impl TimelineWidget<'_> {
 			if is_major {
 				frame.fill_text(Text {
 					content: format_time(time),
-					position: Point::new(x, rect.y + 4.0),
+					position: Point::new(x + 3.0, rect.y + 6.0),
 					color: colors::TEXT_SECONDARY,
-					size: 10.0.into(),
+					size: 11.0.into(),
 					..Text::default()
 				});
 			}
@@ -329,7 +335,7 @@ impl TimelineWidget<'_> {
 			frame.fill_rectangle(Point::new(rect.x, y), Size::new(rect.width, TRACK_HEIGHT), bg_color);
 
 			// Draw track reorder handle on the left side (vertical grip)
-			let handle_width = 8.0;
+			let handle_width = 10.0;
 			let handle_rect = Rectangle {
 				x: rect.x,
 				y,
@@ -338,18 +344,20 @@ impl TimelineWidget<'_> {
 			};
 			frame.fill_rectangle(handle_rect.position(), handle_rect.size(), colors::TRACK_REORDER_HANDLE);
 
-			// Draw vertical grip lines (3 vertical lines)
-			let grip_center_x = rect.x + handle_width / 2.0;
-			for line_i in 0..3 {
-				let line_x = grip_center_x - 1.5 + (line_i as f32 * 1.5);
-				self.draw_vertical_line_with_width(
-					frame,
-					line_x,
-					y + 4.0,
-					y + TRACK_HEIGHT - 4.0,
-					colors::TEXT_MUTED,
-					1.0,
-				);
+			// Draw dot-grid grip (2 cols × 3 rows)
+			let dot_r = 1.0_f32;
+			let grip_left = rect.x + 2.5;
+			let dot_cols = [grip_left, grip_left + 3.5];
+			let dot_rows = [
+				y + TRACK_HEIGHT / 2.0 - 4.0,
+				y + TRACK_HEIGHT / 2.0,
+				y + TRACK_HEIGHT / 2.0 + 4.0,
+			];
+			for col_x in dot_cols {
+				for row_y in dot_rows {
+					let dot = Path::circle(Point::new(col_x, row_y), dot_r);
+					frame.fill(&dot, colors::TEXT_MUTED);
+				}
 			}
 
 			let text_color = if track.muted {
@@ -359,7 +367,7 @@ impl TimelineWidget<'_> {
 			};
 			frame.fill_text(Text {
 				content: track.name.clone(),
-				position: Point::new(rect.x + 14.0, y + TRACK_HEIGHT / 2.0 - 6.0),
+				position: Point::new(rect.x + handle_width + 6.0, y + TRACK_HEIGHT / 2.0 - 7.0),
 				color: text_color,
 				size: 12.0.into(),
 				..Text::default()
@@ -571,6 +579,19 @@ impl TimelineWidget<'_> {
 						.with_width(1.0),
 				);
 				self.draw_resize_handles(frame, clip_rect);
+			}
+
+			// Clip label — only draw if there's enough room
+			if clip_rect.width > CLIP_TEXT_PADDING * 2.0 + 4.0 {
+				let text_x = clip_rect.x + CLIP_TEXT_PADDING;
+				let text_y = clip_rect.y + clip_rect.height / 2.0 - 6.0;
+				frame.fill_text(Text {
+					content: clip.name.clone(),
+					position: Point::new(text_x, text_y),
+					color: Color::from_rgba(1.0, 1.0, 1.0, 0.85),
+					size: 11.0.into(),
+					..Text::default()
+				});
 			}
 		}
 	}
