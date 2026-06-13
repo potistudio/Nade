@@ -135,6 +135,8 @@ pub struct TimelineInteraction {
 	pub(crate) selected_clips: Vec<(usize, usize)>,
 	/// キャンバスの左上絶対座標 (描画時のローカル変換用)
 	pub(crate) canvas_origin: Point,
+	/// Alt+ドラッグで縮められているクリップ (track_index, clip_id)
+	pub(crate) alt_shrinking_clip: Option<(usize, usize)>,
 }
 
 impl Default for TimelineInteraction {
@@ -157,6 +159,7 @@ impl Default for TimelineInteraction {
 			selection_rect: None,
 			selected_clips: Vec::new(),
 			canvas_origin: Point::ORIGIN,
+			alt_shrinking_clip: None,
 		}
 	}
 }
@@ -724,9 +727,10 @@ impl TimelineInteraction {
 				let drag_direction = proposed - current_start;
 
 				if self.alt_pressed {
-					// Alt held: stretch the OTHER clip (the one being collided with)
+					// Alt held: shrink the clip being collided with
+					let mut shrunk_clip_id: Option<usize> = None;
+
 					if let Some(track) = model.tracks.get_mut(track_id) {
-						// Sort clips by start time
 						let mut clips: Vec<_> = track.clips.iter_mut().filter(|c| c.id != clip_id).collect();
 						clips.sort_by(|a, b| {
 							a.start_time
@@ -738,6 +742,7 @@ impl TimelineInteraction {
 							// Moving right: shrink the clip we're pushing into (trim its left edge)
 							for c in clips.iter_mut() {
 								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
+									shrunk_clip_id = Some(c.id);
 									let old_end = c.start_time + c.duration;
 									c.start_time = proposed + clip_duration;
 									c.duration = (old_end - c.start_time).max(MIN_CLIP_DURATION);
@@ -748,12 +753,16 @@ impl TimelineInteraction {
 							// Moving left: shrink the clip we're pushing into (trim its right edge)
 							for c in clips.iter_mut().rev() {
 								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
+									shrunk_clip_id = Some(c.id);
 									c.duration = (proposed - c.start_time).max(MIN_CLIP_DURATION);
 									break;
 								}
 							}
 						}
 					}
+
+					self.alt_shrinking_clip = shrunk_clip_id.map(|cid| (track_id, cid));
+
 					// Move the dragged clip normally
 					if let Some(track) = model.tracks.get_mut(track_id)
 						&& let Some(clip) = track.clips.iter_mut().find(|c| c.id == clip_id)
@@ -761,6 +770,7 @@ impl TimelineInteraction {
 						clip.start_time = proposed;
 					}
 				} else {
+					self.alt_shrinking_clip = None;
 					// Normal mode: snap to avoid overlap, don't place if no room
 					let mut constrained_time = proposed;
 					let mut could_place = true;
@@ -1016,6 +1026,7 @@ impl TimelineInteraction {
 
 		if !matches!(self.drag_state, DragState::None) {
 			self.drag_state = DragState::None;
+			self.alt_shrinking_clip = None;
 			return (true, None);
 		}
 		(false, None)

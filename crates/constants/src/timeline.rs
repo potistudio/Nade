@@ -50,5 +50,6 @@ pub mod colors {
 	pub const CLIP_SELECTED_OUTLINE: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.92);
 	pub const CLIP_HOVERED_OUTLINE: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.55);
 	pub const CLIP_RESIZE_HANDLE: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.80);
+	pub const CLIP_SHRINKING_OUTLINE: Color = Color::from_rgba(1.0, 0.55, 0.1, 0.90);
 	pub const TRACK_REORDER_HANDLE: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.12);
 }

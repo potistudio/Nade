@@ -18,7 +18,7 @@ use crate::{
 	utils::{format_time, lighten_color},
 };
 use constants::timeline::{
-	colors::{CLIP_HOVERED_OUTLINE, CLIP_RESIZE_HANDLE, CLIP_SELECTED_OUTLINE},
+	colors::{CLIP_HOVERED_OUTLINE, CLIP_RESIZE_HANDLE, CLIP_SELECTED_OUTLINE, CLIP_SHRINKING_OUTLINE},
 	*,
 };
 
@@ -552,6 +552,7 @@ impl TimelineWidget<'_> {
 
 		let is_selected = state.is_clip_selected(track_index, clip.id);
 		let is_hovered = state.is_clip_hovered(track_index, clip.id);
+		let is_shrinking = state.alt_shrinking_clip == Some((track_index, clip.id));
 		// Duplicate clips (id >= 10000) are shown semi-transparent during drag
 		let is_duplicate = clip.id >= 10000;
 		let base_color = Self::clip_base_color(track_index, clip.id);
@@ -595,6 +596,13 @@ impl TimelineWidget<'_> {
 				frame.stroke(
 					&clip_path,
 					Stroke::default().with_color(CLIP_SELECTED_OUTLINE).with_width(1.5),
+				);
+			}
+
+			if is_shrinking {
+				frame.stroke(
+					&clip_path,
+					Stroke::default().with_color(CLIP_SHRINKING_OUTLINE).with_width(2.0),
 				);
 			}
 
