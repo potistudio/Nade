@@ -751,10 +751,11 @@ impl TimelineInteraction {
 						});
 
 						if drag_direction > 0.0 {
-							// Moving right: shrink the clip we're pushing into (trim its left edge)
+							// Moving right: D の右端が C の中にある (C が D の右端をまたぐ)
 							for c in clips.iter_mut() {
-								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
-									// 元サイズを記憶してから縮める
+								if c.start_time < proposed + clip_duration
+									&& c.start_time + c.duration > proposed + clip_duration
+								{
 									self.alt_shrinking_original = Some((track_id, c.id, c.start_time, c.duration));
 									shrunk_clip_id = Some(c.id);
 									let old_end = c.start_time + c.duration;
@@ -764,10 +765,9 @@ impl TimelineInteraction {
 								}
 							}
 						} else if drag_direction < 0.0 {
-							// Moving left: shrink the clip we're pushing into (trim its right edge)
+							// Moving left: D の左端が C の中にある (C が D の左端をまたぐ)
 							for c in clips.iter_mut().rev() {
-								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
-									// 元サイズを記憶してから縮める
+								if c.start_time < proposed && c.start_time + c.duration > proposed {
 									self.alt_shrinking_original = Some((track_id, c.id, c.start_time, c.duration));
 									shrunk_clip_id = Some(c.id);
 									c.duration = (proposed - c.start_time).max(MIN_CLIP_DURATION);
