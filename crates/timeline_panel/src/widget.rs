@@ -706,7 +706,7 @@ impl TimelineWidget<'_> {
 	}
 
 	#[inline]
-	fn clip_base_color(track_index: usize, clip_id: usize) -> Color {
+	fn clip_base_color(track_index: usize, _clip_id: usize) -> Color {
 		const PALETTE: [Color; 8] = [
 			Color::from_rgb(0.38, 0.58, 0.95),
 			Color::from_rgb(0.24, 0.72, 0.54),
@@ -718,8 +718,7 @@ impl TimelineWidget<'_> {
 			Color::from_rgb(0.55, 0.55, 0.93),
 		];
 
-		let index = (clip_id + track_index * 3) % PALETTE.len();
-		PALETTE[index]
+		PALETTE[track_index % PALETTE.len()]
 	}
 }
 
