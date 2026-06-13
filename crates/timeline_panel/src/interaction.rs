@@ -750,22 +750,22 @@ impl TimelineInteraction {
 								.unwrap_or(std::cmp::Ordering::Equal)
 						});
 
-						if drag_direction > 0.0 {
-							// Moving right: D の右端が C の中にある (C が D の右端をまたぐ)
-							for c in clips.iter_mut() {
-								if c.start_time < proposed + clip_duration
-									&& c.start_time + c.duration > proposed + clip_duration
-								{
-									self.alt_shrinking_original = Some((track_id, c.id, c.start_time, c.duration));
-									shrunk_clip_id = Some(c.id);
-									let old_end = c.start_time + c.duration;
-									c.start_time = proposed + clip_duration;
-									c.duration = (old_end - c.start_time).max(MIN_CLIP_DURATION);
-									break;
-								}
+						// D の右端が C の中にある → C の左端を押し出す (右移動で突入した状態を左戻しでも維持)
+						for c in clips.iter_mut() {
+							if c.start_time < proposed + clip_duration
+								&& c.start_time + c.duration > proposed + clip_duration
+							{
+								self.alt_shrinking_original = Some((track_id, c.id, c.start_time, c.duration));
+								shrunk_clip_id = Some(c.id);
+								let old_end = c.start_time + c.duration;
+								c.start_time = proposed + clip_duration;
+								c.duration = (old_end - c.start_time).max(MIN_CLIP_DURATION);
+								break;
 							}
-						} else if drag_direction < 0.0 {
-							// Moving left: D の左端が C の中にある (C が D の左端をまたぐ)
+						}
+
+						// D の左端が C の中にある → C の右端を切る (右端衝突がない場合のみ)
+						if shrunk_clip_id.is_none() {
 							for c in clips.iter_mut().rev() {
 								if c.start_time < proposed && c.start_time + c.duration > proposed {
 									self.alt_shrinking_original = Some((track_id, c.id, c.start_time, c.duration));
