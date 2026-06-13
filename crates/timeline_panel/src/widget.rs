@@ -248,6 +248,35 @@ impl TimelineWidget<'_> {
 		self.draw_ruler(frame, self.state, layout.ruler);
 		self.draw_track_labels(frame, self.state, self.model, layout.track_labels);
 		self.draw_playhead(frame, self.state, layout.ruler, layout.content);
+		self.draw_selection_rect(frame);
+	}
+
+	fn draw_selection_rect(&self, frame: &mut canvas::Frame) {
+		let Some(sel_rect) = self.state.selection_rect else {
+			return;
+		};
+
+		let origin = self.state.canvas_origin;
+		let local_rect = Rectangle {
+			x: sel_rect.x - origin.x,
+			y: sel_rect.y - origin.y,
+			width: sel_rect.width,
+			height: sel_rect.height,
+		};
+
+		frame.fill_rectangle(
+			local_rect.position(),
+			local_rect.size(),
+			Color::from_rgba(0.4, 0.7, 1.0, 0.12),
+		);
+
+		let sel_path = Path::rectangle(local_rect.position(), local_rect.size());
+		frame.stroke(
+			&sel_path,
+			Stroke::default()
+				.with_color(Color::from_rgba(0.4, 0.7, 1.0, 0.75))
+				.with_width(1.0),
+		);
 	}
 
 	fn draw_ruler(&self, frame: &mut canvas::Frame, state: &TimelineInteraction, rect: Rectangle) {

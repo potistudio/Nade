@@ -38,13 +38,13 @@ pub(crate) enum DragState {
 		track_id: usize,
 		clip_id: usize,
 	},
-	Panning {
-		start_offset: Vector,
-		start_cursor: Point,
-	},
 	ReorderTrack {
 		from_index: usize,
 		current_index: usize,
+	},
+	/// 空白エリアをドラッグして複数クリップを範囲選択
+	RangeSelect {
+		start: Point,
 	},
 }
 
@@ -129,6 +129,12 @@ pub struct TimelineInteraction {
 	pub(crate) cursor_abs_x: f32,
 	/// タイムラインコンテンツエリア左端の絶対X座標 (= bounds.x + TRACK_LABEL_WIDTH)
 	pub(crate) timeline_left_abs: f32,
+	/// 範囲選択中の矩形 (絶対座標)
+	pub(crate) selection_rect: Option<Rectangle>,
+	/// 範囲選択で選択されたクリップ群 (track_index, clip_id)
+	pub(crate) selected_clips: Vec<(usize, usize)>,
+	/// キャンバスの左上絶対座標 (描画時のローカル変換用)
+	pub(crate) canvas_origin: Point,
 }
 
 impl Default for TimelineInteraction {
@@ -148,6 +154,9 @@ impl Default for TimelineInteraction {
 			hovered_clip: None,
 			cursor_abs_x: TRACK_LABEL_WIDTH + 340.0,
 			timeline_left_abs: TRACK_LABEL_WIDTH,
+			selection_rect: None,
+			selected_clips: Vec::new(),
+			canvas_origin: Point::ORIGIN,
 		}
 	}
 }
@@ -180,6 +189,33 @@ impl TimelineInteraction {
 	#[inline]
 	pub(crate) fn x_to_time(&self, x: f32, timeline_left: f32) -> f32 {
 		((x - timeline_left) - self.scroll_offset.x) / (PIXELS_PER_SECOND * self.time_scale)
+	}
+
+	fn find_clips_in_rect(&self, model: &TimelineModel, sel_rect: Rectangle, bounds: Rectangle) -> Vec<(usize, usize)> {
+		let timeline_left = bounds.x + TRACK_LABEL_WIDTH;
+		let timeline_top = bounds.y + RULER_HEIGHT;
+		let mut result = Vec::new();
+
+		for (track_index, track) in model.tracks.iter().enumerate() {
+			let track_y = timeline_top + (track_index as f32 * TRACK_HEIGHT) + self.scroll_offset.y;
+			let clip_top = track_y + TRACK_PADDING;
+			let clip_bottom = track_y + TRACK_HEIGHT - TRACK_PADDING;
+
+			if sel_rect.y + sel_rect.height < clip_top || sel_rect.y > clip_bottom {
+				continue;
+			}
+
+			for clip in &track.clips {
+				let x_start = self.time_to_x(clip.start_time, timeline_left);
+				let x_end = self.time_to_x(clip.end_time(), timeline_left);
+
+				if sel_rect.x < x_end && sel_rect.x + sel_rect.width > x_start {
+					result.push((track_index, clip.id));
+				}
+			}
+		}
+
+		result
 	}
 
 	pub(crate) fn find_clip_at(&self, model: &TimelineModel, pos: Point, bounds: Rectangle) -> Option<(usize, usize)> {
@@ -225,6 +261,7 @@ impl TimelineInteraction {
 
 	pub(crate) fn is_clip_selected(&self, track_index: usize, clip_id: usize) -> bool {
 		self.selected_clip == Some((track_index, clip_id))
+			|| self.selected_clips.contains(&(track_index, clip_id))
 	}
 
 	pub(crate) fn is_clip_hovered(&self, track_index: usize, clip_id: usize) -> bool {
@@ -499,15 +536,15 @@ impl TimelineInteraction {
 		if layout.content.contains(pos) {
 			if let Some((track_id, clip_id)) = self.find_clip_at(model, pos, bounds) {
 				self.selected_clip = Some((track_id, clip_id));
+				self.selected_clips.clear();
 				self.start_clip_drag(model, pos, track_id, clip_id, layout.timeline_left());
 				return (true, None);
 			}
 
 			self.selected_clip = None;
-			self.drag_state = DragState::Panning {
-				start_offset: self.scroll_offset,
-				start_cursor: pos,
-			};
+			self.selected_clips.clear();
+			self.canvas_origin = bounds.position();
+			self.drag_state = DragState::RangeSelect { start: pos };
 			return (true, None);
 		}
 
@@ -802,15 +839,6 @@ impl TimelineInteraction {
 				}
 				(true, None)
 			}
-			DragState::Panning {
-				start_offset,
-				start_cursor,
-			} => {
-				let delta = pos - start_cursor;
-				self.scroll_offset = start_offset + delta;
-				self.clamp_scroll_offset();
-				(true, None)
-			}
 			DragState::ReorderTrack {
 				from_index: _,
 				current_index: _,
@@ -843,6 +871,16 @@ impl TimelineInteraction {
 				}
 				(true, None)
 			}
+			DragState::RangeSelect { start } => {
+				let x1 = start.x.min(pos.x);
+				let x2 = start.x.max(pos.x);
+				let y1 = start.y.min(pos.y);
+				let y2 = start.y.max(pos.y);
+				let rect = Rectangle { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
+				self.selection_rect = Some(rect);
+				self.selected_clips = self.find_clips_in_rect(model, rect, bounds);
+				(false, None)
+			}
 			DragState::None => {
 				self.hovered_clip = self.find_clip_at(model, pos, bounds);
 				(false, None)
@@ -854,6 +892,12 @@ impl TimelineInteraction {
 	///
 	/// プレイヘッドドラッグ終了時は最終時間を返す
 	pub(crate) fn handle_mouse_release(&mut self, _model: &mut TimelineModel) -> (bool, Option<f32>) {
+		if let DragState::RangeSelect { .. } = self.drag_state {
+			self.selection_rect = None;
+			self.drag_state = DragState::None;
+			return (false, None);
+		}
+
 		if let DragState::ReorderTrack {
 			from_index,
 			current_index,
@@ -965,8 +1009,11 @@ impl TimelineInteraction {
 			DragState::ClipResizeLeft { .. } | DragState::ClipResizeRight { .. } => {
 				return mouse::Interaction::ResizingHorizontally;
 			}
-			DragState::Panning { .. } | DragState::Clip { .. } => {
+			DragState::Clip { .. } => {
 				return mouse::Interaction::Grabbing;
+			}
+			DragState::RangeSelect { .. } => {
+				return mouse::Interaction::Crosshair;
 			}
 			_ => {}
 		}
