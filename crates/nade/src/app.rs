@@ -272,8 +272,6 @@ impl NadeApp {
 	// }
 
 	pub(super) fn subscription(&self) -> Subscription<Message> {
-		let tick = iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::Tick);
-		let pinch = crate::pinch::pinch_subscription();
-		Subscription::batch([tick, pinch])
+		iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::Tick)
 	}
 }

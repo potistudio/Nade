@@ -90,8 +90,6 @@ pub enum TimelineMessage {
 	ClipModified,
 	CanvasEvent(TimelineCanvasEvent),
 	ReorderTrack { from_index: usize, to_index: usize },
-	/// タッチパッドのピンチジェスチャーによる拡大縮小 (delta: NSEvent magnification)
-	PinchZoom(f32),
 }
 
 /// Canvasから通知されるタイムライン入力イベント

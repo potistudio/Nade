@@ -4,7 +4,6 @@ mod app;
 mod message;
 mod panel_content;
 mod panels;
-mod pinch;
 mod services;
 mod theme;
 mod widgets;

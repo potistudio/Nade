@@ -370,10 +370,6 @@ impl TimelineInteraction {
 				// Handled via pending_reorder in handle_mouse_release
 				TimelineUpdate::default()
 			}
-			TimelineMessage::PinchZoom(delta) => {
-				self.zoom_at_cursor_x(1.0 + delta);
-				TimelineUpdate::default()
-			}
 		}
 	}
 
@@ -911,25 +907,27 @@ impl TimelineInteraction {
 	}
 
 	pub(crate) fn handle_scroll(&mut self, delta: mouse::ScrollDelta, current_time: f32) -> bool {
-		if self.ctrl_pressed {
-			let dy = match delta {
-				mouse::ScrollDelta::Lines { y, .. } => y * SCROLL_MULTIPLIER,
-				mouse::ScrollDelta::Pixels { y, .. } => y,
-			};
-
-			if dy > 0.0 {
-				self.zoom_in(current_time);
-			} else if dy < 0.0 {
-				self.zoom_out(current_time);
+		match delta {
+			mouse::ScrollDelta::Pinch { delta } => {
+				self.zoom_at_cursor_x(1.0 + delta);
 			}
-		} else {
-			match delta {
-				mouse::ScrollDelta::Lines { x, y } => {
-					self.apply_scroll_delta(x * SCROLL_MULTIPLIER, y * SCROLL_MULTIPLIER);
+			_ if self.ctrl_pressed => {
+				let dy = match delta {
+					mouse::ScrollDelta::Lines { y, .. } => y * SCROLL_MULTIPLIER,
+					mouse::ScrollDelta::Pixels { y, .. } => y,
+					mouse::ScrollDelta::Pinch { .. } => unreachable!(),
+				};
+				if dy > 0.0 {
+					self.zoom_in(current_time);
+				} else if dy < 0.0 {
+					self.zoom_out(current_time);
 				}
-				mouse::ScrollDelta::Pixels { x, y } => {
-					self.apply_scroll_delta(x, y);
-				}
+			}
+			mouse::ScrollDelta::Lines { x, y } => {
+				self.apply_scroll_delta(x * SCROLL_MULTIPLIER, y * SCROLL_MULTIPLIER);
+			}
+			mouse::ScrollDelta::Pixels { x, y } => {
+				self.apply_scroll_delta(x, y);
 			}
 		}
 		true
