@@ -535,14 +535,32 @@ impl TimelineInteraction {
 
 		if layout.content.contains(pos) {
 			if let Some((track_id, clip_id)) = self.find_clip_at(model, pos, bounds) {
+				if self.ctrl_pressed {
+					// Cmd/Ctrl: 既存の単一選択を selected_clips に吸収してからトグル
+					if let Some(existing) = self.selected_clip.take() {
+						if !self.selected_clips.contains(&existing) {
+							self.selected_clips.push(existing);
+						}
+					}
+					let pair = (track_id, clip_id);
+					if let Some(idx) = self.selected_clips.iter().position(|&c| c == pair) {
+						self.selected_clips.remove(idx);
+					} else {
+						self.selected_clips.push(pair);
+					}
+					return (true, None);
+				}
+
 				self.selected_clip = Some((track_id, clip_id));
 				self.selected_clips.clear();
 				self.start_clip_drag(model, pos, track_id, clip_id, layout.timeline_left());
 				return (true, None);
 			}
 
-			self.selected_clip = None;
-			self.selected_clips.clear();
+			if !self.ctrl_pressed {
+				self.selected_clip = None;
+				self.selected_clips.clear();
+			}
 			self.canvas_origin = bounds.position();
 			self.drag_state = DragState::RangeSelect { start: pos };
 			return (true, None);
