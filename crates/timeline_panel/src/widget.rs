@@ -98,6 +98,7 @@ pub enum TimelineCanvasEvent {
 	MousePressed {
 		position: Point,
 		bounds: Rectangle,
+		modifiers: keyboard::Modifiers,
 	},
 	MouseReleased,
 	MouseMoved {
@@ -721,7 +722,7 @@ impl std::fmt::Debug for TimelineWidget<'_> {
 }
 
 impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
-	type State = ();
+	type State = keyboard::Modifiers;
 
 	fn draw(
 		&self,
@@ -738,7 +739,7 @@ impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
 
 	fn update(
 		&self,
-		_canvas_state: &mut Self::State,
+		canvas_state: &mut Self::State,
 		event: &Event,
 		bounds: Rectangle,
 		cursor: mouse::Cursor,
@@ -753,6 +754,7 @@ impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
 					canvas::Action::publish(TimelineMessage::CanvasEvent(TimelineCanvasEvent::MousePressed {
 						position,
 						bounds,
+						modifiers: *canvas_state,
 					}))
 				}),
 				mouse::Event::ButtonReleased(mouse::Button::Left) => Some(canvas::Action::publish(
@@ -770,18 +772,28 @@ impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
 				_ => None,
 			},
 			Event::Keyboard(key_event) => match key_event {
-				keyboard::Event::KeyPressed { key, modifiers, .. } => Some(canvas::Action::publish(
-					TimelineMessage::CanvasEvent(TimelineCanvasEvent::KeyPressed {
-						key: key.clone(),
-						modifiers: *modifiers,
-					}),
-				)),
-				keyboard::Event::KeyReleased { key, modifiers, .. } => Some(canvas::Action::publish(
-					TimelineMessage::CanvasEvent(TimelineCanvasEvent::KeyReleased {
-						key: key.clone(),
-						modifiers: *modifiers,
-					}),
-				)),
+				keyboard::Event::ModifiersChanged(modifiers) => {
+					*canvas_state = *modifiers;
+					None
+				}
+				keyboard::Event::KeyPressed { key, modifiers, .. } => {
+					*canvas_state = *modifiers;
+					Some(canvas::Action::publish(TimelineMessage::CanvasEvent(
+						TimelineCanvasEvent::KeyPressed {
+							key: key.clone(),
+							modifiers: *modifiers,
+						},
+					)))
+				}
+				keyboard::Event::KeyReleased { key, modifiers, .. } => {
+					*canvas_state = *modifiers;
+					Some(canvas::Action::publish(TimelineMessage::CanvasEvent(
+						TimelineCanvasEvent::KeyReleased {
+							key: key.clone(),
+							modifiers: *modifiers,
+						},
+					)))
+				}
 				_ => None,
 			},
 			_ => None,

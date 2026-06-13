@@ -417,8 +417,11 @@ impl TimelineInteraction {
 		current_time: f32,
 	) -> TimelineUpdate {
 		match event {
-			TimelineCanvasEvent::MousePressed { position, bounds } => {
+			TimelineCanvasEvent::MousePressed { position, bounds, modifiers } => {
 				self.update_viewport_width(bounds.width);
+				self.ctrl_pressed = modifiers.command();
+				self.shift_pressed = modifiers.shift();
+				self.alt_pressed = modifiers.alt();
 				let (_handled, playhead_time) = self.handle_mouse_press(model, position, bounds);
 				TimelineUpdate {
 					playhead_time,
