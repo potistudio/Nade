@@ -245,11 +245,79 @@ impl TimelineWidget<'_> {
 
 		frame.fill_rectangle(Point::ORIGIN, bounds, colors::BACKGROUND);
 
+		self.draw_range_slider(frame, self.state, self.model, layout.range_slider);
 		self.draw_timeline_content(frame, self.state, self.model, layout.content);
 		self.draw_ruler(frame, self.state, layout.ruler);
 		self.draw_track_labels(frame, self.state, self.model, layout.track_labels);
 		self.draw_playhead(frame, self.state, layout.ruler, layout.content);
 		self.draw_selection_rect(frame);
+	}
+
+	fn draw_range_slider(
+		&self,
+		frame: &mut canvas::Frame,
+		state: &TimelineInteraction,
+		model: &TimelineModel,
+		rect: Rectangle,
+	) {
+		frame.fill_rectangle(rect.position(), rect.size(), colors::RANGE_SLIDER_BG);
+		self.draw_horizontal_line(
+			frame,
+			rect.x,
+			rect.x + rect.width,
+			rect.y + rect.height - 1.0,
+			colors::BORDER_DARK,
+		);
+
+		let padding = 3.0_f32;
+		let track_rect = Rectangle {
+			x: rect.x + padding,
+			y: rect.y + padding,
+			width: (rect.width - padding * 2.0).max(0.0),
+			height: rect.height - padding * 2.0,
+		};
+
+		let track_path = Path::rounded_rectangle(
+			track_rect.position(),
+			track_rect.size(),
+			(track_rect.height / 2.0).into(),
+		);
+		frame.fill(&track_path, colors::RANGE_SLIDER_TRACK);
+
+		let total_duration = state.total_timeline_duration(model);
+		if total_duration <= 0.0 || track_rect.width <= 0.0 {
+			return;
+		}
+
+		let visible_start = state.visible_start_time();
+		let visible_end = state.visible_end_time();
+
+		let norm_start = (visible_start / total_duration).clamp(0.0, 1.0);
+		let norm_end = (visible_end / total_duration).clamp(0.0, 1.0);
+
+		let handle_l = track_rect.x + norm_start * track_rect.width;
+		let handle_r = (track_rect.x + norm_end * track_rect.width).max(handle_l + 4.0);
+		let handle_w = handle_r - handle_l;
+
+		let handle_rect = Rectangle {
+			x: handle_l,
+			y: track_rect.y,
+			width: handle_w,
+			height: track_rect.height,
+		};
+
+		let handle_path = Path::rounded_rectangle(
+			handle_rect.position(),
+			handle_rect.size(),
+			(track_rect.height / 2.0).into(),
+		);
+		frame.fill(&handle_path, colors::RANGE_SLIDER_HANDLE);
+		frame.stroke(
+			&handle_path,
+			Stroke::default()
+				.with_color(colors::RANGE_SLIDER_HANDLE_BORDER)
+				.with_width(1.0),
+		);
 	}
 
 	fn draw_selection_rect(&self, frame: &mut canvas::Frame) {

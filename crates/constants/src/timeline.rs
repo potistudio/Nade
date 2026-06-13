@@ -7,6 +7,7 @@ pub const TRACK_HEIGHT: f32 = 18.0;
 pub const TRACK_PADDING: f32 = 1.0;
 pub const TRACK_LABEL_WIDTH: f32 = 120.0;
 pub const RULER_HEIGHT: f32 = 24.0;
+pub const RANGE_SLIDER_HEIGHT: f32 = 16.0;
 pub const PIXELS_PER_SECOND: f32 = 100.0;
 
 // Zooming limits
@@ -52,4 +53,9 @@ pub mod colors {
 	pub const CLIP_RESIZE_HANDLE: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.80);
 	pub const CLIP_SHRINKING_OUTLINE: Color = Color::from_rgba(1.0, 0.55, 0.1, 0.90);
 	pub const TRACK_REORDER_HANDLE: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.12);
+
+	pub const RANGE_SLIDER_BG: Color = Color::from_rgb(0.130, 0.130, 0.136);
+	pub const RANGE_SLIDER_TRACK: Color = Color::from_rgb(0.068, 0.068, 0.072);
+	pub const RANGE_SLIDER_HANDLE: Color = Color::from_rgba(0.35, 0.45, 0.75, 0.55);
+	pub const RANGE_SLIDER_HANDLE_BORDER: Color = Color::from_rgba(0.55, 0.65, 0.95, 0.85);
 }

@@ -46,10 +46,34 @@ pub(crate) enum DragState {
 	RangeSelect {
 		start: Point,
 	},
+	/// レンジスライダーの左端ハンドルをドラッグ（ズームイン/アウト・左端移動）
+	RangeSliderLeft {
+		start_x: f32,
+		init_visible_start: f32,
+		fixed_visible_end: f32,
+		total_duration: f32,
+		slider_width: f32,
+	},
+	/// レンジスライダーの右端ハンドルをドラッグ（ズームイン/アウト・右端移動）
+	RangeSliderRight {
+		start_x: f32,
+		fixed_visible_start: f32,
+		init_visible_end: f32,
+		total_duration: f32,
+		slider_width: f32,
+	},
+	/// レンジスライダーの中央をドラッグ（パン）
+	RangeSliderMiddle {
+		start_x: f32,
+		init_visible_start: f32,
+		total_duration: f32,
+		slider_width: f32,
+	},
 }
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TimelineLayout {
+	pub range_slider: Rectangle,
 	pub ruler: Rectangle,
 	pub track_labels: Rectangle,
 	pub content: Rectangle,
@@ -58,46 +82,58 @@ pub(crate) struct TimelineLayout {
 impl TimelineLayout {
 	pub fn from_bounds(bounds: Rectangle) -> Self {
 		Self {
-			ruler: Rectangle {
+			range_slider: Rectangle {
 				x: TRACK_LABEL_WIDTH,
 				y: 0.0,
+				width: bounds.width - TRACK_LABEL_WIDTH,
+				height: RANGE_SLIDER_HEIGHT,
+			},
+			ruler: Rectangle {
+				x: TRACK_LABEL_WIDTH,
+				y: RANGE_SLIDER_HEIGHT,
 				width: bounds.width - TRACK_LABEL_WIDTH,
 				height: RULER_HEIGHT,
 			},
 			track_labels: Rectangle {
 				x: 0.0,
-				y: RULER_HEIGHT,
+				y: RANGE_SLIDER_HEIGHT + RULER_HEIGHT,
 				width: TRACK_LABEL_WIDTH,
-				height: bounds.height - RULER_HEIGHT,
+				height: bounds.height - RANGE_SLIDER_HEIGHT - RULER_HEIGHT,
 			},
 			content: Rectangle {
 				x: TRACK_LABEL_WIDTH,
-				y: RULER_HEIGHT,
+				y: RANGE_SLIDER_HEIGHT + RULER_HEIGHT,
 				width: bounds.width - TRACK_LABEL_WIDTH,
-				height: bounds.height - RULER_HEIGHT,
+				height: bounds.height - RANGE_SLIDER_HEIGHT - RULER_HEIGHT,
 			},
 		}
 	}
 
 	pub fn from_bounds_absolute(bounds: Rectangle) -> Self {
 		Self {
-			ruler: Rectangle {
+			range_slider: Rectangle {
 				x: bounds.x + TRACK_LABEL_WIDTH,
 				y: bounds.y,
+				width: bounds.width - TRACK_LABEL_WIDTH,
+				height: RANGE_SLIDER_HEIGHT,
+			},
+			ruler: Rectangle {
+				x: bounds.x + TRACK_LABEL_WIDTH,
+				y: bounds.y + RANGE_SLIDER_HEIGHT,
 				width: bounds.width - TRACK_LABEL_WIDTH,
 				height: RULER_HEIGHT,
 			},
 			track_labels: Rectangle {
 				x: bounds.x,
-				y: bounds.y + RULER_HEIGHT,
+				y: bounds.y + RANGE_SLIDER_HEIGHT + RULER_HEIGHT,
 				width: TRACK_LABEL_WIDTH,
-				height: bounds.height - RULER_HEIGHT,
+				height: bounds.height - RANGE_SLIDER_HEIGHT - RULER_HEIGHT,
 			},
 			content: Rectangle {
 				x: bounds.x + TRACK_LABEL_WIDTH,
-				y: bounds.y + RULER_HEIGHT,
+				y: bounds.y + RANGE_SLIDER_HEIGHT + RULER_HEIGHT,
 				width: bounds.width - TRACK_LABEL_WIDTH,
-				height: bounds.height - RULER_HEIGHT,
+				height: bounds.height - RANGE_SLIDER_HEIGHT - RULER_HEIGHT,
 			},
 		}
 	}
@@ -199,7 +235,7 @@ impl TimelineInteraction {
 
 	fn find_clips_in_rect(&self, model: &TimelineModel, sel_rect: Rectangle, bounds: Rectangle) -> Vec<(usize, usize)> {
 		let timeline_left = bounds.x + TRACK_LABEL_WIDTH;
-		let timeline_top = bounds.y + RULER_HEIGHT;
+		let timeline_top = bounds.y + RANGE_SLIDER_HEIGHT + RULER_HEIGHT;
 		let mut result = Vec::new();
 
 		for (track_index, track) in model.tracks.iter().enumerate() {
@@ -226,7 +262,7 @@ impl TimelineInteraction {
 
 	pub(crate) fn find_clip_at(&self, model: &TimelineModel, pos: Point, bounds: Rectangle) -> Option<(usize, usize)> {
 		let timeline_left = bounds.x + TRACK_LABEL_WIDTH;
-		let timeline_top = bounds.y + RULER_HEIGHT;
+		let timeline_top = bounds.y + RANGE_SLIDER_HEIGHT + RULER_HEIGHT;
 
 		for (track_index, track) in model.tracks.iter().enumerate() {
 			let track_y = timeline_top + (track_index as f32 * TRACK_HEIGHT) + self.scroll_offset.y;
@@ -371,6 +407,28 @@ impl TimelineInteraction {
 			_ => 0.5,
 		}
 	}
+
+	/// 現在のビューポートで見えている先頭の時間
+	pub fn visible_start_time(&self) -> f32 {
+		(-self.scroll_offset.x / (PIXELS_PER_SECOND * self.time_scale)).max(0.0)
+	}
+
+	/// 現在のビューポートで見えている末尾の時間
+	pub fn visible_end_time(&self) -> f32 {
+		let content_w = (self.viewport_width - TRACK_LABEL_WIDTH).max(0.0);
+		self.visible_start_time() + content_w / (PIXELS_PER_SECOND * self.time_scale)
+	}
+
+	/// タイムライン全体の長さ（クリップの末尾と表示末尾の大きい方、最低30秒）
+	pub fn total_timeline_duration(&self, model: &TimelineModel) -> f32 {
+		let max_clip = model
+			.tracks
+			.iter()
+			.flat_map(|t| t.clips.iter())
+			.map(|c| c.end_time())
+			.fold(0.0f32, f32::max);
+		max_clip.max(self.visible_end_time()).max(30.0)
+	}
 }
 
 impl TimelineInteraction {
@@ -509,9 +567,51 @@ impl TimelineInteraction {
 	) -> (bool, Option<f32>) {
 		let layout = TimelineLayout::from_bounds_absolute(bounds);
 
+		// Check if clicking on the range slider strip
+		if layout.range_slider.contains(pos) {
+			let total_duration = self.total_timeline_duration(model);
+			let padding = 3.0_f32;
+			let edge_hit = 8.0_f32;
+			let track_left = layout.range_slider.x + padding;
+			let track_width = (layout.range_slider.width - padding * 2.0).max(1.0);
+
+			let visible_start = self.visible_start_time();
+			let visible_end = self.visible_end_time();
+
+			let handle_l = track_left + (visible_start / total_duration).clamp(0.0, 1.0) * track_width;
+			let handle_r = (track_left + (visible_end / total_duration).clamp(0.0, 1.0) * track_width)
+				.max(handle_l + 4.0);
+
+			self.drag_state = if pos.x < handle_l + edge_hit {
+				DragState::RangeSliderLeft {
+					start_x: pos.x,
+					init_visible_start: visible_start,
+					fixed_visible_end: visible_end,
+					total_duration,
+					slider_width: track_width,
+				}
+			} else if pos.x > handle_r - edge_hit {
+				DragState::RangeSliderRight {
+					start_x: pos.x,
+					fixed_visible_start: visible_start,
+					init_visible_end: visible_end,
+					total_duration,
+					slider_width: track_width,
+				}
+			} else {
+				DragState::RangeSliderMiddle {
+					start_x: pos.x,
+					init_visible_start: visible_start,
+					total_duration,
+					slider_width: track_width,
+				}
+			};
+			return (true, None);
+		}
+
 		// Check if clicking on track label area for reordering
 		if layout.track_labels.contains(pos) {
-			let track_labels_top = bounds.y + RULER_HEIGHT;
+			let track_labels_top = layout.track_labels.y;
 			let track_index = ((pos.y - track_labels_top - self.scroll_offset.y) / TRACK_HEIGHT).floor() as usize;
 
 			if track_index < model.tracks.len() {
@@ -967,7 +1067,7 @@ impl TimelineInteraction {
 			} => {
 				// Calculate gap index based on mouse Y position
 				// Gap 0 = before track 0, Gap 1 = between track 0 and 1, etc.
-				let track_labels_top = bounds.y + RULER_HEIGHT;
+				let track_labels_top = bounds.y + RANGE_SLIDER_HEIGHT + RULER_HEIGHT;
 				let mut relative_y = pos.y - track_labels_top - self.scroll_offset.y;
 
 				// Adjust for preview gap if tracks are shifted
@@ -1002,6 +1102,48 @@ impl TimelineInteraction {
 				self.selection_rect = Some(rect);
 				self.selected_clips = self.find_clips_in_rect(model, rect, bounds);
 				(false, None)
+			}
+			DragState::RangeSliderLeft {
+				start_x,
+				init_visible_start,
+				fixed_visible_end,
+				total_duration,
+				slider_width,
+			} => {
+				let dx = pos.x - start_x;
+				let new_start = (init_visible_start + dx / slider_width * total_duration).max(0.0);
+				let new_start = new_start.min(fixed_visible_end - 0.5);
+				let visible_duration = (fixed_visible_end - new_start).max(0.5);
+				let content_w = (self.viewport_width - TRACK_LABEL_WIDTH).max(1.0);
+				self.time_scale = (content_w / (visible_duration * PIXELS_PER_SECOND)).clamp(MIN_SCALE, MAX_SCALE);
+				self.scroll_offset.x = (-new_start * PIXELS_PER_SECOND * self.time_scale).min(0.0);
+				(true, None)
+			}
+			DragState::RangeSliderRight {
+				start_x,
+				fixed_visible_start,
+				init_visible_end,
+				total_duration,
+				slider_width,
+			} => {
+				let dx = pos.x - start_x;
+				let new_end = (init_visible_end + dx / slider_width * total_duration).max(fixed_visible_start + 0.5);
+				let visible_duration = (new_end - fixed_visible_start).max(0.5);
+				let content_w = (self.viewport_width - TRACK_LABEL_WIDTH).max(1.0);
+				self.time_scale = (content_w / (visible_duration * PIXELS_PER_SECOND)).clamp(MIN_SCALE, MAX_SCALE);
+				self.scroll_offset.x = (-fixed_visible_start * PIXELS_PER_SECOND * self.time_scale).min(0.0);
+				(true, None)
+			}
+			DragState::RangeSliderMiddle {
+				start_x,
+				init_visible_start,
+				total_duration,
+				slider_width,
+			} => {
+				let dx = pos.x - start_x;
+				let new_start = (init_visible_start + dx / slider_width * total_duration).max(0.0);
+				self.scroll_offset.x = (-new_start * PIXELS_PER_SECOND * self.time_scale).min(0.0);
+				(true, None)
 			}
 			DragState::None => {
 				self.hovered_clip = self.find_clip_at(model, pos, bounds);
@@ -1139,10 +1281,20 @@ impl TimelineInteraction {
 			DragState::RangeSelect { .. } => {
 				return mouse::Interaction::Crosshair;
 			}
+			DragState::RangeSliderLeft { .. } | DragState::RangeSliderRight { .. } => {
+				return mouse::Interaction::ResizingHorizontally;
+			}
+			DragState::RangeSliderMiddle { .. } => {
+				return mouse::Interaction::Grabbing;
+			}
 			_ => {}
 		}
 
 		let layout = TimelineLayout::from_bounds_absolute(bounds);
+
+		if layout.range_slider.contains(pos) {
+			return mouse::Interaction::Grab;
+		}
 
 		if layout.content.contains(pos)
 			&& let Some((track_id, clip_id)) = self.find_clip_at(model, pos, bounds)
