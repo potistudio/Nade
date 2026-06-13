@@ -735,23 +735,20 @@ impl TimelineInteraction {
 						});
 
 						if drag_direction > 0.0 {
-							// Moving right: find clip we're overlapping and stretch it
+							// Moving right: shrink the clip we're pushing into (trim its left edge)
 							for c in clips.iter_mut() {
 								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
-									// We're colliding with clip c - stretch c's right edge
-									let overlap_end = (proposed + clip_duration).min(c.start_time + c.duration);
-									let additional_time = proposed + clip_duration - overlap_end;
-									c.duration += additional_time.max(0.0);
+									let old_end = c.start_time + c.duration;
+									c.start_time = proposed + clip_duration;
+									c.duration = (old_end - c.start_time).max(MIN_CLIP_DURATION);
 									break;
 								}
 							}
 						} else if drag_direction < 0.0 {
-							// Moving left: find clip we're overlapping and stretch it
-							for c in clips.iter_mut() {
+							// Moving left: shrink the clip we're pushing into (trim its right edge)
+							for c in clips.iter_mut().rev() {
 								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
-									// We're colliding with clip c - stretch c's left edge
-									c.start_time = proposed;
-									c.duration = (c.start_time + c.duration - proposed).max(MIN_CLIP_DURATION);
+									c.duration = (proposed - c.start_time).max(MIN_CLIP_DURATION);
 									break;
 								}
 							}
