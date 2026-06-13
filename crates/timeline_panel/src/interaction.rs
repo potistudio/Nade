@@ -636,7 +636,7 @@ impl TimelineInteraction {
 				clip_id,
 				offset,
 			} => {
-				// 複数選択中は全クリップをまとめて移動
+				// 複数選択中は全クリップをまとめて移動（衝突スナップ付き）
 				if self.selected_clips.len() > 1 {
 					let cursor_time = self.x_to_time(pos.x, timeline_left);
 					let proposed = (cursor_time + offset).max(0.0);
@@ -648,29 +648,53 @@ impl TimelineInteraction {
 						.map(|c| c.start_time)
 						.unwrap_or(0.0);
 
-					let delta = proposed - current_start;
+					let raw_delta = proposed - current_start;
+					let selected = self.selected_clips.clone();
 
-					// 選択クリップの最小 start_time を確認して 0 未満への移動を防ぐ
-					let min_start: f32 = self
-						.selected_clips
+					// 各選択クリップと同トラックの非選択クリップとの衝突でdeltaを絞り込む
+					let mut constrained_delta = raw_delta;
+					for &(sel_track, sel_clip_id) in &selected {
+						let Some(track) = model.tracks.get(sel_track) else { continue };
+						let Some(sel) = track.clips.iter().find(|c| c.id == sel_clip_id) else { continue };
+						let sel_start = sel.start_time;
+						let sel_end = sel_start + sel.duration;
+
+						for blocker in track.clips.iter().filter(|c| !selected.contains(&(sel_track, c.id))) {
+							let b_start = blocker.start_time;
+							let b_end = b_start + blocker.duration;
+
+							if raw_delta > 0.0 {
+								// 右移動: sel の右端が blocker と重なりそうなら手前でスナップ
+								if sel_end + constrained_delta > b_start && sel_start + constrained_delta < b_end {
+									constrained_delta = constrained_delta.min((b_start - sel_end).max(0.0));
+								}
+							} else if raw_delta < 0.0 {
+								// 左移動: sel の左端が blocker と重なりそうなら後ろでスナップ
+								if sel_start + constrained_delta < b_end && sel_end + constrained_delta > b_start {
+									constrained_delta = constrained_delta.max((b_end - sel_start).min(0.0));
+								}
+							}
+						}
+					}
+
+					// 先頭クリップが 0 より前に出ないよう制約
+					let min_start: f32 = selected
 						.iter()
 						.filter_map(|&(t, id)| {
-							model
-								.tracks
-								.get(t)
+							model.tracks.get(t)
 								.and_then(|tr| tr.clips.iter().find(|c| c.id == id))
 								.map(|c| c.start_time)
 						})
 						.fold(f32::INFINITY, f32::min);
+					if constrained_delta < 0.0 {
+						constrained_delta = constrained_delta.max(-min_start);
+					}
 
-					let clamped_delta = if delta < 0.0 { delta.max(-min_start) } else { delta };
-
-					if clamped_delta != 0.0 {
-						let selected = self.selected_clips.clone();
+					if constrained_delta != 0.0 {
 						for (sel_track, sel_clip) in selected {
 							if let Some(track) = model.tracks.get_mut(sel_track) {
 								if let Some(clip) = track.clips.iter_mut().find(|c| c.id == sel_clip) {
-									clip.start_time += clamped_delta;
+									clip.start_time += constrained_delta;
 								}
 							}
 						}
