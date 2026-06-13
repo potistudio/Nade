@@ -137,6 +137,8 @@ pub struct TimelineInteraction {
 	pub(crate) canvas_origin: Point,
 	/// Alt+ドラッグで縮められているクリップ (track_index, clip_id)
 	pub(crate) alt_shrinking_clip: Option<(usize, usize)>,
+	/// Alt+ドラッグで縮める前の元サイズ (track_index, clip_id, start_time, duration)
+	pub(crate) alt_shrinking_original: Option<(usize, usize, f32, f32)>,
 }
 
 impl Default for TimelineInteraction {
@@ -160,6 +162,7 @@ impl Default for TimelineInteraction {
 			selected_clips: Vec::new(),
 			canvas_origin: Point::ORIGIN,
 			alt_shrinking_clip: None,
+			alt_shrinking_original: None,
 		}
 	}
 }
@@ -727,7 +730,16 @@ impl TimelineInteraction {
 				let drag_direction = proposed - current_start;
 
 				if self.alt_pressed {
-					// Alt held: shrink the clip being collided with
+					// まず前フレームで縮めたクリップを元のサイズに戻す
+					if let Some((orig_track, orig_id, orig_start, orig_dur)) = self.alt_shrinking_original.take() {
+						if let Some(track) = model.tracks.get_mut(orig_track) {
+							if let Some(c) = track.clips.iter_mut().find(|c| c.id == orig_id) {
+								c.start_time = orig_start;
+								c.duration = orig_dur;
+							}
+						}
+					}
+
 					let mut shrunk_clip_id: Option<usize> = None;
 
 					if let Some(track) = model.tracks.get_mut(track_id) {
@@ -742,6 +754,8 @@ impl TimelineInteraction {
 							// Moving right: shrink the clip we're pushing into (trim its left edge)
 							for c in clips.iter_mut() {
 								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
+									// 元サイズを記憶してから縮める
+									self.alt_shrinking_original = Some((track_id, c.id, c.start_time, c.duration));
 									shrunk_clip_id = Some(c.id);
 									let old_end = c.start_time + c.duration;
 									c.start_time = proposed + clip_duration;
@@ -753,6 +767,8 @@ impl TimelineInteraction {
 							// Moving left: shrink the clip we're pushing into (trim its right edge)
 							for c in clips.iter_mut().rev() {
 								if proposed < c.start_time + c.duration && proposed + clip_duration > c.start_time {
+									// 元サイズを記憶してから縮める
+									self.alt_shrinking_original = Some((track_id, c.id, c.start_time, c.duration));
 									shrunk_clip_id = Some(c.id);
 									c.duration = (proposed - c.start_time).max(MIN_CLIP_DURATION);
 									break;
@@ -770,6 +786,15 @@ impl TimelineInteraction {
 						clip.start_time = proposed;
 					}
 				} else {
+					// Alt を離した場合は縮めていたクリップを復元する
+					if let Some((orig_track, orig_id, orig_start, orig_dur)) = self.alt_shrinking_original.take() {
+						if let Some(track) = model.tracks.get_mut(orig_track) {
+							if let Some(c) = track.clips.iter_mut().find(|c| c.id == orig_id) {
+								c.start_time = orig_start;
+								c.duration = orig_dur;
+							}
+						}
+					}
 					self.alt_shrinking_clip = None;
 					// Normal mode: snap to avoid overlap, don't place if no room
 					let mut constrained_time = proposed;
@@ -1027,6 +1052,7 @@ impl TimelineInteraction {
 		if !matches!(self.drag_state, DragState::None) {
 			self.drag_state = DragState::None;
 			self.alt_shrinking_clip = None;
+			self.alt_shrinking_original = None; // 復元せず確定
 			return (true, None);
 		}
 		(false, None)
