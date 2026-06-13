@@ -554,8 +554,11 @@ impl TimelineInteraction {
 					return (true, None);
 				}
 
-				self.selected_clip = Some((track_id, clip_id));
-				self.selected_clips.clear();
+				// 複数選択に含まれていないクリップをクリック → 単一選択に切り替え
+				if !self.selected_clips.contains(&(track_id, clip_id)) {
+					self.selected_clip = Some((track_id, clip_id));
+					self.selected_clips.clear();
+				}
 				self.start_clip_drag(model, pos, track_id, clip_id, layout.timeline_left());
 				return (true, None);
 			}
@@ -633,6 +636,48 @@ impl TimelineInteraction {
 				clip_id,
 				offset,
 			} => {
+				// 複数選択中は全クリップをまとめて移動
+				if self.selected_clips.len() > 1 {
+					let cursor_time = self.x_to_time(pos.x, timeline_left);
+					let proposed = (cursor_time + offset).max(0.0);
+
+					let current_start = model
+						.tracks
+						.get(track_id)
+						.and_then(|t| t.clips.iter().find(|c| c.id == clip_id))
+						.map(|c| c.start_time)
+						.unwrap_or(0.0);
+
+					let delta = proposed - current_start;
+
+					// 選択クリップの最小 start_time を確認して 0 未満への移動を防ぐ
+					let min_start: f32 = self
+						.selected_clips
+						.iter()
+						.filter_map(|&(t, id)| {
+							model
+								.tracks
+								.get(t)
+								.and_then(|tr| tr.clips.iter().find(|c| c.id == id))
+								.map(|c| c.start_time)
+						})
+						.fold(f32::INFINITY, f32::min);
+
+					let clamped_delta = if delta < 0.0 { delta.max(-min_start) } else { delta };
+
+					if clamped_delta != 0.0 {
+						let selected = self.selected_clips.clone();
+						for (sel_track, sel_clip) in selected {
+							if let Some(track) = model.tracks.get_mut(sel_track) {
+								if let Some(clip) = track.clips.iter_mut().find(|c| c.id == sel_clip) {
+									clip.start_time += clamped_delta;
+								}
+							}
+						}
+					}
+					return (true, None);
+				}
+
 				let cursor_time = self.x_to_time(pos.x, timeline_left);
 				let proposed = (cursor_time + offset).max(0.0);
 
