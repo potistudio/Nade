@@ -125,6 +125,10 @@ pub struct TimelineInteraction {
 	pub(crate) pending_reorder: Option<(usize, usize)>,
 	/// Currently hovered clip (track_index, clip_id)
 	pub(crate) hovered_clip: Option<(usize, usize)>,
+	/// 最後に記録したカーソルの絶対X座標 (ピンチズームの中心点に使用)
+	pub(crate) cursor_abs_x: f32,
+	/// タイムラインコンテンツエリア左端の絶対X座標 (= bounds.x + TRACK_LABEL_WIDTH)
+	pub(crate) timeline_left_abs: f32,
 }
 
 impl Default for TimelineInteraction {
@@ -142,6 +146,8 @@ impl Default for TimelineInteraction {
 			reorder_glow: None,
 			pending_reorder: None,
 			hovered_clip: None,
+			cursor_abs_x: TRACK_LABEL_WIDTH + 340.0,
+			timeline_left_abs: TRACK_LABEL_WIDTH,
 		}
 	}
 }
@@ -257,6 +263,25 @@ impl TimelineInteraction {
 		self.time_scale = scale.clamp(MIN_SCALE, MAX_SCALE);
 	}
 
+	/// ズームをカーソル位置中心で行う
+	///
+	/// `factor` = 1.0 より大きければズームイン、小さければズームアウト。
+	/// カーソル下の時間位置が画面上で動かないようにスクロールオフセットを調整する。
+	pub fn zoom_at_cursor_x(&mut self, factor: f32) {
+		let new_scale = (self.time_scale * factor).clamp(MIN_SCALE, MAX_SCALE);
+		if (self.time_scale - new_scale).abs() < f32::EPSILON {
+			return;
+		}
+
+		let cursor = self.cursor_abs_x;
+		let tl = self.timeline_left_abs;
+
+		let time_at_cursor = (cursor - tl - self.scroll_offset.x) / (PIXELS_PER_SECOND * self.time_scale);
+		self.time_scale = new_scale;
+		self.scroll_offset.x = cursor - tl - time_at_cursor * PIXELS_PER_SECOND * new_scale;
+		self.clamp_scroll_offset();
+	}
+
 	/// Set the timeline zoom scale, keeping the playhead centered
 	pub fn set_zoom_scale_centered(&mut self, scale: f32, current_time: f32) {
 		let new_scale = scale.clamp(MIN_SCALE, MAX_SCALE);
@@ -343,6 +368,10 @@ impl TimelineInteraction {
 			TimelineMessage::CanvasEvent(event) => self.handle_canvas_event(model, event, current_time),
 			TimelineMessage::ReorderTrack { .. } => {
 				// Handled via pending_reorder in handle_mouse_release
+				TimelineUpdate::default()
+			}
+			TimelineMessage::PinchZoom(delta) => {
+				self.zoom_at_cursor_x(1.0 + delta);
 				TimelineUpdate::default()
 			}
 		}
@@ -538,6 +567,8 @@ impl TimelineInteraction {
 		timeline_left: f32,
 		bounds: Rectangle,
 	) -> (bool, Option<f32>) {
+		self.cursor_abs_x = pos.x;
+		self.timeline_left_abs = timeline_left;
 		match self.drag_state.clone() {
 			DragState::Playhead => {
 				let time = self.x_to_time(pos.x, timeline_left).max(0.0);

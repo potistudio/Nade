@@ -272,7 +272,8 @@ impl NadeApp {
 	// }
 
 	pub(super) fn subscription(&self) -> Subscription<Message> {
-		// Always need tick for glow decay animation
-		iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::Tick)
+		let tick = iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::Tick);
+		let pinch = crate::pinch::pinch_subscription();
+		Subscription::batch([tick, pinch])
 	}
 }

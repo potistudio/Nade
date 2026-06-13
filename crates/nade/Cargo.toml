@@ -56,6 +56,9 @@ iced_wgpu = "0.14"
 renderer = { path = "../renderer" }
 serde = "1.0.228"
 
+[build-dependencies]
+cc = "1.2"
+
 [package.metadata.bundle]
 name = "Nade"
 identifier = "com.potistudio.nade"
