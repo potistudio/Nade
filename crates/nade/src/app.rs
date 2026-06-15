@@ -3,7 +3,7 @@
 //! NadeのメインUIアプリケーション実装です。
 
 use iced::widget::{Space, container, text};
-use iced::{Element, Length, Subscription, Task, Theme};
+use iced::{Element, Length, Size, Subscription, Task, Theme};
 use panel_system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
 use timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
 
@@ -12,6 +12,22 @@ use domain::{AssetType, Project};
 use crate::message::{AppPanelMessage, Message};
 use crate::panel_content::PanelContent;
 use crate::panels;
+
+// =============================================================================
+// ウィンドウイベント
+// =============================================================================
+
+fn on_window_resize(
+	event: iced::Event,
+	_status: iced::event::Status,
+	_id: iced::window::Id,
+) -> Option<Message> {
+	if let iced::Event::Window(iced::window::Event::Resized(size)) = event {
+		Some(Message::PanelSystem(PanelSystemMessage::WindowResized(size)))
+	} else {
+		None
+	}
+}
 
 // =============================================================================
 // テーマ設定
@@ -106,7 +122,12 @@ impl NadeApp {
 		let preview = builder.panel("Preview", PanelContent::MainPreview);
 		let timeline = builder.panel("Timeline", PanelContent::Timeline);
 		let layout = LayoutBuilder::vsplit(preview, timeline, 0.65);
-		PanelSystem::new().with_layout(layout)
+		let mut system = PanelSystem::new().with_layout(layout);
+		// 初期ウィンドウサイズを設定（main.rsのwindow_settingsと合わせる）
+		system.update(PanelSystemMessage::<PanelContent, AppPanelMessage>::WindowResized(
+			Size::new(1280.0, 720.0),
+		));
+		system
 	}
 
 	pub(super) fn update(&mut self, message: Message) -> Task<Message> {
@@ -203,6 +224,8 @@ impl NadeApp {
 	}
 
 	pub(super) fn subscription(&self) -> Subscription<Message> {
-		iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::Tick)
+		let tick = iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::Tick);
+		let resize = iced::event::listen_with(on_window_resize);
+		Subscription::batch([tick, resize])
 	}
 }
