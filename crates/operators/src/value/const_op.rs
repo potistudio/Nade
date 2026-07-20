@@ -1,8 +1,8 @@
 use crate::common::value_param_descriptor;
 use crate::hash::value::hash_value;
 use core::{
-	EvalAccess, EvalContext, EvalError, NodeState, Operator, Output, OutputType, ParamDescriptor,
-	ParamValue, ResolvedOp, Value, ValueKind, ValueParam, ValueParamUi,
+	EvalAccess, EvalContext, EvalError, NodeState, Operator, Output, OutputType, ParamDescriptor, ParamValue,
+	ResolvedOp, Value, ValueKind, ValueParam, ValueParamUi,
 };
 
 #[derive(Debug, Clone)]
@@ -55,12 +55,7 @@ impl Operator for ValueConstOp {
 		}
 	}
 
-	fn resolve(
-		&self,
-		_eval: &mut dyn EvalAccess,
-		_time: f64,
-		_ctx: &EvalContext,
-	) -> Result<ResolvedOp, EvalError> {
+	fn resolve(&self, _eval: &mut dyn EvalAccess, _time: f64, _ctx: &EvalContext) -> Result<ResolvedOp, EvalError> {
 		Ok(ResolvedOp::new(self.value, hash_value(self.value), 0))
 	}
 

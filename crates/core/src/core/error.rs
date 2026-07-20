@@ -45,11 +45,7 @@ impl std::fmt::Display for EvalError {
 		match self {
 			Self::NodeNotFound(node_id) => write!(f, "node not found: {}", node_id.value()),
 			Self::OutputTypeMismatch { expected, found } => {
-				write!(
-					f,
-					"output type mismatch: expected {:?}, found {:?}",
-					expected, found
-				)
+				write!(f, "output type mismatch: expected {:?}, found {:?}", expected, found)
 			}
 			Self::ExpectedFloat { found } => {
 				write!(f, "expected Float, found {}", found)
@@ -67,11 +63,9 @@ impl std::fmt::Display for EvalError {
 				"image size mismatch: left {}x{}, right {}x{}",
 				left.0, left.1, right.0, right.1
 			),
-			Self::InvalidImageBuffer { expected, actual } => write!(
-				f,
-				"invalid image buffer: expected {}, actual {}",
-				expected, actual
-			),
+			Self::InvalidImageBuffer { expected, actual } => {
+				write!(f, "invalid image buffer: expected {}, actual {}", expected, actual)
+			}
 			Self::ResolvedPayloadMismatch { expected } => {
 				write!(f, "resolved payload mismatch: expected {expected}")
 			}

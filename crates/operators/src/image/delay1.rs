@@ -1,8 +1,8 @@
 use crate::common::{image_input_descriptor, set_image_input};
 use crate::hash::image::hash_image;
 use core::{
-	EvalAccess, EvalContext, EvalError, Image, NodeId, NodeState, Operator, Output, OutputType,
-	ParamDescriptor, ParamValue, ResolvedOp,
+	EvalAccess, EvalContext, EvalError, Image, NodeId, NodeState, Operator, Output, OutputType, ParamDescriptor,
+	ParamValue, ResolvedOp,
 };
 
 #[derive(Debug, Clone)]
@@ -36,12 +36,7 @@ impl Operator for ImageDelay1Op {
 		}
 	}
 
-	fn resolve(
-		&self,
-		eval: &mut dyn EvalAccess,
-		time: f64,
-		ctx: &EvalContext,
-	) -> Result<ResolvedOp, EvalError> {
+	fn resolve(&self, eval: &mut dyn EvalAccess, time: f64, ctx: &EvalContext) -> Result<ResolvedOp, EvalError> {
 		let input = eval.eval_image(self.input, time, ctx)?;
 		let input_hash = hash_image(&input);
 		Ok(ResolvedOp::new(input, 0, input_hash))

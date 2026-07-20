@@ -302,8 +302,7 @@ impl TimelineInteraction {
 	}
 
 	pub(crate) fn is_clip_selected(&self, track_index: usize, clip_id: usize) -> bool {
-		self.selected_clip == Some((track_index, clip_id))
-			|| self.selected_clips.contains(&(track_index, clip_id))
+		self.selected_clip == Some((track_index, clip_id)) || self.selected_clips.contains(&(track_index, clip_id))
 	}
 
 	pub(crate) fn is_clip_hovered(&self, track_index: usize, clip_id: usize) -> bool {
@@ -481,7 +480,11 @@ impl TimelineInteraction {
 		current_time: f32,
 	) -> TimelineUpdate {
 		match event {
-			TimelineCanvasEvent::MousePressed { position, bounds, modifiers } => {
+			TimelineCanvasEvent::MousePressed {
+				position,
+				bounds,
+				modifiers,
+			} => {
 				self.update_viewport_width(bounds.width);
 				self.ctrl_pressed = modifiers.command();
 				self.shift_pressed = modifiers.shift();
@@ -545,7 +548,10 @@ impl TimelineInteraction {
 	pub fn is_dragging_clip(&self) -> bool {
 		matches!(
 			self.drag_state,
-			DragState::Clip { .. } | DragState::ClipDuplicating { .. } | DragState::ClipResizeLeft { .. } | DragState::ClipResizeRight { .. }
+			DragState::Clip { .. }
+				| DragState::ClipDuplicating { .. }
+				| DragState::ClipResizeLeft { .. }
+				| DragState::ClipResizeRight { .. }
 		)
 	}
 
@@ -579,8 +585,8 @@ impl TimelineInteraction {
 			let visible_end = self.visible_end_time();
 
 			let handle_l = track_left + (visible_start / total_duration).clamp(0.0, 1.0) * track_width;
-			let handle_r = (track_left + (visible_end / total_duration).clamp(0.0, 1.0) * track_width)
-				.max(handle_l + 4.0);
+			let handle_r =
+				(track_left + (visible_end / total_duration).clamp(0.0, 1.0) * track_width).max(handle_l + 4.0);
 
 			self.drag_state = if pos.x < handle_l + edge_hit {
 				DragState::RangeSliderLeft {
@@ -760,8 +766,12 @@ impl TimelineInteraction {
 					// 各選択クリップと同トラックの非選択クリップとの衝突でdeltaを絞り込む
 					let mut constrained_delta = raw_delta;
 					for &(sel_track, sel_clip_id) in &selected {
-						let Some(track) = model.tracks.get(sel_track) else { continue };
-						let Some(sel) = track.clips.iter().find(|c| c.id == sel_clip_id) else { continue };
+						let Some(track) = model.tracks.get(sel_track) else {
+							continue;
+						};
+						let Some(sel) = track.clips.iter().find(|c| c.id == sel_clip_id) else {
+							continue;
+						};
 						let sel_start = sel.start_time;
 						let sel_end = sel_start + sel.duration;
 
@@ -787,7 +797,9 @@ impl TimelineInteraction {
 					let min_start: f32 = selected
 						.iter()
 						.filter_map(|&(t, id)| {
-							model.tracks.get(t)
+							model
+								.tracks
+								.get(t)
 								.and_then(|tr| tr.clips.iter().find(|c| c.id == id))
 								.map(|c| c.start_time)
 						})
@@ -997,7 +1009,9 @@ impl TimelineInteraction {
 				if let Some(clip) = Self::find_clip_mut(model, track_id, clip_id) {
 					let delta = time - original_start;
 					let new_duration = (original_duration - delta).max(MIN_CLIP_DURATION);
-					let new_start = (fixed_end - new_duration).max(left_bound).min(fixed_end - MIN_CLIP_DURATION);
+					let new_start = (fixed_end - new_duration)
+						.max(left_bound)
+						.min(fixed_end - MIN_CLIP_DURATION);
 					clip.start_time = new_start;
 					clip.duration = fixed_end - new_start;
 				}
@@ -1098,7 +1112,12 @@ impl TimelineInteraction {
 				let x2 = start.x.max(pos.x);
 				let y1 = start.y.min(pos.y);
 				let y2 = start.y.max(pos.y);
-				let rect = Rectangle { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
+				let rect = Rectangle {
+					x: x1,
+					y: y1,
+					width: x2 - x1,
+					height: y2 - y1,
+				};
 				self.selection_rect = Some(rect);
 				self.selected_clips = self.find_clips_in_rect(model, rect, bounds);
 				(false, None)

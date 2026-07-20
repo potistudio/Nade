@@ -41,9 +41,7 @@ fn audio_engine_play_pause_stop_lifecycle() {
 	engine.play();
 	assert!(engine.is_playing());
 	assert!(
-		wait_until(Duration::from_millis(300), || {
-			engine.current_status().ticks > 0
-		}),
+		wait_until(Duration::from_millis(300), || { engine.current_status().ticks > 0 }),
 		"ticks did not advance while playing"
 	);
 

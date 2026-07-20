@@ -1,8 +1,8 @@
 use crate::common::{resolve_value_param, set_value_param, value_param_descriptor};
 use crate::hash::value::hash_value;
 use core::{
-	EvalAccess, EvalContext, EvalError, NodeState, Operator, Output, OutputType, ParamDescriptor,
-	ParamValue, ResolvedOp, Value, ValueKind, ValueParam, ValueParamUi,
+	EvalAccess, EvalContext, EvalError, NodeState, Operator, Output, OutputType, ParamDescriptor, ParamValue,
+	ResolvedOp, Value, ValueKind, ValueParam, ValueParamUi,
 };
 
 #[derive(Debug, Clone)]
@@ -46,12 +46,7 @@ impl Operator for ValueDelay1Op {
 		}
 	}
 
-	fn resolve(
-		&self,
-		eval: &mut dyn EvalAccess,
-		time: f64,
-		ctx: &EvalContext,
-	) -> Result<ResolvedOp, EvalError> {
+	fn resolve(&self, eval: &mut dyn EvalAccess, time: f64, ctx: &EvalContext) -> Result<ResolvedOp, EvalError> {
 		let input = resolve_value_param(&self.input, eval, time, ctx)?;
 		let input_hash = hash_value(input);
 		Ok(ResolvedOp::new(input, 0, input_hash))

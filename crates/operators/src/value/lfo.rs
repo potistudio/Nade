@@ -1,8 +1,8 @@
 use crate::common::{resolve_value_param, set_value_param, value_param_descriptor};
 use crate::hash::value::{hash_f32, hash_f32_pair};
 use core::{
-	EvalAccess, EvalContext, EvalError, NodeState, Operator, Output, OutputType, ParamDescriptor,
-	ParamValue, ResolvedOp, Value, ValueKind, ValueParam, ValueParamUi,
+	EvalAccess, EvalContext, EvalError, NodeState, Operator, Output, OutputType, ParamDescriptor, ParamValue,
+	ResolvedOp, Value, ValueKind, ValueParam, ValueParamUi,
 };
 
 #[derive(Debug, Clone)]
@@ -58,13 +58,7 @@ impl Operator for ValueLfoOp {
 				true,
 				ValueParamUi::Float,
 			),
-			value_param_descriptor(
-				"Phase",
-				&self.phase,
-				Some(ValueKind::Float),
-				true,
-				ValueParamUi::Float,
-			),
+			value_param_descriptor("Phase", &self.phase, Some(ValueKind::Float), true, ValueParamUi::Float),
 		]
 	}
 
@@ -77,12 +71,7 @@ impl Operator for ValueLfoOp {
 		}
 	}
 
-	fn resolve(
-		&self,
-		eval: &mut dyn EvalAccess,
-		time: f64,
-		ctx: &EvalContext,
-	) -> Result<ResolvedOp, EvalError> {
+	fn resolve(&self, eval: &mut dyn EvalAccess, time: f64, ctx: &EvalContext) -> Result<ResolvedOp, EvalError> {
 		let frequency = resolve_value_param(&self.frequency, eval, time, ctx)?.as_f32()?;
 		let amplitude = resolve_value_param(&self.amplitude, eval, time, ctx)?.as_f32()?;
 		let phase = resolve_value_param(&self.phase, eval, time, ctx)?.as_f32()?;
@@ -106,8 +95,7 @@ impl Operator for ValueLfoOp {
 		_ctx: &EvalContext,
 	) -> Result<(Output, NodeState), EvalError> {
 		let resolved = resolved.take::<ValueLfoResolved>()?;
-		let angle = std::f64::consts::TAU * f64::from(resolved.frequency) * time
-			+ f64::from(resolved.phase);
+		let angle = std::f64::consts::TAU * f64::from(resolved.frequency) * time + f64::from(resolved.phase);
 		#[allow(clippy::cast_precision_loss)]
 		let output = Value::Float((angle.sin() as f32) * resolved.amplitude);
 		Ok((Output::Value(output), NodeState::Empty))

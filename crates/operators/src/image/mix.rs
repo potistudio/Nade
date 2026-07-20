@@ -1,12 +1,11 @@
 use crate::common::{
-	clamp01, image_input_descriptor, resolve_value_param, set_image_input, set_value_param,
-	value_param_descriptor,
+	clamp01, image_input_descriptor, resolve_value_param, set_image_input, set_value_param, value_param_descriptor,
 };
 use crate::hash::image::hash_image_pair;
 use crate::hash::value::hash_f32;
 use core::{
-	EvalAccess, EvalContext, EvalError, Image, NodeId, NodeState, Operator, Output, OutputType,
-	ParamDescriptor, ParamValue, ResolvedOp, ValueKind, ValueParam, ValueParamUi,
+	EvalAccess, EvalContext, EvalError, Image, NodeId, NodeState, Operator, Output, OutputType, ParamDescriptor,
+	ParamValue, ResolvedOp, ValueKind, ValueParam, ValueParamUi,
 };
 
 #[derive(Debug, Clone)]
@@ -42,13 +41,7 @@ impl Operator for ImageMixOp {
 		vec![
 			image_input_descriptor("Input A", self.a),
 			image_input_descriptor("Input B", self.b),
-			value_param_descriptor(
-				"Alpha",
-				&self.alpha,
-				Some(ValueKind::Float),
-				true,
-				ValueParamUi::Float,
-			),
+			value_param_descriptor("Alpha", &self.alpha, Some(ValueKind::Float), true, ValueParamUi::Float),
 		]
 	}
 
@@ -61,12 +54,7 @@ impl Operator for ImageMixOp {
 		}
 	}
 
-	fn resolve(
-		&self,
-		eval: &mut dyn EvalAccess,
-		time: f64,
-		ctx: &EvalContext,
-	) -> Result<ResolvedOp, EvalError> {
+	fn resolve(&self, eval: &mut dyn EvalAccess, time: f64, ctx: &EvalContext) -> Result<ResolvedOp, EvalError> {
 		let a = eval.eval_image(self.a, time, ctx)?;
 		let b = eval.eval_image(self.b, time, ctx)?;
 		let alpha = resolve_value_param(&self.alpha, eval, time, ctx)?.as_f32()?;

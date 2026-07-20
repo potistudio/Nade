@@ -3,8 +3,8 @@
 //! Nadeアプリケーションで共有される基本型とトレイトを提供します。
 
 pub use core::{
-	AssetId, EvalContext, EvalError, Image, NodeId, NodeState, OperatorState, Output, OutputType,
-	Value, ValueKind, ValueParam,
+	AssetId, EvalContext, EvalError, Image, NodeId, NodeState, OperatorState, Output, OutputType, Value, ValueKind,
+	ValueParam,
 };
 pub mod bitdepth;
 pub mod sample_rate;
@@ -51,11 +51,7 @@ impl RgbColor {
 	pub const BLACK: Self = Self { r: 0, g: 0, b: 0 };
 
 	/// 白色
-	pub const WHITE: Self = Self {
-		r: 255,
-		g: 255,
-		b: 255,
-	};
+	pub const WHITE: Self = Self { r: 255, g: 255, b: 255 };
 }
 
 // =============================================================================
@@ -89,10 +85,7 @@ pub mod timeline;
 
 pub use core::*;
 pub use object::{RectangleObject, SceneObject, SceneObjectData, SceneObjectId};
-pub use ops::{
-	EvalAccess, Operator, ParamDescriptor, ParamKind, ParamValue, ResolvedHashes, ResolvedOp,
-	ValueParamUi,
-};
+pub use ops::{EvalAccess, Operator, ParamDescriptor, ParamKind, ParamValue, ResolvedHashes, ResolvedOp, ValueParamUi};
 pub use timeline::{TimelineClip, TimelineModel, TimelineTrack};
 
 // =============================================================================

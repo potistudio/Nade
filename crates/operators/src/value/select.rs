@@ -1,8 +1,8 @@
 use crate::common::{resolve_value_param, set_value_param, value_param_descriptor};
 use crate::hash::value::hash_select_inputs;
 use core::{
-	EvalAccess, EvalContext, EvalError, NodeState, Operator, Output, OutputType, ParamDescriptor,
-	ParamValue, ResolvedOp, Value, ValueKind, ValueParam, ValueParamUi,
+	EvalAccess, EvalContext, EvalError, NodeState, Operator, Output, OutputType, ParamDescriptor, ParamValue,
+	ResolvedOp, Value, ValueKind, ValueParam, ValueParamUi,
 };
 
 #[derive(Debug, Clone)]
@@ -61,12 +61,7 @@ impl Operator for ValueSelectOp {
 		}
 	}
 
-	fn resolve(
-		&self,
-		eval: &mut dyn EvalAccess,
-		time: f64,
-		ctx: &EvalContext,
-	) -> Result<ResolvedOp, EvalError> {
+	fn resolve(&self, eval: &mut dyn EvalAccess, time: f64, ctx: &EvalContext) -> Result<ResolvedOp, EvalError> {
 		let cond = resolve_value_param(&self.cond, eval, time, ctx)?.as_bool()?;
 		let a = resolve_value_param(&self.a, eval, time, ctx)?;
 		let b = resolve_value_param(&self.b, eval, time, ctx)?;
@@ -77,11 +72,7 @@ impl Operator for ValueSelectOp {
 			});
 		}
 		let input_hash = hash_select_inputs(cond, a, b);
-		Ok(ResolvedOp::new(
-			ValueSelectResolved { cond, a, b },
-			0,
-			input_hash,
-		))
+		Ok(ResolvedOp::new(ValueSelectResolved { cond, a, b }, 0, input_hash))
 	}
 
 	fn compute(
@@ -93,11 +84,7 @@ impl Operator for ValueSelectOp {
 	) -> Result<(Output, NodeState), EvalError> {
 		let resolved = resolved.take::<ValueSelectResolved>()?;
 		Ok((
-			Output::Value(if resolved.cond {
-				resolved.a
-			} else {
-				resolved.b
-			}),
+			Output::Value(if resolved.cond { resolved.a } else { resolved.b }),
 			NodeState::Empty,
 		))
 	}

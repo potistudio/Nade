@@ -22,12 +22,7 @@ impl<Message> Program<Message> for VideoView {
 	type State = ();
 	type Primitive = VideoPrimitive;
 
-	fn draw(
-		&self,
-		_state: &Self::State,
-		_cursor: mouse::Cursor,
-		_bounds: Rectangle,
-	) -> Self::Primitive {
+	fn draw(&self, _state: &Self::State, _cursor: mouse::Cursor, _bounds: Rectangle) -> Self::Primitive {
 		VideoPrimitive {
 			frame: self.frame.clone(),
 		}
@@ -78,9 +73,7 @@ impl Pipeline for VideoPipeline {
 		// 2. Create Shader Module
 		let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
 			label: Some("Video Shader"),
-			source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
-				"../shaders/video_view.wgsl"
-			))),
+			source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!("../shaders/video_view.wgsl"))),
 		});
 
 		// 3. Create Pipeline Layout

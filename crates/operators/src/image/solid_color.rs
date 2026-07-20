@@ -1,10 +1,8 @@
-use crate::common::{
-	resolve_value_param, set_u32, set_value_param, u32_descriptor, value_param_descriptor,
-};
+use crate::common::{resolve_value_param, set_u32, set_value_param, u32_descriptor, value_param_descriptor};
 use crate::hash::image::hash_color_size;
 use core::{
-	EvalAccess, EvalContext, EvalError, Image, NodeState, Operator, Output, OutputType,
-	ParamDescriptor, ParamValue, ResolvedOp, ValueKind, ValueParam, ValueParamUi,
+	EvalAccess, EvalContext, EvalError, Image, NodeState, Operator, Output, OutputType, ParamDescriptor, ParamValue,
+	ResolvedOp, ValueKind, ValueParam, ValueParamUi,
 };
 
 #[derive(Debug, Clone)]
@@ -23,11 +21,7 @@ struct ImageSolidColorResolved {
 
 impl ImageSolidColorOp {
 	pub fn new(color: ValueParam, width: u32, height: u32) -> Self {
-		Self {
-			color,
-			width,
-			height,
-		}
+		Self { color, width, height }
 	}
 }
 
@@ -42,13 +36,7 @@ impl Operator for ImageSolidColorOp {
 
 	fn parameters(&self) -> Vec<ParamDescriptor> {
 		vec![
-			value_param_descriptor(
-				"Color",
-				&self.color,
-				Some(ValueKind::Vec4),
-				true,
-				ValueParamUi::Color,
-			),
+			value_param_descriptor("Color", &self.color, Some(ValueKind::Vec4), true, ValueParamUi::Color),
 			u32_descriptor("Width", self.width, 1, 4096),
 			u32_descriptor("Height", self.height, 1, 4096),
 		]
@@ -63,12 +51,7 @@ impl Operator for ImageSolidColorOp {
 		}
 	}
 
-	fn resolve(
-		&self,
-		eval: &mut dyn EvalAccess,
-		time: f64,
-		ctx: &EvalContext,
-	) -> Result<ResolvedOp, EvalError> {
+	fn resolve(&self, eval: &mut dyn EvalAccess, time: f64, ctx: &EvalContext) -> Result<ResolvedOp, EvalError> {
 		let color = resolve_value_param(&self.color, eval, time, ctx)?.as_vec4()?;
 		let param_hash = hash_color_size(color, self.width, self.height);
 		Ok(ResolvedOp::new(

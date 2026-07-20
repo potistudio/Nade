@@ -7,8 +7,7 @@ use core::{NodeId, Value, ValueParam};
 
 pub use image::{ImageBlur1DOp, ImageDelay1Op, ImageMixOp, ImageSolidColorOp};
 pub use value::{
-	ValueAddOp, ValueCompareGTOp, ValueConstOp, ValueDelay1Op, ValueLfoOp, ValueMulOp,
-	ValueSelectOp, ValueSinOp,
+	ValueAddOp, ValueCompareGTOp, ValueConstOp, ValueDelay1Op, ValueLfoOp, ValueMulOp, ValueSelectOp, ValueSinOp,
 };
 
 pub use core::{EvalAccess, Operator, ResolvedHashes, ResolvedOp};
@@ -94,10 +93,7 @@ fn create_image_mix() -> Box<dyn Operator> {
 }
 
 fn create_image_blur_1d() -> Box<dyn Operator> {
-	Box::new(ImageBlur1DOp::new(
-		NodeId::new(1),
-		ValueParam::new(Value::Float(4.0)),
-	))
+	Box::new(ImageBlur1DOp::new(NodeId::new(1), ValueParam::new(Value::Float(4.0))))
 }
 
 fn create_image_delay_1() -> Box<dyn Operator> {
@@ -188,16 +184,12 @@ pub fn operator_label(key: &str) -> &str {
 
 pub fn next_operator_key(current: &str) -> Option<&'static str> {
 	let definitions = operator_definitions();
-	let current_index = definitions
-		.iter()
-		.position(|definition| definition.key == current)?;
+	let current_index = definitions.iter().position(|definition| definition.key == current)?;
 	Some(definitions[(current_index + 1) % definitions.len()].key)
 }
 
 pub fn prev_operator_key(current: &str) -> Option<&'static str> {
 	let definitions = operator_definitions();
-	let current_index = definitions
-		.iter()
-		.position(|definition| definition.key == current)?;
+	let current_index = definitions.iter().position(|definition| definition.key == current)?;
 	Some(definitions[(current_index + definitions.len() - 1) % definitions.len()].key)
 }

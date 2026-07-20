@@ -41,10 +41,7 @@ mod property {
 		// 与えられた基本値(base)を、時間(time)に応じて加工する
 		fn apply(&self, base: f32, time: Ticks) -> f32 {
 			match self {
-				ValueModifier::SineWave {
-					amplitude,
-					frequency,
-				} => {
+				ValueModifier::SineWave { amplitude, frequency } => {
 					let t_sec = time as f32 / 60.0; // 60fpsと仮定
 					base + (t_sec * frequency * 2.0 * PI).sin() * amplitude
 				}
@@ -175,9 +172,7 @@ fn main() {
 		frequency: 0.2,
 	});
 
-	clip.effects.push(VideoEffectKind::Blur {
-		radius: blur_radius,
-	});
+	clip.effects.push(VideoEffectKind::Blur { radius: blur_radius });
 
 	// 3.5 カラーグレーディングも追加
 	let mut brightness = Animated::new(1.0);
@@ -185,8 +180,7 @@ fn main() {
 		amplitude: 0.2,
 		frequency: 0.1,
 	});
-	clip.effects
-		.push(VideoEffectKind::ColorGrade { brightness });
+	clip.effects.push(VideoEffectKind::ColorGrade { brightness });
 
 	// 4. タイムライン再生シミュレーション (Engine Loop)
 	println!("\n--- Rendering Simulation (0 to 120 frames) ---");

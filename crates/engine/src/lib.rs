@@ -16,10 +16,7 @@ impl AudioEngine {
 		let state = Arc::new(EngineState::new(sample_rate));
 		let clock = MasterClock::spawn(state.clone());
 
-		Self {
-			state,
-			_clock: clock,
-		}
+		Self { state, _clock: clock }
 	}
 
 	// --- UI向けの操作インターフェース ---

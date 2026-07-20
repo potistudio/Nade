@@ -164,18 +164,12 @@ fn draw_rectangle(
 		})
 		.collect();
 
-	let min_x = rotated_corners
-		.iter()
-		.map(|(x, _)| *x)
-		.fold(f32::INFINITY, f32::min);
+	let min_x = rotated_corners.iter().map(|(x, _)| *x).fold(f32::INFINITY, f32::min);
 	let max_x = rotated_corners
 		.iter()
 		.map(|(x, _)| *x)
 		.fold(f32::NEG_INFINITY, f32::max);
-	let min_y = rotated_corners
-		.iter()
-		.map(|(_, y)| *y)
-		.fold(f32::INFINITY, f32::min);
+	let min_y = rotated_corners.iter().map(|(_, y)| *y).fold(f32::INFINITY, f32::min);
 	let max_y = rotated_corners
 		.iter()
 		.map(|(_, y)| *y)
@@ -204,17 +198,11 @@ fn draw_rectangle(
 					img.put_pixel(px, py, Rgba([fill_r, fill_g, fill_b, 255]));
 				} else if fill_a > 0.0 {
 					let bg = img.get_pixel(px, py);
-					let blend =
-						|fg: u8, bg: u8| (fg as f32 * fill_a + bg as f32 * (1.0 - fill_a)) as u8;
+					let blend = |fg: u8, bg: u8| (fg as f32 * fill_a + bg as f32 * (1.0 - fill_a)) as u8;
 					img.put_pixel(
 						px,
 						py,
-						Rgba([
-							blend(fill_r, bg[0]),
-							blend(fill_g, bg[1]),
-							blend(fill_b, bg[2]),
-							255,
-						]),
+						Rgba([blend(fill_r, bg[0]), blend(fill_g, bg[1]), blend(fill_b, bg[2]), 255]),
 					);
 				}
 			}

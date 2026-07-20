@@ -56,9 +56,7 @@ pub enum DragState {
 }
 
 impl DragState {
-	pub fn corner_preview(
-		&self,
-	) -> Option<(usize, CornerAction, f32, Option<usize>, Option<SplitDirection>, bool)> {
+	pub fn corner_preview(&self) -> Option<(usize, CornerAction, f32, Option<usize>, Option<SplitDirection>, bool)> {
 		match self {
 			Self::CornerDrag {
 				area_id,
@@ -68,14 +66,7 @@ impl DragState {
 				direction,
 				new_is_first,
 				..
-			} => Some((
-				*area_id,
-				*action,
-				*ratio,
-				*target_area_id,
-				*direction,
-				*new_is_first,
-			)),
+			} => Some((*area_id, *action, *ratio, *target_area_id, *direction, *new_is_first)),
 			_ => None,
 		}
 	}

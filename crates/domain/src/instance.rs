@@ -23,13 +23,7 @@ pub struct Instance {
 
 impl Instance {
 	/// Create a new instance
-	pub fn new(
-		id: InstanceId,
-		target_node_id: NodeId,
-		name: &str,
-		start_time: f32,
-		duration: f32,
-	) -> Self {
+	pub fn new(id: InstanceId, target_node_id: NodeId, name: &str, start_time: f32, duration: f32) -> Self {
 		Self {
 			id,
 			target_node_id,

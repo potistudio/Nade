@@ -17,11 +17,7 @@ impl Image {
 			});
 		}
 
-		Ok(Self {
-			width,
-			height,
-			rgba,
-		})
+		Ok(Self { width, height, rgba })
 	}
 
 	pub fn solid_color(color: [f32; 4], width: u32, height: u32) -> Self {
@@ -34,10 +30,6 @@ impl Image {
 			rgba.push(color[3]);
 		}
 
-		Self {
-			width,
-			height,
-			rgba,
-		}
+		Self { width, height, rgba }
 	}
 }

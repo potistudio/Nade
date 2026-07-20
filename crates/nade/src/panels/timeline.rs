@@ -12,7 +12,5 @@ pub fn view<'a>(
 ) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
 	TimelineWidget::new(state, model)
 		.view(current_time)
-		.map(move |message| {
-			PanelSystemMessage::AppMessage(AppPanelMessage::Timeline { panel_id, message })
-		})
+		.map(move |message| PanelSystemMessage::AppMessage(AppPanelMessage::Timeline { panel_id, message }))
 }

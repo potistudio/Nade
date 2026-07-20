@@ -77,12 +77,9 @@ impl NadeApp {
 
 		// ステータス表示エリア (デバッグ用に追加)
 		let status = self.engine.current_status();
-		let display = widget::column![
-			widget::text(format!("Time: {:.2}s", status.seconds)).size(40),
-			controls
-		]
-		.spacing(20)
-		.padding(20);
+		let display = widget::column![widget::text(format!("Time: {:.2}s", status.seconds)).size(40), controls]
+			.spacing(20)
+			.padding(20);
 
 		display.into()
 	}

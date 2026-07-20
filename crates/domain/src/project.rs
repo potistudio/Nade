@@ -93,13 +93,7 @@ impl Project {
 	}
 
 	/// Adds a new composition to the project with the given description and returns its ID
-	pub fn create_composition(
-		&mut self,
-		name: impl Into<String>,
-		width: u32,
-		height: u32,
-		fps: f32,
-	) -> CompositionId {
+	pub fn create_composition(&mut self, name: impl Into<String>, width: u32, height: u32, fps: f32) -> CompositionId {
 		let id = CompositionId::new(self.compositions.len());
 		let composition = Composition::new(id, name, width, height, fps);
 

@@ -1,24 +1,11 @@
 use std::any::Any;
 
-use crate::core::{
-	EvalContext, EvalError, Image, NodeId, NodeState, Output, OutputType, Value, ValueKind,
-	ValueParam,
-};
+use crate::core::{EvalContext, EvalError, Image, NodeId, NodeState, Output, OutputType, Value, ValueKind, ValueParam};
 
 pub trait EvalAccess {
-	fn eval_value(
-		&mut self,
-		node_id: NodeId,
-		time: f64,
-		ctx: &EvalContext,
-	) -> Result<Value, EvalError>;
+	fn eval_value(&mut self, node_id: NodeId, time: f64, ctx: &EvalContext) -> Result<Value, EvalError>;
 
-	fn eval_image(
-		&mut self,
-		node_id: NodeId,
-		time: f64,
-		ctx: &EvalContext,
-	) -> Result<Image, EvalError>;
+	fn eval_image(&mut self, node_id: NodeId, time: f64, ctx: &EvalContext) -> Result<Image, EvalError>;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -65,10 +52,7 @@ pub struct ResolvedHashes {
 
 impl ResolvedHashes {
 	pub fn new(param_hash: u64, input_hash: u64) -> Self {
-		Self {
-			param_hash,
-			input_hash,
-		}
+		Self { param_hash, input_hash }
 	}
 }
 
@@ -132,12 +116,7 @@ pub trait Operator: std::fmt::Debug + Send + Sync + Any {
 	fn set_parameter(&mut self, _index: usize, _value: ParamValue) -> bool {
 		false
 	}
-	fn resolve(
-		&self,
-		eval: &mut dyn EvalAccess,
-		time: f64,
-		ctx: &EvalContext,
-	) -> Result<ResolvedOp, EvalError>;
+	fn resolve(&self, eval: &mut dyn EvalAccess, time: f64, ctx: &EvalContext) -> Result<ResolvedOp, EvalError>;
 	fn compute(
 		&self,
 		resolved: ResolvedOp,

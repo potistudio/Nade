@@ -1,8 +1,8 @@
 use crate::common::{resolve_value_param, set_value_param, value_param_descriptor};
 use crate::hash::value::hash_f32_pair;
 use core::{
-	EvalAccess, EvalContext, EvalError, NodeState, Operator, Output, OutputType, ParamDescriptor,
-	ParamValue, ResolvedOp, Value, ValueKind, ValueParam, ValueParamUi,
+	EvalAccess, EvalContext, EvalError, NodeState, Operator, Output, OutputType, ParamDescriptor, ParamValue,
+	ResolvedOp, Value, ValueKind, ValueParam, ValueParamUi,
 };
 
 #[derive(Debug, Clone)]
@@ -38,20 +38,8 @@ impl Operator for ValueCompareGTOp {
 
 	fn parameters(&self) -> Vec<ParamDescriptor> {
 		vec![
-			value_param_descriptor(
-				"A",
-				&self.a,
-				Some(ValueKind::Float),
-				true,
-				ValueParamUi::Float,
-			),
-			value_param_descriptor(
-				"B",
-				&self.b,
-				Some(ValueKind::Float),
-				true,
-				ValueParamUi::Float,
-			),
+			value_param_descriptor("A", &self.a, Some(ValueKind::Float), true, ValueParamUi::Float),
+			value_param_descriptor("B", &self.b, Some(ValueKind::Float), true, ValueParamUi::Float),
 		]
 	}
 
@@ -63,20 +51,11 @@ impl Operator for ValueCompareGTOp {
 		}
 	}
 
-	fn resolve(
-		&self,
-		eval: &mut dyn EvalAccess,
-		time: f64,
-		ctx: &EvalContext,
-	) -> Result<ResolvedOp, EvalError> {
+	fn resolve(&self, eval: &mut dyn EvalAccess, time: f64, ctx: &EvalContext) -> Result<ResolvedOp, EvalError> {
 		let a = resolve_value_param(&self.a, eval, time, ctx)?.as_f32()?;
 		let b = resolve_value_param(&self.b, eval, time, ctx)?.as_f32()?;
 		let input_hash = hash_f32_pair(a, b);
-		Ok(ResolvedOp::new(
-			ValueCompareGTResolved { a, b },
-			0,
-			input_hash,
-		))
+		Ok(ResolvedOp::new(ValueCompareGTResolved { a, b }, 0, input_hash))
 	}
 
 	fn compute(
@@ -87,10 +66,7 @@ impl Operator for ValueCompareGTOp {
 		_ctx: &EvalContext,
 	) -> Result<(Output, NodeState), EvalError> {
 		let resolved = resolved.take::<ValueCompareGTResolved>()?;
-		Ok((
-			Output::Value(Value::Bool(resolved.a > resolved.b)),
-			NodeState::Empty,
-		))
+		Ok((Output::Value(Value::Bool(resolved.a > resolved.b)), NodeState::Empty))
 	}
 
 	fn clone_box(&self) -> Box<dyn Operator> {

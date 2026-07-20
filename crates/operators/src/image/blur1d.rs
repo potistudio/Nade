@@ -1,13 +1,12 @@
 use crate::common::{
-	image_input_descriptor, resolve_value_param, set_image_input, set_value_param,
-	value_param_descriptor,
+	image_input_descriptor, resolve_value_param, set_image_input, set_value_param, value_param_descriptor,
 };
 use crate::hash::image::hash_image;
 use crate::hash::value::hash_f32;
 use crate::image::blur::blur_1d;
 use core::{
-	EvalAccess, EvalContext, EvalError, Image, NodeId, NodeState, Operator, Output, OutputType,
-	ParamDescriptor, ParamValue, ResolvedOp, ValueKind, ValueParam, ValueParamUi,
+	EvalAccess, EvalContext, EvalError, Image, NodeId, NodeState, Operator, Output, OutputType, ParamDescriptor,
+	ParamValue, ResolvedOp, ValueKind, ValueParam, ValueParamUi,
 };
 
 #[derive(Debug, Clone)]
@@ -58,12 +57,7 @@ impl Operator for ImageBlur1DOp {
 		}
 	}
 
-	fn resolve(
-		&self,
-		eval: &mut dyn EvalAccess,
-		time: f64,
-		ctx: &EvalContext,
-	) -> Result<ResolvedOp, EvalError> {
+	fn resolve(&self, eval: &mut dyn EvalAccess, time: f64, ctx: &EvalContext) -> Result<ResolvedOp, EvalError> {
 		let input = eval.eval_image(self.input, time, ctx)?;
 		let radius = resolve_value_param(&self.radius, eval, time, ctx)?.as_f32()?;
 		let input_hash = hash_image(&input);

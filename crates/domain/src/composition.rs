@@ -33,13 +33,7 @@ pub struct Composition {
 impl Composition {
 	//==== Constructor =========================================================
 	/// Creates a new composition with the given ID and name
-	pub fn new(
-		id: CompositionId,
-		name: impl Into<String>,
-		width: u32,
-		height: u32,
-		fps: f32,
-	) -> Self {
+	pub fn new(id: CompositionId, name: impl Into<String>, width: u32, height: u32, fps: f32) -> Self {
 		Self {
 			id,
 			name: name.into(),

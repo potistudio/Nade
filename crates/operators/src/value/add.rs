@@ -1,8 +1,8 @@
 use crate::common::{resolve_value_param, set_value_param, value_param_descriptor};
 use crate::hash::value::hash_value_pair;
 use core::{
-	EvalAccess, EvalContext, EvalError, NodeState, Operator, Output, OutputType, ParamDescriptor,
-	ParamValue, ResolvedOp, Value, ValueKind, ValueParam, ValueParamUi,
+	EvalAccess, EvalContext, EvalError, NodeState, Operator, Output, OutputType, ParamDescriptor, ParamValue,
+	ResolvedOp, Value, ValueKind, ValueParam, ValueParamUi,
 };
 
 #[derive(Debug, Clone)]
@@ -51,20 +51,11 @@ impl Operator for ValueAddOp {
 		}
 	}
 
-	fn resolve(
-		&self,
-		eval: &mut dyn EvalAccess,
-		time: f64,
-		ctx: &EvalContext,
-	) -> Result<ResolvedOp, EvalError> {
+	fn resolve(&self, eval: &mut dyn EvalAccess, time: f64, ctx: &EvalContext) -> Result<ResolvedOp, EvalError> {
 		let a_val = resolve_value_param(&self.a, eval, time, ctx)?;
 		let b_val = resolve_value_param(&self.b, eval, time, ctx)?;
 		let input_hash = hash_value_pair(a_val, b_val);
-		Ok(ResolvedOp::new(
-			ValueAddResolved { a: a_val, b: b_val },
-			0,
-			input_hash,
-		))
+		Ok(ResolvedOp::new(ValueAddResolved { a: a_val, b: b_val }, 0, input_hash))
 	}
 
 	fn compute(
@@ -75,10 +66,7 @@ impl Operator for ValueAddOp {
 		_ctx: &EvalContext,
 	) -> Result<(Output, NodeState), EvalError> {
 		let resolved = resolved.take::<ValueAddResolved>()?;
-		Ok((
-			Output::Value(resolved.a.add_value(resolved.b)?),
-			NodeState::Empty,
-		))
+		Ok((Output::Value(resolved.a.add_value(resolved.b)?), NodeState::Empty))
 	}
 
 	fn clone_box(&self) -> Box<dyn Operator> {
