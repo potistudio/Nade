@@ -103,6 +103,7 @@ impl<C: AreaKind> PanelSystem<C> {
 					current_pos: self.last_mouse_pos,
 					action: None,
 					ratio: 0.5,
+					target_area_id: None,
 				};
 			}
 
@@ -115,13 +116,15 @@ impl<C: AreaKind> PanelSystem<C> {
 						start_pos,
 						..
 					} => {
-						let (action, ratio) = self.corner_drag_preview(area_id, start_pos, pos);
+						let (action, ratio, target_area_id) =
+							self.corner_drag_update(area_id, start_pos, pos);
 						self.drag_state = DragState::CornerDrag {
 							area_id,
 							start_pos,
 							current_pos: pos,
 							action,
 							ratio,
+							target_area_id,
 						};
 					}
 					DragState::Resizing {
@@ -151,10 +154,22 @@ impl<C: AreaKind> PanelSystem<C> {
 					area_id,
 					action: Some(action),
 					ratio,
+					target_area_id,
 					..
-				} = &self.drag_state
+				} = self.drag_state.clone()
 				{
-					self.split_area(*area_id, action.direction(), *ratio);
+					match action {
+						CornerAction::Move => {
+							if let Some(target) = target_area_id {
+								self.swap_areas(area_id, target);
+							}
+						}
+						CornerAction::SplitHorizontal | CornerAction::SplitVertical => {
+							if let Some(direction) = action.direction() {
+								self.split_area(area_id, direction, ratio);
+							}
+						}
+					}
 				}
 				self.drag_state = DragState::None;
 			}
@@ -257,19 +272,27 @@ impl<C: AreaKind> PanelSystem<C> {
 		size
 	}
 
-	/// コーナードラッグ中の分割方向と比率を算出する
-	fn corner_drag_preview(
+	/// コーナードラッグ中の操作（分割 or 他エリアへの移動）を算出する
+	fn corner_drag_update(
 		&self,
-		area_id: usize,
+		source_id: usize,
 		start_pos: Point,
 		pos: Point,
-	) -> (Option<CornerAction>, f32) {
+	) -> (Option<CornerAction>, f32, Option<usize>) {
+		// 他エリア上 → 移動（入れ替え）
+		if let Some(target_id) = self.area_at_point(pos) {
+			if target_id != source_id {
+				return (Some(CornerAction::Move), 0.5, Some(target_id));
+			}
+		}
+
 		let dx = pos.x - start_pos.x;
 		let dy = pos.y - start_pos.y;
 		let distance = (dx * dx + dy * dy).sqrt();
 
+		// 角からエリア内側（左上方向）へ十分な距離 → 分割
 		if distance <= CORNER_DRAG_THRESHOLD || (dx >= 0.0 && dy >= 0.0) {
-			return (None, 0.5);
+			return (None, 0.5, None);
 		}
 
 		let action = if dx.abs() > dy.abs() {
@@ -279,7 +302,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		};
 
 		let ratio = self
-			.area_path(area_id)
+			.area_path(source_id)
 			.map(|path| {
 				let bounds = self.bounds_at_path(&path);
 				match action {
@@ -297,11 +320,64 @@ impl<C: AreaKind> PanelSystem<C> {
 							0.5
 						}
 					}
+					CornerAction::Move => 0.5,
 				}
 			})
 			.unwrap_or(0.5);
 
-		(Some(action), ratio)
+		(Some(action), ratio, None)
+	}
+
+	fn area_at_point(&self, pos: Point) -> Option<usize> {
+		Self::find_area_at_point(
+			&self.root,
+			pos,
+			Rectangle::new(Point::ORIGIN, self.window_size),
+		)
+	}
+
+	fn find_area_at_point(node: &DockNode<C>, pos: Point, bounds: Rectangle) -> Option<usize> {
+		match node {
+			DockNode::Leaf(area) => {
+				if bounds.contains(pos) {
+					Some(area.id)
+				} else {
+					None
+				}
+			}
+			DockNode::Split {
+				direction,
+				ratio,
+				first,
+				second,
+			} => {
+				let (first_bounds, second_bounds) = match direction {
+					SplitDirection::Horizontal => {
+						let first_width = bounds.width * *ratio;
+						(
+							Rectangle::new(bounds.position(), Size::new(first_width, bounds.height)),
+							Rectangle::new(
+								Point::new(bounds.x + first_width, bounds.y),
+								Size::new(bounds.width * (1.0 - *ratio), bounds.height),
+							),
+						)
+					}
+					SplitDirection::Vertical => {
+						let first_height = bounds.height * *ratio;
+						(
+							Rectangle::new(bounds.position(), Size::new(bounds.width, first_height)),
+							Rectangle::new(
+								Point::new(bounds.x, bounds.y + first_height),
+								Size::new(bounds.width, bounds.height * (1.0 - *ratio)),
+							),
+						)
+					}
+				};
+				Self::find_area_at_point(first, pos, first_bounds)
+					.or_else(|| Self::find_area_at_point(second, pos, second_bounds))
+			}
+			DockNode::Empty => None,
+		}
 	}
 
 	fn area_path(&self, area_id: usize) -> Option<Vec<usize>> {
@@ -392,38 +468,45 @@ impl<C: AreaKind> PanelSystem<C> {
 	{
 		let main_content = self.view_node(&self.root, vec![], content_view);
 
-		let wrapped = if matches!(self.drag_state, DragState::CornerDrag { .. } | DragState::Resizing { .. })
-		{
-			mouse_area(
-				container(main_content)
-					.width(Length::Fill)
-					.height(Length::Fill)
-					.style(|_| container::Style {
-						background: Some(colors::BACKGROUND.into()),
-						..Default::default()
-					}),
-			)
-			.on_move(PanelSystemMessage::MouseMove)
-			.on_release(match &self.drag_state {
+		let base = container(main_content)
+			.width(Length::Fill)
+			.height(Length::Fill)
+			.style(|_| container::Style {
+				background: Some(colors::BACKGROUND.into()),
+				..Default::default()
+			});
+
+		// ドラッグ中は全面オーバーレイで他パネル上でも追従できるようにする
+		if matches!(
+			self.drag_state,
+			DragState::CornerDrag { .. } | DragState::Resizing { .. }
+		) {
+			let release = match &self.drag_state {
 				DragState::CornerDrag { .. } => PanelSystemMessage::CornerDragEnd,
 				_ => PanelSystemMessage::ResizeEnd,
-			})
-			.into()
-		} else {
-			mouse_area(
-				container(main_content)
+			};
+
+			let overlay = mouse_area(
+				container(Space::new())
 					.width(Length::Fill)
 					.height(Length::Fill)
 					.style(|_| container::Style {
-						background: Some(colors::BACKGROUND.into()),
+						background: Some(Color::TRANSPARENT.into()),
 						..Default::default()
 					}),
 			)
 			.on_move(PanelSystemMessage::MouseMove)
-			.into()
-		};
+			.on_release(release);
 
-		wrapped
+			stack![base, overlay]
+				.width(Length::Fill)
+				.height(Length::Fill)
+				.into()
+		} else {
+			mouse_area(base)
+				.on_move(PanelSystemMessage::MouseMove)
+				.into()
+		}
 	}
 
 	fn view_node<'a, F, M>(
@@ -540,17 +623,29 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		let body = content_view(area.id, &area.content);
 
-		let split_preview = self.drag_state.corner_preview().and_then(|(id, action, ratio)| {
-			if id == area_id {
-				Some(self.view_split_preview(action, ratio))
-			} else {
-				None
-			}
-		});
+		let overlay_preview = self.drag_state.corner_preview().and_then(
+			|(source_id, action, ratio, target_id)| match action {
+				CornerAction::Move => {
+					if target_id == Some(area_id) {
+						Some(self.view_move_preview())
+					} else if source_id == area_id {
+						Some(self.view_move_source_preview())
+					} else {
+						None
+					}
+				}
+				CornerAction::SplitHorizontal | CornerAction::SplitVertical
+					if source_id == area_id =>
+				{
+					Some(self.view_split_preview(action, ratio))
+				}
+				_ => None,
+			},
+		);
 
 		let corner = self.view_corner(area_id);
 
-		let body_stack = if let Some(preview) = split_preview {
+		let body_stack = if let Some(preview) = overlay_preview {
 			stack![body, preview, self.view_corner_overlay(corner),]
 				.width(Length::Fill)
 				.height(Length::Fill)
@@ -622,7 +717,48 @@ impl<C: AreaKind> PanelSystem<C> {
 		mouse_area(widget)
 			.on_press(PanelSystemMessage::CornerDragStart(area_id))
 			.on_move(PanelSystemMessage::MouseMove)
-			.on_release(PanelSystemMessage::CornerDragEnd)
+			.into()
+	}
+
+	fn view_move_preview<'a, M>(&self) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
+		container(
+			container(text("Move here").size(14).color(colors::TEXT_SECONDARY))
+				.padding([8, 14])
+				.style(|_| container::Style {
+					background: Some(colors::HEADER_BG.into()),
+					border: iced::Border {
+						color: colors::ACCENT,
+						width: 1.0,
+						radius: 4.0.into(),
+					},
+					..Default::default()
+				}),
+		)
+		.width(Length::Fill)
+		.height(Length::Fill)
+		.center_x(Length::Fill)
+		.center_y(Length::Fill)
+		.style(|_| container::Style {
+			background: Some(colors::SPLIT_PREVIEW.into()),
+			..Default::default()
+		})
+		.into()
+	}
+
+	fn view_move_source_preview<'a, M>(&self) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
+		container(Space::new())
+			.width(Length::Fill)
+			.height(Length::Fill)
+			.style(|_| container::Style {
+				background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.35).into()),
+				..Default::default()
+			})
 			.into()
 	}
 
@@ -670,6 +806,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			.width(Length::Fill)
 			.height(Length::Fill)
 			.into(),
+			CornerAction::Move => Space::new().into(),
 		};
 
 		container(preview)
@@ -820,6 +957,52 @@ impl<C: AreaKind> PanelSystem<C> {
 			}
 			_ => false,
 		}
+	}
+
+	fn find_area_clone(node: &DockNode<C>, area_id: usize) -> Option<Area<C>> {
+		match node {
+			DockNode::Leaf(area) if area.id == area_id => Some(area.clone()),
+			DockNode::Split { first, second, .. } => Self::find_area_clone(first, area_id)
+				.or_else(|| Self::find_area_clone(second, area_id)),
+			_ => None,
+		}
+	}
+
+	fn set_leaf_at_path(node: &mut DockNode<C>, path: &[usize], area: Area<C>) {
+		if path.is_empty() {
+			*node = DockNode::Leaf(area);
+			return;
+		}
+
+		if let DockNode::Split { first, second, .. } = node {
+			match path.first() {
+				Some(0) => Self::set_leaf_at_path(first, &path[1..], area),
+				Some(1) => Self::set_leaf_at_path(second, &path[1..], area),
+				_ => {}
+			}
+		}
+	}
+
+	/// 2つのエリアをレイアウト上で入れ替える
+	fn swap_areas(&mut self, a_id: usize, b_id: usize) {
+		if a_id == b_id {
+			return;
+		}
+		let Some(path_a) = self.area_path(a_id) else {
+			return;
+		};
+		let Some(path_b) = self.area_path(b_id) else {
+			return;
+		};
+		let Some(area_a) = Self::find_area_clone(&self.root, a_id) else {
+			return;
+		};
+		let Some(area_b) = Self::find_area_clone(&self.root, b_id) else {
+			return;
+		};
+
+		Self::set_leaf_at_path(&mut self.root, &path_a, area_b);
+		Self::set_leaf_at_path(&mut self.root, &path_b, area_a);
 	}
 
 	fn split_area(&mut self, area_id: usize, direction: SplitDirection, ratio: f32) {
