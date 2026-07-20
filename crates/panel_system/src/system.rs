@@ -682,30 +682,36 @@ impl<C: AreaKind> PanelSystem<C> {
 		// Blender-style editor type chip: [icon] [▾]
 		const ICON_SIZE: f32 = 14.0;
 		const CHEVRON_SIZE: f32 = 7.0;
-		let editor_picker = button(
+		let editor_picker = button(constants::widgets::button_body(
 			row![
-				panel_icon_svg(area.content.icon(), ICON_SIZE),
-				panel_icon_svg(chevron_down_handle(), CHEVRON_SIZE),
+				constants::widgets::icon_slot(panel_icon_svg(area.content.icon(), ICON_SIZE), ICON_SIZE),
+				constants::widgets::icon_slot(panel_icon_svg(chevron_down_handle(), CHEVRON_SIZE), CHEVRON_SIZE),
 			]
 			.spacing(3)
 			.align_y(iced::Alignment::Center),
-		)
+		))
 		.padding(iced::Padding {
-			top: 2.0,
+			top: 0.0,
 			right: 4.0,
-			bottom: 2.0,
+			bottom: 0.0,
 			left: 3.0,
 		})
+		.width(Length::Shrink)
 		.height(18.0)
 		.style(|theme, status| constants::widgets::button_editor_type(theme, status))
 		.on_press(PanelSystemMessage::ToggleEditorMenu(area_id));
 
 		let join_button: Element<'_, PanelSystemMessage<C, M>> = if can_join {
-			button(text("Join").size(constants::style::FONT_UI))
-				.padding(constants::style::PAD_BUTTON)
-				.style(|theme, status| constants::widgets::button_ghost(theme, status))
-				.on_press(PanelSystemMessage::JoinArea(area_id))
-				.into()
+			button(constants::widgets::button_body(
+				constants::widgets::ui_label("Join", constants::style::FONT_UI)
+					.color(constants::style::TEXT_SECONDARY_COLOR),
+			))
+			.padding(constants::style::PAD_BUTTON)
+			.width(Length::Shrink)
+			.height(18.0)
+			.style(|theme, status| constants::widgets::button_ghost(theme, status))
+			.on_press(PanelSystemMessage::JoinArea(area_id))
+			.into()
 		} else {
 			Space::new().width(0).into()
 		};
@@ -738,8 +744,7 @@ impl<C: AreaKind> PanelSystem<C> {
 				.into_iter()
 				.map(|(category, kinds)| {
 					let header = column![
-						text(category)
-							.size(constants::style::FONT_TINY)
+						constants::widgets::ui_label(category, constants::style::FONT_TINY)
 							.color(constants::style::TEXT_SECONDARY_COLOR),
 						rule::horizontal(1).style(|_theme| rule::Style {
 							color: constants::style::BORDER_SUBTLE_COLOR,
@@ -767,18 +772,20 @@ impl<C: AreaKind> PanelSystem<C> {
 									constants::style::TEXT_PRIMARY_COLOR
 								};
 
-								let row_content = row![
-									container(panel_icon_svg_colored(kind.icon(), MENU_ICON, icon_color)).width(14),
-									text(kind.label()).size(constants::style::FONT_UI).color(label_color),
-								]
-								.spacing(4)
-								.align_y(iced::Alignment::Center);
+								let row_content = constants::widgets::icon_label_row(
+									panel_icon_svg_colored(kind.icon(), MENU_ICON, icon_color),
+									kind.label(),
+									constants::style::FONT_UI,
+									label_color,
+									MENU_ICON,
+									4.0,
+								);
 
-								button(row_content)
+								button(constants::widgets::button_body(row_content))
 									.padding(iced::Padding {
-										top: 1.0,
+										top: 0.0,
 										right: 4.0,
-										bottom: 1.0,
+										bottom: 0.0,
 										left: 2.0,
 									})
 									.width(Length::Fill)
@@ -1382,16 +1389,14 @@ fn panel_icon_svg<'a, Message: 'a>(handle: svg::Handle, size: f32) -> Element<'a
 	panel_icon_svg_colored(handle, size, constants::style::TEXT_PRIMARY_COLOR)
 }
 
-fn panel_icon_svg_colored<'a, Message: 'a>(
-	handle: svg::Handle,
-	size: f32,
-	color: Color,
-) -> Element<'a, Message> {
-	svg(handle)
-		.width(size)
-		.height(size)
-		.style(move |_theme, _status| svg::Style { color: Some(color) })
-		.into()
+fn panel_icon_svg_colored<'a, Message: 'a>(handle: svg::Handle, size: f32, color: Color) -> Element<'a, Message> {
+	constants::widgets::icon_slot(
+		svg(handle)
+			.width(size)
+			.height(size)
+			.style(move |_theme, _status| svg::Style { color: Some(color) }),
+		size,
+	)
 }
 
 /// 中央ゾーン外側の座標を、中央=0.5・端=その方向の薄い分割になるよう倍率マップする

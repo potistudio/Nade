@@ -75,7 +75,9 @@ fn view_item<'a>(
 		TEXT_SECONDARY_COLOR
 	};
 
-	let expander = container(text(expander_symbol).size(FONT_UI).color(meta_color));
+	let expander = container(constants::widgets::ui_label(expander_symbol, FONT_UI).color(meta_color))
+		.height(ROW_HEIGHT)
+		.center_y(ROW_HEIGHT);
 	let expander_element: Element<'a, ProjectPaneMessage> = if has_children {
 		mouse_area(expander)
 			.on_press(ProjectPaneMessage::ToggleExpand(asset.id()))
@@ -87,8 +89,14 @@ fn view_item<'a>(
 	let row_content = row![
 		container(text("")).width((depth as f32 * TREE_INDENT) + SPACE_2),
 		expander_element,
-		container(text(kind_tag).size(FONT_TINY).color(meta_color)).width(36.0),
-		container(text(&asset.name).size(FONT_LABEL).color(text_color)).width(Length::Fill),
+		container(constants::widgets::ui_label(kind_tag, FONT_TINY).color(meta_color))
+			.width(36.0)
+			.height(ROW_HEIGHT)
+			.align_y(iced::Alignment::Center),
+		container(constants::widgets::ui_label(&asset.name, FONT_LABEL).color(text_color))
+			.width(Length::Fill)
+			.height(ROW_HEIGHT)
+			.align_y(iced::Alignment::Center),
 	]
 	.align_y(iced::Alignment::Center)
 	.spacing(SPACE_2)
@@ -96,7 +104,9 @@ fn view_item<'a>(
 
 	let row_container = container(row_content)
 		.width(Length::Fill)
+		.height(ROW_HEIGHT + SPACE_1 * 2.0)
 		.padding([SPACE_1, SPACE_2])
+		.align_y(iced::Alignment::Center)
 		.style(widgets::list_row(is_selected));
 
 	let selectable_row = mouse_area(row_container).on_press(ProjectPaneMessage::Select(asset.id()));

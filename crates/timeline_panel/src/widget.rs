@@ -7,7 +7,7 @@ use iced::{
 	widget::{
 		button,
 		canvas::{self, Canvas, Geometry, Path, Stroke, Text},
-		column, container, row, slider, text,
+		column, container, row, slider,
 	},
 };
 
@@ -192,14 +192,16 @@ impl<'a> TimelineWidget<'a> {
 //* -------- Private API -------- */
 impl TimelineWidget<'_> {
 	fn zoom_control_view(time_scale: f32) -> Element<'static, TimelineMessage> {
-		use constants::style::{FONT_UI, PAD_BUTTON, PAD_TOOLBAR, SPACE_2};
+		use constants::style::{FONT_UI, PAD_BUTTON, PAD_TOOLBAR, SPACE_2, TOOLBAR_HEIGHT};
 		use constants::widgets;
 
 		let zoom_percent = (time_scale * 100.0) as i32;
 
-		let zoom_out_btn = button(text("−").size(FONT_UI))
+		let zoom_out_btn = button(widgets::button_body_center(widgets::ui_label("−", FONT_UI)))
 			.on_press(TimelineMessage::ZoomOut)
 			.padding(PAD_BUTTON)
+			.width(Length::Shrink)
+			.height(TOOLBAR_HEIGHT)
 			.style(widgets::button_tool);
 
 		let zoom_slider = slider(0.1..=10.0, time_scale, TimelineMessage::ZoomChanged)
@@ -207,16 +209,20 @@ impl TimelineWidget<'_> {
 			.width(120)
 			.style(widgets::slider);
 
-		let zoom_in_btn = button(text("+").size(FONT_UI))
+		let zoom_in_btn = button(widgets::button_body_center(widgets::ui_label("+", FONT_UI)))
 			.on_press(TimelineMessage::ZoomIn)
 			.padding(PAD_BUTTON)
+			.width(Length::Shrink)
+			.height(TOOLBAR_HEIGHT)
 			.style(widgets::button_tool);
 
-		let zoom_label = text(format!("{zoom_percent}%")).size(FONT_UI).width(36);
+		let zoom_label = widgets::ui_label(format!("{zoom_percent}%"), FONT_UI).width(36);
 
-		let reset_btn = button(text("1:1").size(FONT_UI))
+		let reset_btn = button(widgets::button_body_center(widgets::ui_label("1:1", FONT_UI)))
 			.on_press(TimelineMessage::ResetZoom)
 			.padding(PAD_BUTTON)
+			.width(Length::Shrink)
+			.height(TOOLBAR_HEIGHT)
 			.style(widgets::button_tool);
 
 		let controls = row![zoom_out_btn, zoom_slider, zoom_in_btn, zoom_label, reset_btn,]

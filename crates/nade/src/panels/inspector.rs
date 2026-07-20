@@ -6,7 +6,7 @@ use constants::style::{
 };
 use constants::widgets;
 use core::Transform;
-use iced::widget::{column, container, row, rule, text};
+use iced::widget::{column, container, row, rule};
 use iced::{Element, Length};
 use inspector_panel::InspectorMessage;
 use panel_system::PanelSystemMessage;
@@ -43,7 +43,9 @@ pub fn view<'a>(selection: Option<&Transform>) -> Element<'a, PanelSystemMessage
 				snap: true,
 			}),
 			row![
-				text("Opacity").size(FONT_UI).color(TEXT_SECONDARY_COLOR).width(64),
+				widgets::ui_label("Opacity", FONT_UI)
+					.color(TEXT_SECONDARY_COLOR)
+					.width(64),
 				crate::widgets::draggable_number::draggable_number(
 					transform.opacity,
 					1.0,
@@ -60,7 +62,7 @@ pub fn view<'a>(selection: Option<&Transform>) -> Element<'a, PanelSystemMessage
 	} else {
 		let col = column![
 			section_label("Properties"),
-			text("Nothing selected").size(FONT_UI).color(TEXT_MUTED_COLOR),
+			widgets::ui_label("Nothing selected", FONT_UI).color(TEXT_MUTED_COLOR),
 		]
 		.spacing(SPACE_2);
 
@@ -76,7 +78,7 @@ pub fn view<'a>(selection: Option<&Transform>) -> Element<'a, PanelSystemMessage
 }
 
 fn section_label<'a>(label: &'a str) -> Element<'a, InspectorMessage> {
-	text(label).size(FONT_TITLE).color(TEXT_PRIMARY_COLOR).into()
+	widgets::ui_label(label, FONT_TITLE).color(TEXT_PRIMARY_COLOR).into()
 }
 
 fn property_row<'a, F>(label: &'a str, values: &[f32; 3], message_fn: F) -> Element<'a, InspectorMessage>
@@ -87,7 +89,7 @@ where
 
 	let axis = |name: &'a str, index: usize, value: f32, message_fn: F| {
 		row![
-			text(name).size(FONT_TINY).color(TEXT_MUTED_COLOR).width(10),
+			widgets::ui_label(name, FONT_TINY).color(TEXT_MUTED_COLOR).width(10),
 			draggable_number(value, 0.0, move |v| message_fn(index, v)).step(0.1),
 		]
 		.spacing(SPACE_1)
@@ -95,7 +97,7 @@ where
 	};
 
 	row![
-		text(label).size(FONT_UI).color(TEXT_SECONDARY_COLOR).width(64),
+		widgets::ui_label(label, FONT_UI).color(TEXT_SECONDARY_COLOR).width(64),
 		axis("X", 0, values[0], message_fn.clone()),
 		axis("Y", 1, values[1], message_fn.clone()),
 		axis("Z", 2, values[2], message_fn),

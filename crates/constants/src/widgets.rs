@@ -2,14 +2,20 @@
 //!
 //! Apply via `.style(widgets::button_tool)` etc. Theme alone only fixes the
 //! palette; these Catalog style fns control borders, radius, and interaction.
+//!
+//! Also provides layout helpers: iced `button` places children at the **top-left**
+//! of its padded region, which makes labels look vertically shifted. Always wrap
+//! button content with [`button_body`] (or [`button_body_center`]) when using a
+//! fixed height.
 
 use iced::border::Radius;
 use iced::widget::overlay::menu;
+use iced::widget::text::LineHeight;
 use iced::widget::{
-	button, container, pick_list as pick_list_widget, scrollable as scrollable_widget, slider as slider_widget,
-	text_input as text_input_widget,
+	button, container, pick_list as pick_list_widget, row, scrollable as scrollable_widget, slider as slider_widget,
+	text, text_input as text_input_widget,
 };
-use iced::{Background, Border, Color, Shadow, Theme};
+use iced::{Alignment, Background, Border, Color, Element, Length, Shadow, Theme};
 
 use crate::style::*;
 
@@ -27,6 +33,60 @@ fn panel_border() -> Border {
 		width: BORDER_THICKNESS,
 		radius: PANEL_RADIUS.into(),
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Layout helpers (vertical alignment)
+// ---------------------------------------------------------------------------
+
+/// Vertically center content inside a `button` (width follows content / parent).
+///
+/// Do **not** force `Length::Fill` width here — that makes Shrink buttons (tool
+/// chrome) expand across the row. For full-width menu rows, set `.width(Fill)`
+/// on the `button` and give the inner content `width(Fill)` instead.
+pub fn button_body<'a, Message: 'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+	container(content.into())
+		.height(Length::Fill)
+		.align_y(Alignment::Center)
+		.into()
+}
+
+/// Vertically center content; horizontal centering when the button is wider than content.
+pub fn button_body_center<'a, Message: 'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+	container(content.into())
+		.height(Length::Fill)
+		.align_x(Alignment::Center)
+		.align_y(Alignment::Center)
+		.into()
+}
+
+/// UI label with absolute line height so it optically matches icon boxes.
+pub fn ui_label<'a>(label: impl text::IntoFragment<'a>, size: f32) -> text::Text<'a> {
+	text(label).size(size).line_height(LineHeight::Absolute(size.into()))
+}
+
+/// Fixed square slot that centers an icon widget.
+pub fn icon_slot<'a, Message: 'a>(icon: impl Into<Element<'a, Message>>, size: f32) -> Element<'a, Message> {
+	container(icon.into()).width(size).height(size).center(size).into()
+}
+
+/// Icon + label row with shared vertical centering and tight text metrics.
+pub fn icon_label_row<'a, Message: 'a>(
+	icon: impl Into<Element<'a, Message>>,
+	label: impl text::IntoFragment<'a>,
+	label_size: f32,
+	label_color: Color,
+	icon_size: f32,
+	spacing: f32,
+) -> Element<'a, Message> {
+	row![
+		icon_slot(icon, icon_size),
+		ui_label(label, label_size).color(label_color),
+	]
+	.spacing(spacing)
+	.align_y(Alignment::Center)
+	.width(Length::Fill)
+	.into()
 }
 
 // ---------------------------------------------------------------------------
@@ -161,14 +221,7 @@ pub fn button_editor_type(_theme: &Theme, status: button::Status) -> button::Sty
 		button::Status::Active => (Some(WIDGET_COLOR.into()), BORDER_SUBTLE_COLOR),
 		button::Status::Hovered => (Some(WIDGET_HOVER_COLOR.into()), BORDER_ACTIVE_COLOR),
 		button::Status::Pressed => (Some(BACKGROUND_SELECTED_COLOR.into()), BORDER_ACTIVE_COLOR),
-		button::Status::Disabled => (
-			Some(Color {
-				a: 0.5,
-				..WIDGET_COLOR
-			}
-			.into()),
-			BORDER_COLOR,
-		),
+		button::Status::Disabled => (Some(Color { a: 0.5, ..WIDGET_COLOR }.into()), BORDER_COLOR),
 	};
 
 	button::Style {
