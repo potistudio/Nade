@@ -1218,14 +1218,10 @@ impl TimelineInteraction {
 
 	pub(crate) fn handle_scroll(&mut self, delta: mouse::ScrollDelta, current_time: f32) -> bool {
 		match delta {
-			mouse::ScrollDelta::Pinch { delta } => {
-				self.zoom_at_cursor_x(1.0 + delta);
-			}
 			_ if self.ctrl_pressed => {
 				let dy = match delta {
 					mouse::ScrollDelta::Lines { y, .. } => y * SCROLL_MULTIPLIER,
 					mouse::ScrollDelta::Pixels { y, .. } => y,
-					mouse::ScrollDelta::Pinch { .. } => unreachable!(),
 				};
 				if dy > 0.0 {
 					self.zoom_in(current_time);

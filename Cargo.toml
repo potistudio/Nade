@@ -17,11 +17,6 @@ lto = true
 [workspace.lints.clippy]
 all = "warn"
 
-[patch.crates-io]
-iced_core = { path = "vendor/iced_core" }
-iced_winit = { path = "vendor/iced_winit" }
-iced_widget = { path = "vendor/iced_widget" }
-
 [workspace.dependencies]
 log = "0.4.29"
 iced = { version = "0.14", features = ["advanced", "canvas"] }
