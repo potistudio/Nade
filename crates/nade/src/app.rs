@@ -2,7 +2,8 @@
 //!
 //! NadeのメインUIアプリケーション実装です。
 
-use iced::widget::{Space, container, text};
+use browser_panel::{ProjectPaneMessage, ProjectPaneState};
+use iced::widget::{container, text};
 use iced::{Element, Length, Size, Subscription, Task, Theme};
 use panel_system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
 use timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
@@ -17,11 +18,7 @@ use crate::panels;
 // ウィンドウイベント
 // =============================================================================
 
-fn on_window_resize(
-	event: iced::Event,
-	_status: iced::event::Status,
-	_id: iced::window::Id,
-) -> Option<Message> {
+fn on_window_resize(event: iced::Event, _status: iced::event::Status, _id: iced::window::Id) -> Option<Message> {
 	if let iced::Event::Window(iced::window::Event::Resized(size)) = event {
 		Some(Message::PanelSystem(PanelSystemMessage::WindowResized(size)))
 	} else {
@@ -91,6 +88,9 @@ pub(super) struct NadeApp {
 	/// タイムラインパネル
 	timeline: TimelinePanelState,
 
+	/// プロジェクトパネル
+	project_pane: ProjectPaneState,
+
 	/// パネルシステム（レイアウト・リサイズ管理）
 	panel_system: PanelSystem<PanelContent>,
 }
@@ -110,19 +110,36 @@ impl NadeApp {
 			current_time: 0.0,
 			is_playing: false,
 			timeline: TimelinePanelState::default(),
+			project_pane: ProjectPaneState::default(),
 			panel_system,
 		};
 
 		(app, Task::none())
 	}
 
-	/// 初期パネルレイアウトを構築（上：プレビュー、下：タイムライン）
+	/// 初期パネルレイアウトを構築
+	///
+	/// ```text
+	/// ┌─────────┬──────────────────┬───────────┐
+	/// │ Project │     Preview      │ Inspector │
+	/// │         ├──────────────────┤           │
+	/// │         │    Timeline      │           │
+	/// └─────────┴──────────────────┴───────────┘
+	/// ```
 	fn create_panel_layout() -> PanelSystem<PanelContent> {
 		let mut builder = LayoutBuilder::new();
+		let project = builder.panel("Project", PanelContent::Project);
 		let preview = builder.panel("Preview", PanelContent::MainPreview);
 		let timeline = builder.panel("Timeline", PanelContent::Timeline);
-		let layout = LayoutBuilder::vsplit(preview, timeline, 0.65);
-		let mut system = PanelSystem::new().with_layout(layout);
+		let inspector = builder.panel("Inspector", PanelContent::Inspector);
+
+		let center = LayoutBuilder::vsplit(preview, timeline, 0.65);
+		let main = LayoutBuilder::hsplit(center, inspector, 0.78);
+		let layout = LayoutBuilder::hsplit(project, main, 0.18);
+
+		let mut system = PanelSystem::new()
+			.with_layout(layout)
+			.with_ids(builder.next_panel_id(), builder.next_container_id());
 		// 初期ウィンドウサイズを設定（main.rsのwindow_settingsと合わせる）
 		system.update(PanelSystemMessage::<PanelContent, AppPanelMessage>::WindowResized(
 			Size::new(1280.0, 720.0),
@@ -156,9 +173,14 @@ impl NadeApp {
 			}
 
 			Message::PanelSystem(msg) => {
-				// タイムラインメッセージをルーティング
-				if let PanelSystemMessage::AppMessage(AppPanelMessage::Timeline { ref message, .. }) = msg {
-					self.apply_timeline_message(message.clone());
+				match &msg {
+					PanelSystemMessage::AppMessage(AppPanelMessage::Timeline { message, .. }) => {
+						self.apply_timeline_message(message.clone());
+					}
+					PanelSystemMessage::AppMessage(AppPanelMessage::Project(project_msg)) => {
+						self.apply_project_message(project_msg.clone());
+					}
+					_ => {}
 				}
 				self.panel_system.update(msg);
 				Task::none()
@@ -188,6 +210,27 @@ impl NadeApp {
 		}
 	}
 
+	fn apply_project_message(&mut self, msg: ProjectPaneMessage) {
+		match msg {
+			ProjectPaneMessage::ToggleExpand(id) => {
+				if self.project_pane.expanded_ids.contains(&id) {
+					self.project_pane.expanded_ids.remove(&id);
+				} else {
+					self.project_pane.expanded_ids.insert(id);
+				}
+			}
+			ProjectPaneMessage::Select(id) => {
+				self.project_pane.selected_id = Some(id);
+			}
+			ProjectPaneMessage::ClearSelection => {
+				self.project_pane.selected_id = None;
+			}
+			ProjectPaneMessage::OpenItem(id) => {
+				self.project_pane.selected_id = Some(id);
+			}
+		}
+	}
+
 	pub(super) fn view(&self) -> Element<'_, Message> {
 		let panel_view = self
 			.panel_system
@@ -208,18 +251,16 @@ impl NadeApp {
 			PanelContent::Timeline => {
 				panels::timeline::view(panel_id, &self.timeline.state, &self.timeline.model, self.current_time)
 			}
-			PanelContent::MainPreview => container(
-				text("Preview")
-					.size(14)
-					.color(iced::Color::from_rgb(0.4, 0.4, 0.4)),
-			)
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.center_x(Length::Fill)
-			.center_y(Length::Fill)
-			.into(),
+			PanelContent::MainPreview => {
+				container(text("Preview").size(14).color(iced::Color::from_rgb(0.4, 0.4, 0.4)))
+					.width(Length::Fill)
+					.height(Length::Fill)
+					.center_x(Length::Fill)
+					.center_y(Length::Fill)
+					.into()
+			}
 			PanelContent::Inspector => panels::inspector::view(None),
-			PanelContent::Project => Space::new().width(Length::Fill).height(Length::Fill).into(),
+			PanelContent::Project => panels::browser::view(&self.project, &self.project_pane),
 		}
 	}
 
