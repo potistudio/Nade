@@ -128,10 +128,10 @@ impl NadeApp {
 	/// ```
 	fn create_panel_layout() -> PanelSystem<PanelContent> {
 		let mut builder = LayoutBuilder::new();
-		let project = builder.panel("Project", PanelContent::Project);
-		let preview = builder.panel("Preview", PanelContent::MainPreview);
-		let timeline = builder.panel("Timeline", PanelContent::Timeline);
-		let inspector = builder.panel("Inspector", PanelContent::Inspector);
+		let project = builder.area(PanelContent::Project);
+		let preview = builder.area(PanelContent::MainPreview);
+		let timeline = builder.area(PanelContent::Timeline);
+		let inspector = builder.area(PanelContent::Inspector);
 
 		let center = LayoutBuilder::vsplit(preview, timeline, 0.65);
 		let main = LayoutBuilder::hsplit(center, inspector, 0.78);
@@ -139,7 +139,7 @@ impl NadeApp {
 
 		let mut system = PanelSystem::new()
 			.with_layout(layout)
-			.with_ids(builder.next_panel_id(), builder.next_container_id());
+			.with_ids(builder.next_area_id());
 		// 初期ウィンドウサイズを設定（main.rsのwindow_settingsと合わせる）
 		system.update(PanelSystemMessage::<PanelContent, AppPanelMessage>::WindowResized(
 			Size::new(1280.0, 720.0),

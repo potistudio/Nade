@@ -1,6 +1,6 @@
 [package]
 name = "panel_system"
-description = "Dockable panel system for Iced applications"
+description = "Blender-style area tiling system for Iced applications"
 authors.workspace = true
 version.workspace = true
 license.workspace = true

@@ -1,16 +1,17 @@
-//! パネルシステムのメイン実装
+//! Blender 風エリアシステムのメイン実装
 //!
-//! パネルの管理、レイアウト、インタラクションを提供します。
+//! 単一エディタのエリア分割・結合・種別切替・リサイズを提供します。
 
 use iced::{
 	Color, Element, Length, Point, Size,
-	widget::{Column, Row, Space, button, column, container, mouse_area, row, stack, text},
+	widget::{Space, button, column, container, mouse_area, pick_list, row, stack, text},
 };
 
 use crate::{
-	consts::{DRAG_THRESHOLD, DROP_ZONE_SIZE, RESIZE_HANDLE_SIZE, TAB_HEIGHT, colors},
-	container::{Panel, TabContainer},
-	drag::{DragState, DropPosition, DropZone},
+	AreaKind,
+	consts::{CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, RESIZE_HANDLE_SIZE, colors},
+	container::Area,
+	drag::{CornerAction, DragState},
 	node::{DockNode, SplitDirection},
 };
 
@@ -25,18 +26,18 @@ where
 	C: Clone + std::fmt::Debug,
 	M: Clone + std::fmt::Debug,
 {
-	TabClicked(usize, usize),
-	TabDragStart(usize, usize),
+	/// エリアのエディタ種別を変更
+	ChangeEditor(usize, C),
+	/// 角ドラッグ開始
+	CornerDragStart(usize),
 	MouseMove(Point),
-	TabDragEnd,
-	TabClose(usize, usize),
+	CornerDragEnd,
+	/// このエリアを削除し、兄弟と結合
+	JoinArea(usize),
 	ResizeStart(Vec<usize>, SplitDirection),
 	ResizeEnd,
-	DropZoneHover(Option<DropZone>),
 	ResizeHandleHover(Option<(Vec<usize>, SplitDirection)>),
 	WindowResized(Size),
-	/// パネルコンテンツ識別子
-	Content(C),
 	/// アプリケーション固有のメッセージ
 	AppMessage(M),
 }
@@ -45,121 +46,97 @@ where
 // パネルシステム
 // =============================================================================
 
-/// パネルシステム
+/// Blender 風エリアシステム
 #[derive(Debug)]
-pub struct PanelSystem<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> {
+pub struct PanelSystem<C: AreaKind> {
 	root: DockNode<C>,
-	next_panel_id: usize,
-	next_container_id: usize,
+	next_area_id: usize,
 	drag_state: DragState,
-	hover_drop_zone: Option<DropZone>,
 	last_mouse_pos: Point,
 	window_size: Size,
 	hover_resize_handle: Option<(Vec<usize>, SplitDirection)>,
 }
 
-impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
+impl<C: AreaKind> PanelSystem<C> {
 	pub fn new() -> Self {
 		Self {
-			root: DockNode::Leaf(TabContainer::new(0)),
-			next_panel_id: 0,
-			next_container_id: 1,
+			root: DockNode::Empty,
+			next_area_id: 0,
 			drag_state: DragState::None,
-			hover_drop_zone: None,
 			last_mouse_pos: Point::ORIGIN,
 			window_size: Size::new(800.0, 600.0),
 			hover_resize_handle: None,
 		}
 	}
 
-	/// パネルを追加
-	pub fn add_panel(&mut self, title: &str, content: C) {
-		let panel_id = self.next_panel_id;
-		self.next_panel_id += 1;
-
-		let panel = Panel::new(panel_id, title, content);
-
-		if let DockNode::Leaf(container) = &mut self.root {
-			container.add_panel(panel);
-		}
-	}
-
-	/// 指定したコンテンツで最初のレイアウトを設定
 	pub fn with_layout(mut self, layout: DockNode<C>) -> Self {
 		self.root = layout;
 		self
 	}
 
-	/// `LayoutBuilder` で採番済みの次IDを同期する
-	pub fn with_ids(mut self, next_panel_id: usize, next_container_id: usize) -> Self {
-		self.next_panel_id = next_panel_id;
-		self.next_container_id = next_container_id;
+	pub fn with_ids(mut self, next_area_id: usize) -> Self {
+		self.next_area_id = next_area_id;
 		self
 	}
 
-	/// ルートノードへの参照を取得
 	pub fn root(&self) -> &DockNode<C> {
 		&self.root
 	}
 
-	/// ルートノードへの可変参照を取得
 	pub fn root_mut(&mut self) -> &mut DockNode<C> {
 		&mut self.root
 	}
 
-	/// メッセージを処理
 	pub fn update<M>(&mut self, message: PanelSystemMessage<C, M>)
 	where
 		M: Clone + std::fmt::Debug,
 	{
 		match message {
-			PanelSystemMessage::TabClicked(container_id, tab_index) => {
-				self.set_active_tab(container_id, tab_index);
+			PanelSystemMessage::ChangeEditor(area_id, content) => {
+				self.set_area_content(area_id, content);
 			}
 
-			PanelSystemMessage::TabDragStart(container_id, tab_index) => {
-				if let Some(panel_id) = self.get_panel_id_at(container_id, tab_index) {
-					self.drag_state = DragState::PendingDrag {
-						source_container: container_id,
-						panel_id,
-						tab_index,
-						start_pos: self.last_mouse_pos,
-					};
-				}
+			PanelSystemMessage::CornerDragStart(area_id) => {
+				self.drag_state = DragState::CornerDrag {
+					area_id,
+					start_pos: self.last_mouse_pos,
+					current_pos: self.last_mouse_pos,
+					action: None,
+				};
 			}
 
 			PanelSystemMessage::MouseMove(pos) => {
 				self.last_mouse_pos = pos;
 
 				match self.drag_state.clone() {
-					DragState::PendingDrag {
-						source_container,
-						panel_id,
+					DragState::CornerDrag {
+						area_id,
 						start_pos,
 						..
 					} => {
-						let distance =
-							((pos.x - start_pos.x).powi(2) + (pos.y - start_pos.y).powi(2)).sqrt();
-						if distance > DRAG_THRESHOLD {
-							self.drag_state = DragState::DraggingTab {
-								source_container,
-								panel_id,
-								start_pos,
-								current_pos: pos,
-							};
-						}
-					}
-					DragState::DraggingTab {
-						source_container,
-						panel_id,
-						start_pos,
-						..
-					} => {
-						self.drag_state = DragState::DraggingTab {
-							source_container,
-							panel_id,
+						let dx = pos.x - start_pos.x;
+						let dy = pos.y - start_pos.y;
+						let distance = (dx * dx + dy * dy).sqrt();
+						let action = if distance > CORNER_DRAG_THRESHOLD {
+							// 角からエリア内側（左上方向）へドラッグ → 分割
+							// 外向き（右下）は結合候補だが、結合は Join ボタンで行う
+							if dx < 0.0 || dy < 0.0 {
+								Some(if dx.abs() > dy.abs() {
+									CornerAction::SplitHorizontal
+								} else {
+									CornerAction::SplitVertical
+								})
+							} else {
+								None
+							}
+						} else {
+							None
+						};
+						self.drag_state = DragState::CornerDrag {
+							area_id,
 							start_pos,
 							current_pos: pos,
+							action,
 						};
 					}
 					DragState::Resizing {
@@ -169,13 +146,8 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 						start_ratio,
 						..
 					} => {
-						let new_ratio = self.calculate_new_ratio(
-							&path,
-							start_pos,
-							pos,
-							start_ratio,
-							direction,
-						);
+						let new_ratio =
+							self.calculate_new_ratio(&path, start_pos, pos, start_ratio, direction);
 						self.set_ratio_at_path(&path, new_ratio);
 						self.drag_state = DragState::Resizing {
 							path,
@@ -189,38 +161,20 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 				}
 			}
 
-			PanelSystemMessage::TabDragEnd => {
-				match &self.drag_state {
-					DragState::PendingDrag {
-						source_container,
-						tab_index,
-						..
-					} => {
-						self.set_active_tab(*source_container, *tab_index);
-					}
-					DragState::DraggingTab {
-						source_container,
-						panel_id,
-						..
-					} => {
-						let source = *source_container;
-						let panel = *panel_id;
-
-						if let Some(drop_zone) = self.hover_drop_zone.take() {
-							self.handle_drop(source, panel, drop_zone);
-						}
-					}
-					_ => {}
+			PanelSystemMessage::CornerDragEnd => {
+				if let DragState::CornerDrag {
+					area_id,
+					action: Some(action),
+					..
+				} = &self.drag_state
+				{
+					self.split_area(*area_id, action.direction());
 				}
 				self.drag_state = DragState::None;
-				self.hover_drop_zone = None;
 			}
 
-			PanelSystemMessage::TabClose(container_id, tab_index) => {
-				if let Some(panel_id) = self.get_panel_id_at(container_id, tab_index) {
-					self.remove_panel_from_container(container_id, panel_id);
-					self.cleanup_empty_nodes();
-				}
+			PanelSystemMessage::JoinArea(area_id) => {
+				self.join_area(area_id);
 			}
 
 			PanelSystemMessage::ResizeStart(path, direction) => {
@@ -239,13 +193,7 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 				self.drag_state = DragState::None;
 			}
 
-			PanelSystemMessage::Content(_) => {}
-
 			PanelSystemMessage::AppMessage(_) => {}
-
-			PanelSystemMessage::DropZoneHover(zone) => {
-				self.hover_drop_zone = zone;
-			}
 
 			PanelSystemMessage::ResizeHandleHover(handle) => {
 				if !matches!(self.drag_state, DragState::Resizing { .. }) {
@@ -279,7 +227,6 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 		(start_ratio + delta).clamp(0.15, 0.85)
 	}
 
-	/// パスで指すノードの領域サイズを、ウィンドウサイズと分割比から算出する
 	fn size_at_path(&self, path: &[usize]) -> Size {
 		let mut size = self.window_size;
 		let mut node = &self.root;
@@ -324,7 +271,6 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 		size
 	}
 
-	/// ビューを生成
 	pub fn view<'a, F, M>(&'a self, content_view: F) -> Element<'a, PanelSystemMessage<C, M>>
 	where
 		F: Fn(usize, &C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
@@ -333,50 +279,10 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 	{
 		let main_content = self.view_node(&self.root, vec![], content_view);
 
-		if let DragState::DraggingTab {
-			panel_id,
-			current_pos,
-			..
-		} = &self.drag_state
+		let wrapped = if matches!(self.drag_state, DragState::CornerDrag { .. } | DragState::Resizing { .. })
 		{
-			if let Some(panel) = self.find_panel(*panel_id) {
-				let floating = self.view_floating_panel(panel, *current_pos);
-				let overlay = self.view_drop_zone_overlay();
-
-				let main_with_mouse = mouse_area(
-					container(main_content)
-						.width(Length::Fill)
-						.height(Length::Fill)
-						.style(|_| container::Style {
-							background: Some(colors::BACKGROUND.into()),
-							..Default::default()
-						}),
-				)
-				.on_move(PanelSystemMessage::MouseMove)
-				.on_release(PanelSystemMessage::TabDragEnd);
-
-				stack![main_with_mouse, overlay, floating,]
-					.width(Length::Fill)
-					.height(Length::Fill)
-					.into()
-			} else {
-				self.view_main_container(main_content)
-			}
-		} else {
-			self.view_main_container(main_content)
-		}
-	}
-
-	fn view_main_container<'a, M>(
-		&self,
-		content: Element<'a, PanelSystemMessage<C, M>>,
-	) -> Element<'a, PanelSystemMessage<C, M>>
-	where
-		M: Clone + std::fmt::Debug + 'static,
-	{
-		if let DragState::Resizing { .. } = &self.drag_state {
 			mouse_area(
-				container(content)
+				container(main_content)
 					.width(Length::Fill)
 					.height(Length::Fill)
 					.style(|_| container::Style {
@@ -385,11 +291,14 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 					}),
 			)
 			.on_move(PanelSystemMessage::MouseMove)
-			.on_release(PanelSystemMessage::ResizeEnd)
+			.on_release(match &self.drag_state {
+				DragState::CornerDrag { .. } => PanelSystemMessage::CornerDragEnd,
+				_ => PanelSystemMessage::ResizeEnd,
+			})
 			.into()
 		} else {
 			mouse_area(
-				container(content)
+				container(main_content)
 					.width(Length::Fill)
 					.height(Length::Fill)
 					.style(|_| container::Style {
@@ -399,7 +308,9 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 			)
 			.on_move(PanelSystemMessage::MouseMove)
 			.into()
-		}
+		};
+
+		wrapped
 	}
 
 	fn view_node<'a, F, M>(
@@ -415,7 +326,7 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 		match node {
 			DockNode::Empty => Space::new().width(Length::Fill).height(Length::Fill).into(),
 
-			DockNode::Leaf(container) => self.view_tab_container(container, content_view),
+			DockNode::Leaf(area) => self.view_area(area, content_view),
 
 			DockNode::Split {
 				direction,
@@ -438,7 +349,6 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 
 				let first_len = Length::FillPortion(first_portion);
 				let second_len = Length::FillPortion(second_portion);
-
 				let resize_path = path;
 
 				match direction {
@@ -463,57 +373,81 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 		}
 	}
 
-	fn view_tab_container<'a, F, M>(
+	fn view_area<'a, F, M>(
 		&'a self,
-		tab_container: &'a TabContainer<C>,
+		area: &'a Area<C>,
 		content_view: F,
 	) -> Element<'a, PanelSystemMessage<C, M>>
 	where
 		F: Fn(usize, &C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
 		M: Clone + std::fmt::Debug + 'static,
 	{
-		let container_id = tab_container.id;
-		let dragging_panel = self.drag_state.dragging_panel_id();
+		let area_id = area.id;
+		let can_join = self.area_has_sibling(area_id);
 
-		let tabs: Vec<Element<PanelSystemMessage<C, M>>> = tab_container
-			.panels
-			.iter()
-			.enumerate()
-			.map(|(index, panel)| {
-				let is_active = index == tab_container.active_tab;
-				let is_being_dragged = dragging_panel == Some(panel.id);
-				self.view_tab(container_id, index, panel, is_active, is_being_dragged)
-			})
-			.collect();
+		let editor_picker = pick_list(C::all(), Some(area.content.clone()), move |content| {
+			PanelSystemMessage::ChangeEditor(area_id, content)
+		})
+		.placeholder("Editor")
+		.text_size(12)
+		.padding([4, 8])
+		.width(Length::Shrink);
 
-		let tab_bar = Row::with_children(tabs).spacing(1).padding([0, 4]);
-
-		let tab_bar_container = container(tab_bar)
-			.width(Length::Fill)
-			.height(TAB_HEIGHT)
-			.style(|_| container::Style {
-				background: Some(colors::TAB_BAR_BG.into()),
-				border: iced::Border {
-					color: colors::BORDER,
-					width: 0.0,
-					radius: 0.0.into(),
-				},
-				..Default::default()
-			});
-
-		let content = if let Some(panel) = tab_container.get_active_panel() {
-			content_view(panel.id, &panel.content)
+		let join_button: Element<'_, PanelSystemMessage<C, M>> = if can_join {
+			button(text("Join").size(11).color(colors::TEXT_SECONDARY))
+				.padding([4, 8])
+				.style(|_: &iced::Theme, status| button_style(status))
+				.on_press(PanelSystemMessage::JoinArea(area_id))
+				.into()
 		} else {
-			self.view_empty_content()
+			Space::new().width(0).into()
 		};
 
-		let content_with_zones = if self.drag_state.is_dragging() {
-			self.view_content_with_drop_zones(container_id, content)
+		let header = container(
+			row![
+				editor_picker,
+				Space::new().width(Length::Fill),
+				join_button,
+			]
+			.spacing(6)
+			.align_y(iced::Alignment::Center)
+			.padding([0, 6]),
+		)
+		.width(Length::Fill)
+		.height(HEADER_HEIGHT)
+		.style(|_| container::Style {
+			background: Some(colors::HEADER_BG.into()),
+			border: iced::Border {
+				color: colors::BORDER,
+				width: 0.0,
+				radius: 0.0.into(),
+			},
+			..Default::default()
+		});
+
+		let body = content_view(area.id, &area.content);
+
+		let split_preview = self.drag_state.corner_action().and_then(|(id, action)| {
+			if id == area_id {
+				Some(self.view_split_preview(action))
+			} else {
+				None
+			}
+		});
+
+		let corner = self.view_corner(area_id);
+
+		let body_stack = if let Some(preview) = split_preview {
+			stack![body, preview, self.view_corner_overlay(corner),]
+				.width(Length::Fill)
+				.height(Length::Fill)
 		} else {
-			content
+			stack![body, self.view_corner_overlay(corner),]
+				.width(Length::Fill)
+				.height(Length::Fill)
 		};
 
-		let content_container = container(content_with_zones)
+		let body_container = container(body_stack)
 			.width(Length::Fill)
 			.height(Length::Fill)
 			.style(|_| container::Style {
@@ -526,303 +460,103 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 				..Default::default()
 			});
 
-		column![tab_bar_container, content_container]
-			.spacing(0)
-			.into()
+		column![header, body_container].spacing(0).into()
 	}
 
-	fn view_tab<'a, M>(
+	fn view_corner_overlay<'a, M>(
 		&self,
-		container_id: usize,
-		index: usize,
-		panel: &Panel<C>,
-		is_active: bool,
-		is_being_dragged: bool,
+		corner: Element<'a, PanelSystemMessage<C, M>>,
 	) -> Element<'a, PanelSystemMessage<C, M>>
 	where
 		M: Clone + std::fmt::Debug + 'static,
 	{
-		let bg_color = if is_active {
-			colors::TAB_ACTIVE
-		} else {
-			colors::TAB_BG
-		};
-
-		let opacity = if is_being_dragged { 0.4 } else { 1.0 };
-
-		let title = panel.title.clone();
-
-		let text_color = if is_active {
-			Color {
-				a: opacity,
-				..colors::TEXT_PRIMARY
-			}
-		} else {
-			Color {
-				a: opacity,
-				..colors::TEXT_SECONDARY
-			}
-		};
-
-		let close_color = Color {
-			a: opacity,
-			..colors::TEXT_SECONDARY
-		};
-
-		let tab_content = row![
-			text(title).size(12).color(text_color),
-			Space::new().width(Length::Fill),
-			button(text("×").size(12).color(close_color))
-				.padding([0, 4])
-				.style(|_, _| button::Style {
-					background: None,
-					text_color: colors::TEXT_SECONDARY,
-					..Default::default()
-				})
-				.on_press(PanelSystemMessage::TabClose(container_id, index)),
+		column![
+			Space::new().height(Length::Fill),
+			row![Space::new().width(Length::Fill), corner,],
 		]
-		.spacing(4)
-		.align_y(iced::Alignment::Center)
-		.padding([6, 10]);
+		.width(Length::Fill)
+		.height(Length::Fill)
+		.into()
+	}
 
-		let tab_button = container(tab_content).style(move |_| {
-			let bg = Color {
-				a: opacity,
-				..bg_color
-			};
-			container::Style {
-				background: Some(bg.into()),
-				border: iced::Border {
-					color: if is_active {
-						colors::ACCENT
-					} else {
-						Color::TRANSPARENT
-					},
-					width: 0.0,
-					radius: iced::border::Radius::new(4.0)
-						.top_left(4.0)
-						.top_right(4.0)
-						.bottom_left(0.0)
-						.bottom_right(0.0),
-				},
-				..Default::default()
-			}
-		});
+	fn view_corner<'a, M>(&self, area_id: usize) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
+		let active = matches!(
+			&self.drag_state,
+			DragState::CornerDrag {
+				area_id: id,
+				..
+			} if *id == area_id
+		);
 
-		mouse_area(tab_button)
-			.on_press(PanelSystemMessage::TabDragStart(container_id, index))
+		let color = if active {
+			colors::CORNER_ACTIVE
+		} else {
+			colors::CORNER
+		};
+
+		// 右下の三角形っぽいコーナーウィジェット
+		let widget = container(
+			text("◢").size(14).color(color),
+		)
+		.width(CORNER_SIZE)
+		.height(CORNER_SIZE)
+		.center_x(CORNER_SIZE)
+		.center_y(CORNER_SIZE);
+
+		mouse_area(widget)
+			.on_press(PanelSystemMessage::CornerDragStart(area_id))
 			.on_move(PanelSystemMessage::MouseMove)
-			.on_release(PanelSystemMessage::TabDragEnd)
+			.on_release(PanelSystemMessage::CornerDragEnd)
 			.into()
 	}
 
-	fn view_floating_panel<'a, M>(
+	fn view_split_preview<'a, M>(
 		&self,
-		panel: &Panel<C>,
-		pos: Point,
+		action: CornerAction,
 	) -> Element<'a, PanelSystemMessage<C, M>>
 	where
 		M: Clone + std::fmt::Debug + 'static,
 	{
-		let title = panel.title.clone();
-
-		let floating_content =
-			container(row![text(title).size(12).color(colors::TEXT_PRIMARY),].padding([8, 12]))
-				.style(|_| container::Style {
-					background: Some(colors::FLOATING_PANEL_BG.into()),
-					border: iced::Border {
-						color: colors::ACCENT,
-						width: 2.0,
-						radius: 6.0.into(),
-					},
-					shadow: iced::Shadow {
-						color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
-						offset: iced::Vector::new(4.0, 4.0),
-						blur_radius: 10.0,
-					},
-					..Default::default()
-				});
-
-		Column::new()
-			.push(Space::new().height(pos.y.max(0.0)))
-			.push(
-				Row::new()
-					.push(Space::new().width(pos.x.max(0.0)))
-					.push(floating_content),
-			)
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.into()
-	}
-
-	fn view_drop_zone_overlay<'a, M>(&self) -> Element<'a, PanelSystemMessage<C, M>>
-	where
-		M: Clone + std::fmt::Debug + 'static,
-	{
-		if let Some(drop_zone) = &self.hover_drop_zone {
-			let position_text = match drop_zone.position {
-				DropPosition::Center => "タブとして追加",
-				DropPosition::Left => "← 左に配置",
-				DropPosition::Right => "右に配置 →",
-				DropPosition::Top => "↑ 上に配置",
-				DropPosition::Bottom => "下に配置 ↓",
-			};
-
-			container(
-				container(text(position_text).size(16).color(colors::TEXT_PRIMARY))
-					.padding([12, 20])
+		let preview: Element<'_, PanelSystemMessage<C, M>> = match action {
+			CornerAction::SplitHorizontal => row![
+				container(Space::new())
+					.width(Length::FillPortion(1))
+					.height(Length::Fill)
 					.style(|_| container::Style {
-						background: Some(colors::FLOATING_PANEL_BG.into()),
-						border: iced::Border {
-							color: colors::ACCENT,
-							width: 2.0,
-							radius: 8.0.into(),
-						},
+						background: Some(colors::SPLIT_PREVIEW.into()),
 						..Default::default()
 					}),
-			)
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.center_x(Length::Fill)
-			.center_y(Length::Fill)
-			.into()
-		} else {
-			Space::new().into()
-		}
-	}
-
-	fn view_content_with_drop_zones<'a, M>(
-		&'a self,
-		container_id: usize,
-		content: Element<'a, PanelSystemMessage<C, M>>,
-	) -> Element<'a, PanelSystemMessage<C, M>>
-	where
-		M: Clone + std::fmt::Debug + 'static,
-	{
-		let center_zone = self.view_drop_zone_indicator(container_id, DropPosition::Center);
-		let left_zone = self.view_drop_zone_indicator(container_id, DropPosition::Left);
-		let right_zone = self.view_drop_zone_indicator(container_id, DropPosition::Right);
-		let top_zone = self.view_drop_zone_indicator(container_id, DropPosition::Top);
-		let bottom_zone = self.view_drop_zone_indicator(container_id, DropPosition::Bottom);
-
-		let drop_zones = container(
-			column![
-				Space::new().height(Length::FillPortion(1)),
-				row![
-					Space::new().width(Length::FillPortion(1)),
-					top_zone,
-					Space::new().width(Length::FillPortion(1)),
-				],
-				row![
-					Space::new().width(Length::FillPortion(1)),
-					left_zone,
-					Space::new().width(10),
-					center_zone,
-					Space::new().width(10),
-					right_zone,
-					Space::new().width(Length::FillPortion(1)),
-				]
-				.align_y(iced::Alignment::Center),
-				row![
-					Space::new().width(Length::FillPortion(1)),
-					bottom_zone,
-					Space::new().width(Length::FillPortion(1)),
-				],
-				Space::new().height(Length::FillPortion(1)),
+				container(Space::new())
+					.width(Length::FillPortion(1))
+					.height(Length::Fill),
 			]
-			.align_x(iced::Alignment::Center)
-			.spacing(10),
-		)
-		.width(Length::Fill)
-		.height(Length::Fill)
-		.center_x(Length::Fill)
-		.center_y(Length::Fill);
+			.width(Length::Fill)
+			.height(Length::Fill)
+			.into(),
+			CornerAction::SplitVertical => column![
+				container(Space::new())
+					.width(Length::Fill)
+					.height(Length::FillPortion(1))
+					.style(|_| container::Style {
+						background: Some(colors::SPLIT_PREVIEW.into()),
+						..Default::default()
+					}),
+				container(Space::new())
+					.width(Length::Fill)
+					.height(Length::FillPortion(1)),
+			]
+			.width(Length::Fill)
+			.height(Length::Fill)
+			.into(),
+		};
 
-		stack![content, drop_zones,]
+		container(preview)
 			.width(Length::Fill)
 			.height(Length::Fill)
 			.into()
-	}
-
-	fn view_drop_zone_indicator<'a, M>(
-		&self,
-		container_id: usize,
-		position: DropPosition,
-	) -> Element<'a, PanelSystemMessage<C, M>>
-	where
-		M: Clone + std::fmt::Debug + 'static,
-	{
-		let is_hovered = self
-			.hover_drop_zone
-			.as_ref()
-			.map(|z| z.container_id == container_id && z.position == position)
-			.unwrap_or(false);
-
-		let bg_color = if is_hovered {
-			colors::DROP_ZONE_HIGHLIGHT
-		} else {
-			Color::from_rgba(0.2, 0.2, 0.25, 0.7)
-		};
-
-		let border_color = if is_hovered {
-			colors::DROP_ZONE_BORDER
-		} else {
-			Color::from_rgba(0.4, 0.4, 0.5, 0.5)
-		};
-
-		let icon = match position {
-			DropPosition::Center => "⊕",
-			DropPosition::Left => "◀",
-			DropPosition::Right => "▶",
-			DropPosition::Top => "▲",
-			DropPosition::Bottom => "▼",
-		};
-
-		let zone_content = container(text(icon).size(18).color(if is_hovered {
-			colors::TEXT_PRIMARY
-		} else {
-			colors::TEXT_SECONDARY
-		}))
-		.width(DROP_ZONE_SIZE)
-		.height(DROP_ZONE_SIZE)
-		.center_x(DROP_ZONE_SIZE)
-		.center_y(DROP_ZONE_SIZE)
-		.style(move |_| container::Style {
-			background: Some(bg_color.into()),
-			border: iced::Border {
-				color: border_color,
-				width: 2.0,
-				radius: 8.0.into(),
-			},
-			..Default::default()
-		});
-
-		let drop_zone = DropZone {
-			container_id,
-			position,
-		};
-
-		mouse_area(zone_content)
-			.on_enter(PanelSystemMessage::DropZoneHover(Some(drop_zone)))
-			.on_exit(PanelSystemMessage::DropZoneHover(None))
-			.on_release(PanelSystemMessage::TabDragEnd)
-			.into()
-	}
-
-	fn view_empty_content<'a, M>(&self) -> Element<'a, PanelSystemMessage<C, M>>
-	where
-		M: Clone + std::fmt::Debug + 'static,
-	{
-		container(
-			text("Drop a tab here")
-				.color(colors::TEXT_SECONDARY)
-				.size(14),
-		)
-		.width(Length::Fill)
-		.height(Length::Fill)
-		.center_x(Length::Fill)
-		.center_y(Length::Fill)
-		.into()
 	}
 
 	fn view_resize_handle<'a, M>(
@@ -858,7 +592,7 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 			SplitDirection::Vertical => (Length::Fill, Length::Fixed(RESIZE_HANDLE_SIZE)),
 		};
 
-		let handle_size = if is_active || is_hovered { 4.0 } else { 2.0 };
+		let handle_size = if is_active || is_hovered { 3.0 } else { 1.0 };
 
 		let bg_color = if is_active {
 			colors::RESIZE_HANDLE_ACTIVE
@@ -875,10 +609,6 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 					.height(Length::Fill)
 					.style(move |_| container::Style {
 						background: Some(bg_color.into()),
-						border: iced::Border {
-							radius: 2.0.into(),
-							..Default::default()
-						},
 						..Default::default()
 					}),
 			)
@@ -892,10 +622,6 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 					.height(Length::Fixed(handle_size))
 					.style(move |_| container::Style {
 						background: Some(bg_color.into()),
-						border: iced::Border {
-							radius: 2.0.into(),
-							..Default::default()
-						},
 						..Default::default()
 					}),
 			)
@@ -906,7 +632,7 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 		};
 
 		let path_clone = path.clone();
-		let path_for_press = path.clone();
+		let path_for_press = path;
 
 		let ma = mouse_area(inner_handle)
 			.on_press(PanelSystemMessage::ResizeStart(path_for_press, direction))
@@ -924,218 +650,125 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 	}
 
 	// ==========================================================================
-	// ヘルパーメソッド
+	// ツリー操作
 	// ==========================================================================
 
-	fn find_panel(&self, panel_id: usize) -> Option<&Panel<C>> {
-		Self::find_panel_recursive(&self.root, panel_id)
+	fn set_area_content(&mut self, area_id: usize, content: C) {
+		Self::set_content_recursive(&mut self.root, area_id, content);
 	}
 
-	fn find_panel_recursive(node: &DockNode<C>, panel_id: usize) -> Option<&Panel<C>> {
+	fn set_content_recursive(node: &mut DockNode<C>, area_id: usize, content: C) -> bool {
 		match node {
-			DockNode::Leaf(container) => container.get_panel(panel_id),
-			DockNode::Split { first, second, .. } => Self::find_panel_recursive(first, panel_id)
-				.or_else(|| Self::find_panel_recursive(second, panel_id)),
-			_ => None,
-		}
-	}
-
-	fn set_active_tab(&mut self, container_id: usize, tab_index: usize) {
-		Self::set_active_tab_recursive(&mut self.root, container_id, tab_index);
-	}
-
-	fn set_active_tab_recursive(node: &mut DockNode<C>, container_id: usize, tab_index: usize) {
-		match node {
-			DockNode::Leaf(container) if container.id == container_id => {
-				if tab_index < container.panels.len() {
-					container.active_tab = tab_index;
-				}
-			}
-			DockNode::Split { first, second, .. } => {
-				Self::set_active_tab_recursive(first, container_id, tab_index);
-				Self::set_active_tab_recursive(second, container_id, tab_index);
-			}
-			_ => {}
-		}
-	}
-
-	fn get_panel_id_at(&self, container_id: usize, tab_index: usize) -> Option<usize> {
-		Self::get_panel_id_recursive(&self.root, container_id, tab_index)
-	}
-
-	fn get_panel_id_recursive(
-		node: &DockNode<C>,
-		container_id: usize,
-		tab_index: usize,
-	) -> Option<usize> {
-		match node {
-			DockNode::Leaf(container) if container.id == container_id => {
-				container.panels.get(tab_index).map(|p| p.id)
-			}
-			DockNode::Split { first, second, .. } => {
-				Self::get_panel_id_recursive(first, container_id, tab_index)
-					.or_else(|| Self::get_panel_id_recursive(second, container_id, tab_index))
-			}
-			_ => None,
-		}
-	}
-
-	fn remove_panel_from_container(&mut self, container_id: usize, panel_id: usize) {
-		Self::remove_panel_recursive(&mut self.root, container_id, panel_id);
-	}
-
-	fn remove_panel_recursive(node: &mut DockNode<C>, container_id: usize, panel_id: usize) {
-		match node {
-			DockNode::Leaf(container) if container.id == container_id => {
-				container.remove_panel(panel_id);
-			}
-			DockNode::Split { first, second, .. } => {
-				Self::remove_panel_recursive(first, container_id, panel_id);
-				Self::remove_panel_recursive(second, container_id, panel_id);
-			}
-			_ => {}
-		}
-	}
-
-	fn add_panel_to_container(&mut self, container_id: usize, panel: Panel<C>) {
-		Self::add_panel_recursive(&mut self.root, container_id, panel);
-	}
-
-	fn add_panel_recursive(node: &mut DockNode<C>, container_id: usize, panel: Panel<C>) -> bool {
-		match node {
-			DockNode::Leaf(container) if container.id == container_id => {
-				container.add_panel(panel);
+			DockNode::Leaf(area) if area.id == area_id => {
+				area.content = content;
 				true
 			}
 			DockNode::Split { first, second, .. } => {
-				Self::add_panel_recursive(first, container_id, panel.clone())
-					|| Self::add_panel_recursive(second, container_id, panel)
+				Self::set_content_recursive(first, area_id, content.clone())
+					|| Self::set_content_recursive(second, area_id, content)
 			}
 			_ => false,
 		}
 	}
 
-	fn handle_drop(&mut self, source_container: usize, panel_id: usize, drop_zone: DropZone) {
-		let target_container = drop_zone.container_id;
+	fn find_area_content(&self, area_id: usize) -> Option<C> {
+		Self::find_content_recursive(&self.root, area_id)
+	}
 
-		// パネルを見つけてクローン
-		let panel = match Self::find_panel_recursive(&self.root, panel_id) {
-			Some(p) => p.clone(),
-			None => return,
-		};
-
-		match drop_zone.position {
-			DropPosition::Center => {
-				if source_container == target_container {
-					return;
-				}
-				self.remove_panel_from_container(source_container, panel_id);
-				self.add_panel_to_container(target_container, panel);
-				self.cleanup_empty_nodes();
-			}
-			position => {
-				self.split_container(source_container, panel_id, target_container, position);
-			}
+	fn find_content_recursive(node: &DockNode<C>, area_id: usize) -> Option<C> {
+		match node {
+			DockNode::Leaf(area) if area.id == area_id => Some(area.content.clone()),
+			DockNode::Split { first, second, .. } => Self::find_content_recursive(first, area_id)
+				.or_else(|| Self::find_content_recursive(second, area_id)),
+			_ => None,
 		}
 	}
 
-	fn split_container(
-		&mut self,
-		source_container: usize,
-		panel_id: usize,
-		target_container: usize,
-		position: DropPosition,
-	) {
-		// パネルを見つけてクローン
-		let panel = match Self::find_panel_recursive(&self.root, panel_id) {
-			Some(p) => p.clone(),
-			None => return,
-		};
-
-		self.remove_panel_from_container(source_container, panel_id);
-
-		let new_container_id = self.next_container_id;
-		self.next_container_id += 1;
-
-		let mut new_container = TabContainer::new(new_container_id);
-		new_container.add_panel(panel);
-
-		let direction = match position {
-			DropPosition::Left | DropPosition::Right => SplitDirection::Horizontal,
-			DropPosition::Top | DropPosition::Bottom => SplitDirection::Vertical,
-			DropPosition::Center => return,
-		};
-
-		let new_is_first = matches!(position, DropPosition::Left | DropPosition::Top);
-
-		Self::split_node_recursive(
-			&mut self.root,
-			target_container,
-			new_container,
-			direction,
-			new_is_first,
-		);
-
-		self.cleanup_empty_nodes();
+	fn area_has_sibling(&self, area_id: usize) -> bool {
+		Self::can_join_recursive(&self.root, area_id)
 	}
 
-	fn split_node_recursive(
+	fn can_join_recursive(node: &DockNode<C>, area_id: usize) -> bool {
+		match node {
+			DockNode::Split { first, second, .. } => {
+				if Self::is_direct_leaf(first, area_id) && !second.is_empty() {
+					return true;
+				}
+				if Self::is_direct_leaf(second, area_id) && !first.is_empty() {
+					return true;
+				}
+				Self::can_join_recursive(first, area_id) || Self::can_join_recursive(second, area_id)
+			}
+			_ => false,
+		}
+	}
+
+	fn split_area(&mut self, area_id: usize, direction: SplitDirection) {
+		let Some(content) = self.find_area_content(area_id) else {
+			return;
+		};
+
+		let new_id = self.next_area_id;
+		self.next_area_id += 1;
+		let new_area = Area::new(new_id, content);
+
+		Self::split_area_recursive(&mut self.root, area_id, new_area, direction);
+	}
+
+	fn split_area_recursive(
 		node: &mut DockNode<C>,
-		target_container_id: usize,
-		new_container: TabContainer<C>,
+		area_id: usize,
+		new_area: Area<C>,
 		direction: SplitDirection,
-		new_is_first: bool,
 	) -> bool {
 		match node {
-			DockNode::Leaf(container) if container.id == target_container_id => {
+			DockNode::Leaf(area) if area.id == area_id => {
 				let existing = std::mem::replace(node, DockNode::Empty);
-				let new_leaf = DockNode::Leaf(new_container);
-
-				*node = if new_is_first {
-					DockNode::Split {
-						direction,
-						ratio: 0.5,
-						first: Box::new(new_leaf),
-						second: Box::new(existing),
-					}
-				} else {
-					DockNode::Split {
-						direction,
-						ratio: 0.5,
-						first: Box::new(existing),
-						second: Box::new(new_leaf),
-					}
+				*node = DockNode::Split {
+					direction,
+					ratio: 0.5,
+					first: Box::new(existing),
+					second: Box::new(DockNode::Leaf(new_area)),
 				};
 				true
 			}
 			DockNode::Split { first, second, .. } => {
-				Self::split_node_recursive(
-					first,
-					target_container_id,
-					new_container.clone(),
-					direction,
-					new_is_first,
-				) || Self::split_node_recursive(
-					second,
-					target_container_id,
-					new_container,
-					direction,
-					new_is_first,
-				)
+				Self::split_area_recursive(first, area_id, new_area.clone(), direction)
+					|| Self::split_area_recursive(second, area_id, new_area, direction)
 			}
 			_ => false,
 		}
 	}
 
-	fn cleanup_empty_nodes(&mut self) {
+	fn join_area(&mut self, area_id: usize) {
+		Self::join_area_recursive(&mut self.root, area_id);
 		Self::cleanup_recursive(&mut self.root);
+	}
+
+	/// 指定エリアを含む split を、兄弟側だけ残す形で潰す
+	fn join_area_recursive(node: &mut DockNode<C>, area_id: usize) -> bool {
+		match node {
+			DockNode::Split { first, second, .. } => {
+				if Self::is_direct_leaf(first, area_id) {
+					*node = std::mem::replace(second.as_mut(), DockNode::Empty);
+					return true;
+				}
+				if Self::is_direct_leaf(second, area_id) {
+					*node = std::mem::replace(first.as_mut(), DockNode::Empty);
+					return true;
+				}
+				Self::join_area_recursive(first, area_id) || Self::join_area_recursive(second, area_id)
+			}
+			_ => false,
+		}
+	}
+
+	fn is_direct_leaf(node: &DockNode<C>, area_id: usize) -> bool {
+		matches!(node, DockNode::Leaf(area) if area.id == area_id)
 	}
 
 	fn cleanup_recursive(node: &mut DockNode<C>) {
 		match node {
-			DockNode::Leaf(container) if container.is_empty() => {
-				*node = DockNode::Empty;
-			}
 			DockNode::Split { first, second, .. } => {
 				Self::cleanup_recursive(first);
 				Self::cleanup_recursive(second);
@@ -1197,9 +830,27 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 	}
 }
 
-impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> Default for PanelSystem<C> {
+impl<C: AreaKind> Default for PanelSystem<C> {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+fn button_style(status: iced::widget::button::Status) -> iced::widget::button::Style {
+	use iced::widget::button;
+	let background = match status {
+		button::Status::Hovered => Some(Color::from_rgb(0.25, 0.25, 0.28).into()),
+		button::Status::Pressed => Some(colors::ACCENT.into()),
+		_ => None,
+	};
+	button::Style {
+		background,
+		text_color: colors::TEXT_SECONDARY,
+		border: iced::Border {
+			radius: 3.0.into(),
+			..Default::default()
+		},
+		..Default::default()
 	}
 }
 
@@ -1209,35 +860,25 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> Default for PanelSys
 
 /// レイアウトを簡単に構築するためのビルダー
 pub struct LayoutBuilder<C: Clone + std::fmt::Debug> {
-	next_container_id: usize,
-	next_panel_id: usize,
+	next_area_id: usize,
 	_marker: std::marker::PhantomData<C>,
 }
 
-impl<C: Clone + std::fmt::Debug + PartialEq + Eq> LayoutBuilder<C> {
+impl<C: AreaKind> LayoutBuilder<C> {
 	pub fn new() -> Self {
 		Self {
-			next_container_id: 0,
-			next_panel_id: 0,
+			next_area_id: 0,
 			_marker: std::marker::PhantomData,
 		}
 	}
 
-	/// 単一パネルのリーフノードを作成
-	pub fn panel(&mut self, title: &str, content: C) -> DockNode<C> {
-		let container_id = self.next_container_id;
-		self.next_container_id += 1;
-
-		let panel_id = self.next_panel_id;
-		self.next_panel_id += 1;
-
-		let mut container = TabContainer::new(container_id);
-		container.add_panel(Panel::new(panel_id, title, content));
-
-		DockNode::Leaf(container)
+	/// 単一エリアのリーフを作成
+	pub fn area(&mut self, content: C) -> DockNode<C> {
+		let id = self.next_area_id;
+		self.next_area_id += 1;
+		DockNode::Leaf(Area::new(id, content))
 	}
 
-	/// 水平分割ノードを作成
 	pub fn hsplit(first: DockNode<C>, second: DockNode<C>, ratio: f32) -> DockNode<C> {
 		DockNode::Split {
 			direction: SplitDirection::Horizontal,
@@ -1247,7 +888,6 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq> LayoutBuilder<C> {
 		}
 	}
 
-	/// 垂直分割ノードを作成
 	pub fn vsplit(first: DockNode<C>, second: DockNode<C>, ratio: f32) -> DockNode<C> {
 		DockNode::Split {
 			direction: SplitDirection::Vertical,
@@ -1257,18 +897,12 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq> LayoutBuilder<C> {
 		}
 	}
 
-	/// 次のコンテナID
-	pub fn next_container_id(&self) -> usize {
-		self.next_container_id
-	}
-
-	/// 次のパネルID
-	pub fn next_panel_id(&self) -> usize {
-		self.next_panel_id
+	pub fn next_area_id(&self) -> usize {
+		self.next_area_id
 	}
 }
 
-impl<C: Clone + std::fmt::Debug + PartialEq + Eq> Default for LayoutBuilder<C> {
+impl<C: AreaKind> Default for LayoutBuilder<C> {
 	fn default() -> Self {
 		Self::new()
 	}

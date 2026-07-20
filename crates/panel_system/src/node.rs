@@ -1,16 +1,16 @@
 //! ドックノードの定義
 //!
-//! パネルの分割レイアウトを表現するツリー構造を提供します。
+//! エリアの分割レイアウトを表現するツリー構造を提供します。
 
-use crate::container::TabContainer;
+use crate::container::Area;
 
 /// ドックノード（分割レイアウト）
 #[derive(Debug, Clone)]
 pub enum DockNode<C: Clone + std::fmt::Debug> {
 	/// 空のノード
 	Empty,
-	/// タブコンテナ（リーフノード）
-	Leaf(TabContainer<C>),
+	/// エリア（リーフ）
+	Leaf(Area<C>),
 	/// 分割ノード
 	Split {
 		direction: SplitDirection,
@@ -24,7 +24,7 @@ impl<C: Clone + std::fmt::Debug> DockNode<C> {
 	pub fn is_empty(&self) -> bool {
 		match self {
 			DockNode::Empty => true,
-			DockNode::Leaf(c) => c.is_empty(),
+			DockNode::Leaf(_) => false,
 			DockNode::Split { first, second, .. } => first.is_empty() && second.is_empty(),
 		}
 	}
