@@ -18,5 +18,5 @@ fn main() -> iced::Result {
 }
 
 fn theme(_state: &GizmosApp) -> Theme {
-	Theme::Dark
+	constants::style::app_theme()
 }

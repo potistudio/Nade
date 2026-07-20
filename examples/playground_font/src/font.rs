@@ -4,8 +4,8 @@ use crate::glyph_engine;
 
 const GLYPH_SCALE: f32 = 1.2;
 const CURVE_SEGMENTS: usize = 24;
-const BACKGROUND_COLOR: Color32 = Color32::from_rgb(20, 20, 20);
-const GLYPH_COLOR: Color32 = Color32::from_rgb(80, 230, 120);
+const BACKGROUND_COLOR: Color32 = Color32::from_rgb(48, 48, 48);
+const GLYPH_COLOR: Color32 = Color32::from_rgb(230, 230, 230);
 
 pub struct FontPlaygroundWidget {
 	glyph_engine: Option<glyph_engine::GlyphEngine>,
@@ -51,12 +51,7 @@ impl FontPlaygroundWidget {
 
 		let origin = response.rect.center();
 		let stroke = Stroke::new(1.5, GLYPH_COLOR);
-		let to_screen = |point: Pos2| {
-			pos2(
-				origin.x + point.x * GLYPH_SCALE,
-				origin.y + point.y * GLYPH_SCALE,
-			)
-		};
+		let to_screen = |point: Pos2| pos2(origin.x + point.x * GLYPH_SCALE, origin.y + point.y * GLYPH_SCALE);
 
 		let mut current_pos = Pos2::ZERO;
 		let mut contour_start = None;
@@ -87,8 +82,7 @@ impl FontPlaygroundWidget {
 				}
 				swash::zeno::Command::Close => {
 					if let Some(start_pos) = contour_start {
-						painter
-							.line_segment([to_screen(current_pos), to_screen(start_pos)], stroke);
+						painter.line_segment([to_screen(current_pos), to_screen(start_pos)], stroke);
 						current_pos = start_pos;
 					}
 				}

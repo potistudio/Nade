@@ -2,8 +2,8 @@
 //!
 //! パネルに表示するコンテンツの種類を定義します。
 
+use iced::widget::svg;
 use panel_system::AreaKind;
-use std::fmt;
 
 /// パネルに表示するコンテンツの種類
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -18,24 +18,35 @@ pub enum PanelContent {
 	Project,
 }
 
-impl fmt::Display for PanelContent {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_str(match self {
+impl AreaKind for PanelContent {
+	fn all() -> Vec<Self> {
+		vec![Self::MainPreview, Self::Timeline, Self::Inspector, Self::Project]
+	}
+
+	fn icon(&self) -> svg::Handle {
+		let bytes: &'static [u8] = match self {
+			Self::MainPreview => include_bytes!("../../../assets/icons/panels/preview.svg"),
+			Self::Timeline => include_bytes!("../../../assets/icons/panels/timeline.svg"),
+			Self::Inspector => include_bytes!("../../../assets/icons/panels/inspector.svg"),
+			Self::Project => include_bytes!("../../../assets/icons/panels/project.svg"),
+		};
+		svg::Handle::from_memory(bytes)
+	}
+
+	fn label(&self) -> &'static str {
+		match self {
 			Self::MainPreview => "Preview",
 			Self::Timeline => "Timeline",
 			Self::Inspector => "Inspector",
 			Self::Project => "Project",
-		})
+		}
 	}
-}
 
-impl AreaKind for PanelContent {
-	fn all() -> Vec<Self> {
+	fn menu_columns() -> Vec<(&'static str, Vec<Self>)> {
 		vec![
-			Self::MainPreview,
-			Self::Timeline,
-			Self::Inspector,
-			Self::Project,
+			("General", vec![Self::MainPreview]),
+			("Animation", vec![Self::Timeline]),
+			("Data", vec![Self::Project, Self::Inspector]),
 		]
 	}
 }

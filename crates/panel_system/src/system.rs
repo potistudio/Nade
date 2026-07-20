@@ -4,15 +4,12 @@
 
 use iced::{
 	Color, Element, Length, Point, Rectangle, Size,
-	widget::{Space, button, column, container, mouse_area, pick_list, row, stack, text},
+	widget::{Space, button, column, container, mouse_area, row, rule, stack, svg, text},
 };
 
 use crate::{
 	AreaKind,
-	consts::{
-		CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, MOVE_CENTER_ZONE, RESIZE_HANDLE_SIZE,
-		colors,
-	},
+	consts::{CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, MOVE_CENTER_ZONE, RESIZE_HANDLE_SIZE, colors},
 	container::Area,
 	drag::{CornerAction, DragState},
 	node::{DockNode, SplitDirection},
@@ -62,6 +59,10 @@ where
 {
 	/// エリアのエディタ種別を変更
 	ChangeEditor(usize, C),
+	/// エディタ種別メニューの開閉
+	ToggleEditorMenu(usize),
+	/// エディタ種別メニューを閉じる
+	CloseEditorMenu,
 	/// 角ドラッグ開始
 	CornerDragStart(usize),
 	MouseMove(Point),
@@ -89,6 +90,8 @@ pub struct PanelSystem<C: AreaKind> {
 	last_mouse_pos: Point,
 	window_size: Size,
 	hover_resize_handle: Option<(Vec<usize>, SplitDirection)>,
+	/// 開いているエディタ種別メニューのエリア ID
+	editor_menu_open: Option<usize>,
 }
 
 impl<C: AreaKind> PanelSystem<C> {
@@ -100,6 +103,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			last_mouse_pos: Point::ORIGIN,
 			window_size: Size::new(800.0, 600.0),
 			hover_resize_handle: None,
+			editor_menu_open: None,
 		}
 	}
 
@@ -128,6 +132,19 @@ impl<C: AreaKind> PanelSystem<C> {
 		match message {
 			PanelSystemMessage::ChangeEditor(area_id, content) => {
 				self.set_area_content(area_id, content);
+				self.editor_menu_open = None;
+			}
+
+			PanelSystemMessage::ToggleEditorMenu(area_id) => {
+				self.editor_menu_open = if self.editor_menu_open == Some(area_id) {
+					None
+				} else {
+					Some(area_id)
+				};
+			}
+
+			PanelSystemMessage::CloseEditorMenu => {
+				self.editor_menu_open = None;
 			}
 
 			PanelSystemMessage::CornerDragStart(area_id) => {
@@ -147,11 +164,7 @@ impl<C: AreaKind> PanelSystem<C> {
 				self.last_mouse_pos = pos;
 
 				match self.drag_state.clone() {
-					DragState::CornerDrag {
-						area_id,
-						start_pos,
-						..
-					} => {
+					DragState::CornerDrag { area_id, start_pos, .. } => {
 						let update = self.corner_drag_update(area_id, start_pos, pos);
 						self.drag_state = DragState::CornerDrag {
 							area_id,
@@ -171,8 +184,7 @@ impl<C: AreaKind> PanelSystem<C> {
 						start_ratio,
 						..
 					} => {
-						let new_ratio =
-							self.calculate_new_ratio(&path, start_pos, pos, start_ratio, direction);
+						let new_ratio = self.calculate_new_ratio(&path, start_pos, pos, start_ratio, direction);
 						self.set_ratio_at_path(&path, new_ratio);
 						self.drag_state = DragState::Resizing {
 							path,
@@ -201,13 +213,7 @@ impl<C: AreaKind> PanelSystem<C> {
 						CornerAction::Move => {
 							if let Some(target) = target_area_id {
 								if let Some(direction) = direction {
-									self.move_area_into(
-										area_id,
-										target,
-										direction,
-										ratio,
-										new_is_first,
-									);
+									self.move_area_into(area_id, target, direction, ratio, new_is_first);
 								} else {
 									// 中央ドロップ → 全体移動（入れ替え）
 									self.swap_areas(area_id, target);
@@ -225,6 +231,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			}
 
 			PanelSystemMessage::JoinArea(area_id) => {
+				self.editor_menu_open = None;
 				self.join_area(area_id);
 			}
 
@@ -441,11 +448,7 @@ impl<C: AreaKind> PanelSystem<C> {
 	}
 
 	fn area_at_point(&self, pos: Point) -> Option<usize> {
-		Self::find_area_at_point(
-			&self.root,
-			pos,
-			Rectangle::new(Point::ORIGIN, self.window_size),
-		)
+		Self::find_area_at_point(&self.root, pos, Rectangle::new(Point::ORIGIN, self.window_size))
 	}
 
 	fn find_area_at_point(node: &DockNode<C>, pos: Point, bounds: Rectangle) -> Option<usize> {
@@ -555,8 +558,7 @@ impl<C: AreaKind> PanelSystem<C> {
 					let first_height = bounds.height * *ratio;
 					let second_height = bounds.height * (1.0 - *ratio);
 					if index == 0 {
-						bounds =
-							Rectangle::new(bounds.position(), Size::new(bounds.width, first_height));
+						bounds = Rectangle::new(bounds.position(), Size::new(bounds.width, first_height));
 						node = first;
 					} else {
 						bounds = Rectangle::new(
@@ -583,10 +585,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		let base = container(main_content)
 			.width(Length::Fill)
 			.height(Length::Fill)
-			.style(|_| container::Style {
-				background: Some(colors::BACKGROUND.into()),
-				..Default::default()
-			});
+			.style(constants::widgets::window);
 
 		// ドラッグ中は全面オーバーレイで他パネル上でも追従できるようにする
 		if matches!(
@@ -610,14 +609,9 @@ impl<C: AreaKind> PanelSystem<C> {
 			.on_move(PanelSystemMessage::MouseMove)
 			.on_release(release);
 
-			stack![base, overlay]
-				.width(Length::Fill)
-				.height(Length::Fill)
-				.into()
+			stack![base, overlay].width(Length::Fill).height(Length::Fill).into()
 		} else {
-			mouse_area(base)
-				.on_move(PanelSystemMessage::MouseMove)
-				.into()
+			mouse_area(base).on_move(PanelSystemMessage::MouseMove).into()
 		}
 	}
 
@@ -651,8 +645,7 @@ impl<C: AreaKind> PanelSystem<C> {
 				let second_view = self.view_node(second, second_path, content_view);
 
 				const TOTAL_PORTIONS: u16 = 10000;
-				let first_portion =
-					((*ratio * TOTAL_PORTIONS as f32).round() as u16).clamp(1, TOTAL_PORTIONS - 1);
+				let first_portion = ((*ratio * TOTAL_PORTIONS as f32).round() as u16).clamp(1, TOTAL_PORTIONS - 1);
 				let second_portion = TOTAL_PORTIONS - first_portion;
 
 				let first_len = Length::FillPortion(first_portion);
@@ -663,17 +656,13 @@ impl<C: AreaKind> PanelSystem<C> {
 					SplitDirection::Horizontal => row![
 						container(first_view).width(first_len).height(Length::Fill),
 						self.view_resize_handle(*direction, resize_path),
-						container(second_view)
-							.width(second_len)
-							.height(Length::Fill),
+						container(second_view).width(second_len).height(Length::Fill),
 					]
 					.into(),
 					SplitDirection::Vertical => column![
 						container(first_view).width(Length::Fill).height(first_len),
 						self.view_resize_handle(*direction, resize_path),
-						container(second_view)
-							.width(Length::Fill)
-							.height(second_len),
+						container(second_view).width(Length::Fill).height(second_len),
 					]
 					.into(),
 				}
@@ -681,30 +670,40 @@ impl<C: AreaKind> PanelSystem<C> {
 		}
 	}
 
-	fn view_area<'a, F, M>(
-		&'a self,
-		area: &'a Area<C>,
-		content_view: F,
-	) -> Element<'a, PanelSystemMessage<C, M>>
+	fn view_area<'a, F, M>(&'a self, area: &'a Area<C>, content_view: F) -> Element<'a, PanelSystemMessage<C, M>>
 	where
 		F: Fn(usize, &C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
 		M: Clone + std::fmt::Debug + 'static,
 	{
 		let area_id = area.id;
 		let can_join = self.area_has_sibling(area_id);
+		let menu_open = self.editor_menu_open == Some(area_id);
 
-		let editor_picker = pick_list(C::all(), Some(area.content.clone()), move |content| {
-			PanelSystemMessage::ChangeEditor(area_id, content)
+		// Blender-style editor type chip: [icon] [▾]
+		const ICON_SIZE: f32 = 14.0;
+		const CHEVRON_SIZE: f32 = 7.0;
+		let editor_picker = button(
+			row![
+				panel_icon_svg(area.content.icon(), ICON_SIZE),
+				panel_icon_svg(chevron_down_handle(), CHEVRON_SIZE),
+			]
+			.spacing(3)
+			.align_y(iced::Alignment::Center),
+		)
+		.padding(iced::Padding {
+			top: 2.0,
+			right: 4.0,
+			bottom: 2.0,
+			left: 3.0,
 		})
-		.placeholder("Editor")
-		.text_size(12)
-		.padding([4, 8])
-		.width(Length::Shrink);
+		.height(18.0)
+		.style(|theme, status| constants::widgets::button_editor_type(theme, status))
+		.on_press(PanelSystemMessage::ToggleEditorMenu(area_id));
 
 		let join_button: Element<'_, PanelSystemMessage<C, M>> = if can_join {
-			button(text("Join").size(11).color(colors::TEXT_SECONDARY))
-				.padding([4, 8])
-				.style(|_: &iced::Theme, status| button_style(status))
+			button(text("Join").size(constants::style::FONT_UI))
+				.padding(constants::style::PAD_BUTTON)
+				.style(|theme, status| constants::widgets::button_ghost(theme, status))
 				.on_press(PanelSystemMessage::JoinArea(area_id))
 				.into()
 		} else {
@@ -712,28 +711,109 @@ impl<C: AreaKind> PanelSystem<C> {
 		};
 
 		let header = container(
-			row![
-				editor_picker,
-				Space::new().width(Length::Fill),
-				join_button,
-			]
-			.spacing(6)
-			.align_y(iced::Alignment::Center)
-			.padding([0, 6]),
+			row![editor_picker, Space::new().width(Length::Fill), join_button,]
+				.spacing(constants::style::SPACE_2)
+				.align_y(iced::Alignment::Center)
+				.height(Length::Fill)
+				.padding(iced::Padding {
+					top: 0.0,
+					right: constants::style::SPACE_2,
+					bottom: 0.0,
+					left: constants::style::SPACE_2,
+				}),
 		)
 		.width(Length::Fill)
 		.height(HEADER_HEIGHT)
-		.style(|_| container::Style {
-			background: Some(colors::HEADER_BG.into()),
-			border: iced::Border {
-				color: colors::BORDER,
-				width: 0.0,
-				radius: 0.0.into(),
-			},
-			..Default::default()
-		});
+		.align_y(iced::Alignment::Center)
+		.style(constants::widgets::panel_header);
 
 		let body = content_view(area.id, &area.content);
+
+		let editor_menu: Element<'_, PanelSystemMessage<C, M>> = if menu_open {
+			const MENU_ICON: f32 = 14.0;
+			const COL_WIDTH: f32 = 148.0;
+			const ROW_HEIGHT: f32 = 22.0;
+
+			let columns = row(C::menu_columns()
+				.into_iter()
+				.map(|(category, kinds)| {
+					let header = column![
+						text(category)
+							.size(constants::style::FONT_TINY)
+							.color(constants::style::TEXT_SECONDARY_COLOR),
+						rule::horizontal(1).style(|_theme| rule::Style {
+							color: constants::style::BORDER_SUBTLE_COLOR,
+							radius: 0.0.into(),
+							fill_mode: rule::FillMode::Full,
+							snap: true,
+						}),
+					]
+					.spacing(3)
+					.width(Length::Fill);
+
+					let items = column(
+						kinds
+							.into_iter()
+							.map(|kind| {
+								let selected = kind == area.content;
+								let icon_color = if selected {
+									constants::style::TEXT_PRIMARY_COLOR_INVERTED
+								} else {
+									constants::style::TEXT_PRIMARY_COLOR
+								};
+								let label_color = if selected {
+									constants::style::TEXT_PRIMARY_COLOR_INVERTED
+								} else {
+									constants::style::TEXT_PRIMARY_COLOR
+								};
+
+								let row_content = row![
+									container(panel_icon_svg_colored(kind.icon(), MENU_ICON, icon_color)).width(18),
+									text(kind.label()).size(constants::style::FONT_UI).color(label_color),
+								]
+								.spacing(6)
+								.align_y(iced::Alignment::Center);
+
+								button(row_content)
+									.padding(iced::Padding {
+										top: 3.0,
+										right: 6.0,
+										bottom: 3.0,
+										left: 4.0,
+									})
+									.width(Length::Fill)
+									.height(ROW_HEIGHT)
+									.style(constants::widgets::button_menu_item(selected))
+									.on_press(PanelSystemMessage::ChangeEditor(area_id, kind))
+									.into()
+							})
+							.collect::<Vec<_>>(),
+					)
+					.spacing(1);
+
+					container(column![header, items].spacing(4).height(Length::Shrink))
+						.width(COL_WIDTH)
+						.height(Length::Shrink)
+						.padding(iced::Padding {
+							top: 6.0,
+							right: 6.0,
+							bottom: 6.0,
+							left: 6.0,
+						})
+						.into()
+				})
+				.collect::<Vec<_>>())
+			.spacing(2)
+			.align_y(iced::Alignment::Start)
+			.height(Length::Shrink);
+
+			container(columns)
+				.height(Length::Shrink)
+				.style(constants::widgets::editor_menu_panel)
+				.into()
+		} else {
+			Space::new().width(0).height(0).into()
+		};
 
 		let overlay_preview = self.drag_state.corner_preview().and_then(
 			|(source_id, action, ratio, target_id, direction, new_is_first)| match action {
@@ -750,9 +830,7 @@ impl<C: AreaKind> PanelSystem<C> {
 						None
 					}
 				}
-				CornerAction::SplitHorizontal | CornerAction::SplitVertical
-					if source_id == area_id =>
-				{
+				CornerAction::SplitHorizontal | CornerAction::SplitVertical if source_id == area_id => {
 					Some(self.view_split_preview(action, ratio))
 				}
 				_ => None,
@@ -761,12 +839,22 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		let corner = self.view_corner(area_id);
 
+		// Keep the menu content-sized — Fill height in the stack was stretching the
+		// selected row to the full panel height.
+		let menu_overlay = column![
+			Space::new().height(HEADER_HEIGHT),
+			row![editor_menu, Space::new().width(Length::Fill)].height(Length::Shrink),
+			Space::new().height(Length::Fill),
+		]
+		.width(Length::Fill)
+		.height(Length::Fill);
+
 		let body_stack = if let Some(preview) = overlay_preview {
-			stack![body, preview, self.view_corner_overlay(corner),]
+			stack![body, preview, self.view_corner_overlay(corner), menu_overlay,]
 				.width(Length::Fill)
 				.height(Length::Fill)
 		} else {
-			stack![body, self.view_corner_overlay(corner),]
+			stack![body, self.view_corner_overlay(corner), menu_overlay,]
 				.width(Length::Fill)
 				.height(Length::Fill)
 		};
@@ -774,15 +862,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		let body_container = container(body_stack)
 			.width(Length::Fill)
 			.height(Length::Fill)
-			.style(|_| container::Style {
-				background: Some(colors::PANEL_BG.into()),
-				border: iced::Border {
-					color: colors::BORDER,
-					width: 1.0,
-					radius: 0.0.into(),
-				},
-				..Default::default()
-			});
+			.style(constants::widgets::panel_body);
 
 		column![header, body_container].spacing(0).into()
 	}
@@ -815,20 +895,14 @@ impl<C: AreaKind> PanelSystem<C> {
 			} if *id == area_id
 		);
 
-		let color = if active {
-			colors::CORNER_ACTIVE
-		} else {
-			colors::CORNER
-		};
+		let color = if active { colors::CORNER_ACTIVE } else { colors::CORNER };
 
 		// 右下の三角形っぽいコーナーウィジェット
-		let widget = container(
-			text("◢").size(14).color(color),
-		)
-		.width(CORNER_SIZE)
-		.height(CORNER_SIZE)
-		.center_x(CORNER_SIZE)
-		.center_y(CORNER_SIZE);
+		let widget = container(text("◢").size(14).color(color))
+			.width(CORNER_SIZE)
+			.height(CORNER_SIZE)
+			.center_x(CORNER_SIZE)
+			.center_y(CORNER_SIZE);
 
 		mouse_area(widget)
 			.on_press(PanelSystemMessage::CornerDragStart(area_id))
@@ -928,17 +1002,10 @@ impl<C: AreaKind> PanelSystem<C> {
 			.into(),
 		};
 
-		container(preview)
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.into()
+		container(preview).width(Length::Fill).height(Length::Fill).into()
 	}
 
-	fn view_split_preview<'a, M>(
-		&self,
-		action: CornerAction,
-		ratio: f32,
-	) -> Element<'a, PanelSystemMessage<C, M>>
+	fn view_split_preview<'a, M>(&self, action: CornerAction, ratio: f32) -> Element<'a, PanelSystemMessage<C, M>>
 	where
 		M: Clone + std::fmt::Debug + 'static,
 	{
@@ -960,9 +1027,7 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		let is_active = match &self.drag_state {
 			DragState::Resizing {
-				path: p,
-				direction: d,
-				..
+				path: p, direction: d, ..
 			} => *p == path && *d == direction,
 			_ => false,
 		};
@@ -1026,9 +1091,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		let ma = mouse_area(inner_handle)
 			.on_press(PanelSystemMessage::ResizeStart(path_for_press, direction))
 			.on_release(PanelSystemMessage::ResizeEnd)
-			.on_enter(PanelSystemMessage::ResizeHandleHover(Some((
-				path_clone, direction,
-			))))
+			.on_enter(PanelSystemMessage::ResizeHandleHover(Some((path_clone, direction))))
 			.on_exit(PanelSystemMessage::ResizeHandleHover(None));
 
 		if is_any_resizing {
@@ -1067,8 +1130,9 @@ impl<C: AreaKind> PanelSystem<C> {
 	fn find_content_recursive(node: &DockNode<C>, area_id: usize) -> Option<C> {
 		match node {
 			DockNode::Leaf(area) if area.id == area_id => Some(area.content.clone()),
-			DockNode::Split { first, second, .. } => Self::find_content_recursive(first, area_id)
-				.or_else(|| Self::find_content_recursive(second, area_id)),
+			DockNode::Split { first, second, .. } => {
+				Self::find_content_recursive(first, area_id).or_else(|| Self::find_content_recursive(second, area_id))
+			}
 			_ => None,
 		}
 	}
@@ -1113,14 +1177,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		let new_area = Area::new(new_id, content);
 		let ratio = ratio.clamp(0.15, 0.85);
 
-		Self::split_area_recursive(
-			&mut self.root,
-			target_id,
-			new_area,
-			direction,
-			ratio,
-			new_is_first,
-		);
+		Self::split_area_recursive(&mut self.root, target_id, new_area, direction, ratio, new_is_first);
 		self.join_area(source_id);
 	}
 
@@ -1149,8 +1206,9 @@ impl<C: AreaKind> PanelSystem<C> {
 	fn find_area_clone(node: &DockNode<C>, area_id: usize) -> Option<Area<C>> {
 		match node {
 			DockNode::Leaf(area) if area.id == area_id => Some(area.clone()),
-			DockNode::Split { first, second, .. } => Self::find_area_clone(first, area_id)
-				.or_else(|| Self::find_area_clone(second, area_id)),
+			DockNode::Split { first, second, .. } => {
+				Self::find_area_clone(first, area_id).or_else(|| Self::find_area_clone(second, area_id))
+			}
 			_ => None,
 		}
 	}
@@ -1170,13 +1228,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		}
 	}
 
-	fn split_area(
-		&mut self,
-		area_id: usize,
-		direction: SplitDirection,
-		ratio: f32,
-		new_is_first: bool,
-	) {
+	fn split_area(&mut self, area_id: usize, direction: SplitDirection, ratio: f32, new_is_first: bool) {
 		let Some(content) = self.find_area_content(area_id) else {
 			return;
 		};
@@ -1186,14 +1238,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		let new_area = Area::new(new_id, content);
 		let ratio = ratio.clamp(0.15, 0.85);
 
-		Self::split_area_recursive(
-			&mut self.root,
-			area_id,
-			new_area,
-			direction,
-			ratio,
-			new_is_first,
-		);
+		Self::split_area_recursive(&mut self.root, area_id, new_area, direction, ratio, new_is_first);
 	}
 
 	fn split_area_recursive(
@@ -1226,21 +1271,8 @@ impl<C: AreaKind> PanelSystem<C> {
 				true
 			}
 			DockNode::Split { first, second, .. } => {
-				Self::split_area_recursive(
-					first,
-					area_id,
-					new_area.clone(),
-					direction,
-					ratio,
-					new_is_first,
-				) || Self::split_area_recursive(
-					second,
-					area_id,
-					new_area,
-					direction,
-					ratio,
-					new_is_first,
-				)
+				Self::split_area_recursive(first, area_id, new_area.clone(), direction, ratio, new_is_first)
+					|| Self::split_area_recursive(second, area_id, new_area, direction, ratio, new_is_first)
 			}
 			_ => false,
 		}
@@ -1342,22 +1374,24 @@ impl<C: AreaKind> Default for PanelSystem<C> {
 	}
 }
 
-fn button_style(status: iced::widget::button::Status) -> iced::widget::button::Style {
-	use iced::widget::button;
-	let background = match status {
-		button::Status::Hovered => Some(Color::from_rgb(0.25, 0.25, 0.28).into()),
-		button::Status::Pressed => Some(colors::ACCENT.into()),
-		_ => None,
-	};
-	button::Style {
-		background,
-		text_color: colors::TEXT_SECONDARY,
-		border: iced::Border {
-			radius: 3.0.into(),
-			..Default::default()
-		},
-		..Default::default()
-	}
+fn chevron_down_handle() -> svg::Handle {
+	svg::Handle::from_memory(include_bytes!("../../../assets/icons/panels/chevron_down.svg").as_slice())
+}
+
+fn panel_icon_svg<'a, Message: 'a>(handle: svg::Handle, size: f32) -> Element<'a, Message> {
+	panel_icon_svg_colored(handle, size, constants::style::TEXT_PRIMARY_COLOR)
+}
+
+fn panel_icon_svg_colored<'a, Message: 'a>(
+	handle: svg::Handle,
+	size: f32,
+	color: Color,
+) -> Element<'a, Message> {
+	svg(handle)
+		.width(size)
+		.height(size)
+		.style(move |_theme, _status| svg::Style { color: Some(color) })
+		.into()
 }
 
 /// 中央ゾーン外側の座標を、中央=0.5・端=その方向の薄い分割になるよう倍率マップする

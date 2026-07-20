@@ -65,11 +65,7 @@ impl GlyphEngine {
 	pub fn get_glyph_points(&self, character: char) -> Option<Vec<(f32, f32)>> {
 		// Create a scale context and scaler
 		let mut context = ScaleContext::new();
-		let mut scaler = context
-			.builder(self.font_data.as_ref())
-			.size(128.)
-			.hint(true)
-			.build();
+		let mut scaler = context.builder(self.font_data.as_ref()).size(128.).hint(true).build();
 
 		// Map the character to a glyph ID
 		let charmap = self.font_data.charmap();
@@ -89,11 +85,7 @@ impl GlyphEngine {
 	pub fn get_bounds(&self, character: char) -> Option<swash::zeno::Bounds> {
 		// Create a scale context and scaler
 		let mut context = ScaleContext::new();
-		let mut scaler = context
-			.builder(self.font_data.as_ref())
-			.size(128.)
-			.hint(true)
-			.build();
+		let mut scaler = context.builder(self.font_data.as_ref()).size(128.).hint(true).build();
 
 		// Map the character to a glyph ID
 		let charmap = self.font_data.charmap();
@@ -109,11 +101,7 @@ impl GlyphEngine {
 	pub fn get_path(&self, character: char) -> Option<Vec<Command>> {
 		// Create a scale context and scaler
 		let mut context = ScaleContext::new();
-		let mut scaler = context
-			.builder(self.font_data.as_ref())
-			.size(128.)
-			.hint(true)
-			.build();
+		let mut scaler = context.builder(self.font_data.as_ref()).size(128.).hint(true).build();
 
 		// Map the character to a glyph ID
 		let charmap = self.font_data.charmap();

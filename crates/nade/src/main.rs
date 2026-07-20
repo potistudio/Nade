@@ -9,7 +9,6 @@ mod theme;
 mod widgets;
 
 use app::NadeApp;
-use iced::Theme;
 
 const INTER_FONT: &[u8] = include_bytes!("../../../assets/fonts/Inter/Inter_regular.otf");
 
@@ -35,7 +34,7 @@ pub fn run_app() -> iced::Result {
 
 	iced::application(NadeApp::new, NadeApp::update, NadeApp::view)
 		.subscription(NadeApp::subscription)
-		.theme(Theme::Dracula)
+		.theme(constants::style::app_theme())
 		.font(INTER_FONT)
 		.default_font(iced::Font::with_name("Inter"))
 		.title("Nade")

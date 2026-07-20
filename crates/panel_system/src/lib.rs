@@ -15,7 +15,19 @@ pub use node::{DockNode, SplitDirection};
 pub use system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
 
 /// エリアに表示できるエディタ種別
-pub trait AreaKind: Clone + std::fmt::Debug + PartialEq + Eq + ToString + 'static {
+pub trait AreaKind: Clone + std::fmt::Debug + PartialEq + Eq + 'static {
 	/// 選択可能な全種別
 	fn all() -> Vec<Self>;
+
+	/// ヘッダー／メニュー用 SVG アイコン
+	fn icon(&self) -> iced::widget::svg::Handle;
+
+	/// メニューに表示するラベル
+	fn label(&self) -> &'static str;
+
+	/// Blender 風ドロップダウンのカラム定義 `(カテゴリ名, 種別列)`。
+	/// デフォルトは単一カラム。
+	fn menu_columns() -> Vec<(&'static str, Vec<Self>)> {
+		vec![("Editors", Self::all())]
+	}
 }

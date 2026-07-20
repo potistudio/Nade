@@ -18,21 +18,21 @@ use iced::{Color, Element, Event, Length, Point, Rectangle, Renderer, Theme, Vec
 
 const GRID_BASE_SPACING: f32 = 20.0;
 const GRID_LEVELS: [f32; 4] = [1.0, 5.0, 10.0, 50.0]; // Multipliers for grid spacing levels
-const GRID_BASE_COLOR: (f32, f32, f32) = (0.15, 0.15, 0.15);
+const GRID_BASE_COLOR: (f32, f32, f32) = (0.18, 0.18, 0.18);
 const GRID_MAX_ALPHA: f32 = 0.8;
 const GRID_MIN_SCREEN_SPACING: f32 = 8.0; // Minimum screen pixels between grid lines before fading
 const GRID_FADE_RANGE: f32 = 16.0; // Screen pixels range for fading
-const ORIGIN_AXIS_COLOR: Color = Color::from_rgb(0.3, 0.5, 0.7);
-const BACKGROUND_COLOR: Color = Color::from_rgb(0.12, 0.12, 0.12);
+const ORIGIN_AXIS_COLOR: Color = Color::from_rgb8(86, 128, 194);
+const BACKGROUND_COLOR: Color = Color::from_rgb8(48, 48, 48);
 
-const HANDLE_RADIUS: f32 = 6.0;
-const CONTROL_POINT_RADIUS: f32 = 4.0;
+const HANDLE_RADIUS: f32 = 5.0;
+const CONTROL_POINT_RADIUS: f32 = 3.5;
 const BEZIER_SEGMENTS: usize = 64;
 const HIT_THRESHOLD: f32 = 12.0;
 
-const BEZIER_COLOR: Color = Color::from_rgb(0.92, 0.28, 0.33);
-const HANDLE_COLOR: Color = Color::from_rgb(0.9, 0.9, 0.9);
-const CONTROL_LINE_COLOR: Color = Color::from_rgb(0.6, 0.6, 0.6);
+const BEZIER_COLOR: Color = Color::from_rgb8(232, 125, 13);
+const HANDLE_COLOR: Color = Color::from_rgb8(230, 230, 230);
+const CONTROL_LINE_COLOR: Color = Color::from_rgb8(153, 153, 153);
 
 const ZOOM_SPEED: f32 = 0.01;
 const MIN_SCALE: f32 = 0.01;
@@ -44,14 +44,8 @@ const MAX_SCALE: f32 = 100.0;
 
 fn cubic_bezier(p0: Point, p1: Point, p2: Point, p3: Point, t: f32) -> Point {
 	let it = 1.0 - t;
-	let x = it.powi(3) * p0.x
-		+ 3.0 * it.powi(2) * t * p1.x
-		+ 3.0 * it * t.powi(2) * p2.x
-		+ t.powi(3) * p3.x;
-	let y = it.powi(3) * p0.y
-		+ 3.0 * it.powi(2) * t * p1.y
-		+ 3.0 * it * t.powi(2) * p2.y
-		+ t.powi(3) * p3.y;
+	let x = it.powi(3) * p0.x + 3.0 * it.powi(2) * t * p1.x + 3.0 * it * t.powi(2) * p2.x + t.powi(3) * p3.x;
+	let y = it.powi(3) * p0.y + 3.0 * it.powi(2) * t * p1.y + 3.0 * it * t.powi(2) * p2.y + t.powi(3) * p3.y;
 	Point::new(x, y)
 }
 
@@ -250,9 +244,7 @@ impl GizmosApp {
 				let local_pos = self.transform.screen_to_local(pos);
 				let threshold = HIT_THRESHOLD / self.transform.scale;
 
-				if let Some((handle_id, part, offset)) =
-					self.find_nearest_handle(local_pos, threshold)
-				{
+				if let Some((handle_id, part, offset)) = self.find_nearest_handle(local_pos, threshold) {
 					self.active_handle = Some(handle_id);
 					self.drag_state = Some(DragState {
 						handle_id,
@@ -265,8 +257,7 @@ impl GizmosApp {
 			Message::Dragging(pos) => {
 				if let Some(ref drag) = self.drag_state {
 					let local_pos = self.transform.screen_to_local(pos);
-					let target_pos =
-						Point::new(local_pos.x + drag.offset.x, local_pos.y + drag.offset.y);
+					let target_pos = Point::new(local_pos.x + drag.offset.x, local_pos.y + drag.offset.y);
 
 					if let Some(handle) = self.handles.iter_mut().find(|h| h.id == drag.handle_id) {
 						match drag.part {
@@ -379,12 +370,8 @@ impl<'a> canvas::Program<Message> for GizmosCanvasWithState<'a> {
 					mouse::Event::ButtonPressed(mouse::Button::Left) => {
 						Some(Action::publish(Message::DragStarted(cursor_pos)))
 					}
-					mouse::Event::CursorMoved { .. } => {
-						Some(Action::publish(Message::Dragging(cursor_pos)))
-					}
-					mouse::Event::ButtonReleased(mouse::Button::Left) => {
-						Some(Action::publish(Message::DragEnded))
-					}
+					mouse::Event::CursorMoved { .. } => Some(Action::publish(Message::Dragging(cursor_pos))),
+					mouse::Event::ButtonReleased(mouse::Button::Left) => Some(Action::publish(Message::DragEnded)),
 					mouse::Event::WheelScrolled { delta } => {
 						let (dx, dy) = match delta {
 							mouse::ScrollDelta::Lines { x, y } => (*x * 20.0, *y * 20.0),
@@ -393,10 +380,7 @@ impl<'a> canvas::Program<Message> for GizmosCanvasWithState<'a> {
 
 						if state.modifiers.control() {
 							// Ctrl + scroll = zoom
-							Some(Action::publish(Message::Zoom {
-								delta: dy,
-								cursor_pos,
-							}))
+							Some(Action::publish(Message::Zoom { delta: dy, cursor_pos }))
 						} else if state.modifiers.shift() {
 							// Shift + scroll = horizontal scroll
 							Some(Action::publish(Message::Scroll(Vector::new(dy, 0.0))))
@@ -473,9 +457,7 @@ impl GizmosCanvasWithState<'_> {
 			);
 
 			let line_width = if level_multiplier >= 10.0 { 1.0 } else { 0.5 };
-			let grid_stroke = Stroke::default()
-				.with_width(line_width)
-				.with_color(grid_color);
+			let grid_stroke = Stroke::default().with_width(line_width).with_color(grid_color);
 
 			// Draw vertical lines
 			let start_x = (min_x / spacing).floor() * spacing;
@@ -499,9 +481,7 @@ impl GizmosCanvasWithState<'_> {
 		}
 
 		// Origin axes (always visible)
-		let axis_stroke = Stroke::default()
-			.with_width(1.5)
-			.with_color(ORIGIN_AXIS_COLOR);
+		let axis_stroke = Stroke::default().with_width(1.5).with_color(ORIGIN_AXIS_COLOR);
 
 		if 0.0 >= min_y && 0.0 <= max_y {
 			let p1 = self.local_to_frame(Point::new(min_x, 0.0));
@@ -546,9 +526,7 @@ impl GizmosCanvasWithState<'_> {
 	}
 
 	fn draw_handles(&self, frame: &mut Frame) {
-		let control_stroke = Stroke::default()
-			.with_width(1.0)
-			.with_color(CONTROL_LINE_COLOR);
+		let control_stroke = Stroke::default().with_width(1.0).with_color(CONTROL_LINE_COLOR);
 
 		for h in self.handles {
 			let center = self.local_to_frame(h.position());
@@ -561,14 +539,8 @@ impl GizmosCanvasWithState<'_> {
 
 			// Control points (hollow circles)
 			let control_stroke_thick = Stroke::default().with_width(2.0).with_color(HANDLE_COLOR);
-			frame.stroke(
-				&Path::circle(left, CONTROL_POINT_RADIUS),
-				control_stroke_thick,
-			);
-			frame.stroke(
-				&Path::circle(right, CONTROL_POINT_RADIUS),
-				control_stroke_thick,
-			);
+			frame.stroke(&Path::circle(left, CONTROL_POINT_RADIUS), control_stroke_thick);
+			frame.stroke(&Path::circle(right, CONTROL_POINT_RADIUS), control_stroke_thick);
 
 			// Center point (filled)
 			frame.fill(&Path::circle(center, HANDLE_RADIUS), HANDLE_COLOR);
@@ -581,7 +553,7 @@ impl GizmosCanvasWithState<'_> {
 			let center = self.local_to_frame(h.position());
 			let highlight_stroke = Stroke::default()
 				.with_width(2.0)
-				.with_color(Color::from_rgb(1.0, 0.8, 0.2));
+				.with_color(Color::from_rgb8(232, 125, 13));
 			frame.stroke(&Path::circle(center, HANDLE_RADIUS + 3.0), highlight_stroke);
 		}
 	}
@@ -595,9 +567,7 @@ impl GizmosCanvasWithState<'_> {
 
 	fn visible_bounds(&self, bounds: Rectangle) -> (f32, f32, f32, f32) {
 		let top_left = self.transform.screen_to_local(Point::ORIGIN);
-		let bottom_right = self
-			.transform
-			.screen_to_local(Point::new(bounds.width, bounds.height));
+		let bottom_right = self.transform.screen_to_local(Point::new(bounds.width, bounds.height));
 
 		let min_x = top_left.x.min(bottom_right.x).floor();
 		let max_x = top_left.x.max(bottom_right.x).ceil();

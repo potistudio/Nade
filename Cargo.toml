@@ -19,7 +19,7 @@ all = "warn"
 
 [workspace.dependencies]
 log = "0.4.29"
-iced = { version = "0.14", features = ["advanced", "canvas"] }
+iced = { version = "0.14", features = ["advanced", "canvas", "svg"] }
 anyhow = "1.0.100"
 env_logger = "0.11.8"
 constants = { path = "crates/constants" }

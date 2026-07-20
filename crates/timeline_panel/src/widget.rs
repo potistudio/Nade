@@ -2,7 +2,6 @@
 
 use iced::{
 	Color, Element, Event, Length, Point, Rectangle, Size, Theme,
-	border::Radius,
 	keyboard::{self, Key},
 	mouse,
 	widget::{
@@ -193,50 +192,41 @@ impl<'a> TimelineWidget<'a> {
 //* -------- Private API -------- */
 impl TimelineWidget<'_> {
 	fn zoom_control_view(time_scale: f32) -> Element<'static, TimelineMessage> {
+		use constants::style::{FONT_UI, PAD_BUTTON, PAD_TOOLBAR, SPACE_2};
+		use constants::widgets;
+
 		let zoom_percent = (time_scale * 100.0) as i32;
 
-		let zoom_out_btn = button(text("−").size(13))
+		let zoom_out_btn = button(text("−").size(FONT_UI))
 			.on_press(TimelineMessage::ZoomOut)
-			.padding([2, 8]);
+			.padding(PAD_BUTTON)
+			.style(widgets::button_tool);
 
 		let zoom_slider = slider(0.1..=10.0, time_scale, TimelineMessage::ZoomChanged)
-			.step(0.1)
-			.width(120);
+			.step(0.1_f32)
+			.width(120)
+			.style(widgets::slider);
 
-		let zoom_in_btn = button(text("+").size(13))
+		let zoom_in_btn = button(text("+").size(FONT_UI))
 			.on_press(TimelineMessage::ZoomIn)
-			.padding([2, 8]);
+			.padding(PAD_BUTTON)
+			.style(widgets::button_tool);
 
-		let zoom_label = text(format!("{zoom_percent}%"))
-			.size(11)
-			.width(40);
+		let zoom_label = text(format!("{zoom_percent}%")).size(FONT_UI).width(36);
 
-		let reset_btn = button(text("1:1").size(11))
+		let reset_btn = button(text("1:1").size(FONT_UI))
 			.on_press(TimelineMessage::ResetZoom)
-			.padding([2, 6]);
+			.padding(PAD_BUTTON)
+			.style(widgets::button_tool);
 
-		let controls = row![
-			zoom_out_btn,
-			zoom_slider,
-			zoom_in_btn,
-			zoom_label,
-			reset_btn,
-		]
-		.spacing(4)
-		.align_y(iced::Alignment::Center);
+		let controls = row![zoom_out_btn, zoom_slider, zoom_in_btn, zoom_label, reset_btn,]
+			.spacing(SPACE_2)
+			.align_y(iced::Alignment::Center);
 
 		container(controls)
-			.padding([4, 10])
+			.padding(PAD_TOOLBAR)
 			.width(Length::Fill)
-			.style(|_theme| container::Style {
-				background: Some(colors::BACKGROUND.into()),
-				border: iced::Border {
-					color: colors::BORDER_DARK,
-					width: 1.0,
-					radius: 0.0.into(),
-				},
-				..Default::default()
-			})
+			.style(widgets::toolbar)
 			.into()
 	}
 
@@ -333,18 +323,12 @@ impl TimelineWidget<'_> {
 			height: sel_rect.height,
 		};
 
-		frame.fill_rectangle(
-			local_rect.position(),
-			local_rect.size(),
-			Color::from_rgba(0.4, 0.7, 1.0, 0.12),
-		);
+		frame.fill_rectangle(local_rect.position(), local_rect.size(), colors::SELECTION_FILL);
 
 		let sel_path = Path::rectangle(local_rect.position(), local_rect.size());
 		frame.stroke(
 			&sel_path,
-			Stroke::default()
-				.with_color(Color::from_rgba(0.4, 0.7, 1.0, 0.75))
-				.with_width(1.0),
+			Stroke::default().with_color(colors::SELECTION_STROKE).with_width(1.0),
 		);
 	}
 
@@ -501,21 +485,18 @@ impl TimelineWidget<'_> {
 			);
 		}
 
-		// Draw glow effect for track that was just reordered
+		// Brief highlight for track that was just reordered
 		if let Some((track_idx, alpha)) = self.glowing_track {
 			let glow_y = rect.y + (track_idx as f32 * TRACK_HEIGHT) + state.scroll_offset.y;
-			let glow_color = Color::from_rgba(1.0, 1.0, 1.0, alpha * 0.5);
+			let glow_color = Color {
+				a: alpha * 0.25,
+				..colors::SELECTION
+			};
 
 			frame.fill_rectangle(
 				Point::new(rect.x, glow_y),
 				Size::new(rect.width, TRACK_HEIGHT),
 				glow_color,
-			);
-
-			let glow_path = Path::rectangle(Point::new(rect.x, glow_y), Size::new(rect.width, TRACK_HEIGHT));
-			frame.stroke(
-				&glow_path,
-				Stroke::default().with_color(colors::PLAYHEAD).with_width(3.0),
 			);
 		}
 	}
@@ -775,18 +756,7 @@ impl TimelineWidget<'_> {
 
 	#[inline]
 	fn clip_base_color(track_index: usize, _clip_id: usize) -> Color {
-		const PALETTE: [Color; 8] = [
-			Color::from_rgb(0.38, 0.58, 0.95),
-			Color::from_rgb(0.24, 0.72, 0.54),
-			Color::from_rgb(0.93, 0.61, 0.25),
-			Color::from_rgb(0.78, 0.43, 0.90),
-			Color::from_rgb(0.28, 0.75, 0.78),
-			Color::from_rgb(0.91, 0.42, 0.56),
-			Color::from_rgb(0.63, 0.65, 0.29),
-			Color::from_rgb(0.55, 0.55, 0.93),
-		];
-
-		PALETTE[track_index % PALETTE.len()]
+		colors::CLIP_PALETTE[track_index % colors::CLIP_PALETTE.len()]
 	}
 }
 

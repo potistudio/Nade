@@ -33,10 +33,10 @@ impl Default for GridConfig {
 	fn default() -> Self {
 		Self {
 			spacing: 20.0,
-			line_color: Color::from_rgb(0.1, 0.1, 0.1),
+			line_color: Color::from_rgb8(36, 36, 36),
 			line_width: 1.0,
 			show_origin_axes: true,
-			origin_axis_color: Color::from_rgb(0.47, 0.78, 1.0),
+			origin_axis_color: Color::from_rgb8(86, 128, 194),
 		}
 	}
 }
@@ -61,7 +61,7 @@ impl Default for CanvasState {
 		Self {
 			scale: 1.0,
 			offset: Vector::ZERO,
-			background_color: Color::from_rgb(0.19, 0.19, 0.19),
+			background_color: Color::from_rgb8(48, 48, 48),
 			grid_config: Some(GridConfig::default()),
 			cache: canvas::Cache::default(),
 		}
@@ -107,10 +107,7 @@ impl CanvasState {
 	/// Get the visible bounds in local coordinates
 	pub fn visible_bounds(&self, bounds: Rectangle) -> (f32, f32, f32, f32) {
 		let top_left = self.screen_to_local(bounds.position(), bounds);
-		let bottom_right = self.screen_to_local(
-			Point::new(bounds.x + bounds.width, bounds.y + bounds.height),
-			bounds,
-		);
+		let bottom_right = self.screen_to_local(Point::new(bounds.x + bounds.width, bounds.y + bounds.height), bounds);
 
 		let min_x = top_left.x.min(bottom_right.x).floor();
 		let max_x = top_left.x.max(bottom_right.x).ceil();
@@ -121,12 +118,7 @@ impl CanvasState {
 	}
 
 	/// Handle scroll/zoom events
-	pub fn handle_scroll(
-		&mut self,
-		delta: Vector,
-		_cursor_position: Option<Point>,
-		_bounds: Rectangle,
-	) {
+	pub fn handle_scroll(&mut self, delta: Vector, _cursor_position: Option<Point>, _bounds: Rectangle) {
 		// Pan with scroll
 		self.offset.x += delta.x * SCROLL_MULTIPLIER;
 		self.offset.y += delta.y * SCROLL_MULTIPLIER;
@@ -134,12 +126,7 @@ impl CanvasState {
 	}
 
 	/// Handle zoom events
-	pub fn handle_zoom(
-		&mut self,
-		zoom_delta: f32,
-		cursor_position: Option<Point>,
-		bounds: Rectangle,
-	) {
+	pub fn handle_zoom(&mut self, zoom_delta: f32, cursor_position: Option<Point>, bounds: Rectangle) {
 		if let Some(cursor) = cursor_position {
 			let old_scale = self.scale;
 			let zoom_factor = 1.0 + zoom_delta * ZOOM_SPEED;
@@ -255,9 +242,7 @@ impl<P: CanvasProgram> CanvasWrapper<'_, P> {
 
 		// Draw origin axes
 		if grid.show_origin_axes {
-			let axis_stroke = Stroke::default()
-				.with_width(1.5)
-				.with_color(grid.origin_axis_color);
+			let axis_stroke = Stroke::default().with_width(1.5).with_color(grid.origin_axis_color);
 
 			// X axis (y = 0)
 			if 0.0 >= min_y && 0.0 <= max_y {
@@ -285,18 +270,12 @@ impl<P: CanvasProgram> CanvasWrapper<'_, P> {
 }
 
 /// Create a canvas element from a CanvasProgram
-pub fn canvas_view<'a, P: CanvasProgram + 'a>(
-	program: &'a P,
-	state: &'a CanvasState,
-) -> Element<'a, P::Message>
+pub fn canvas_view<'a, P: CanvasProgram + 'a>(program: &'a P, state: &'a CanvasState) -> Element<'a, P::Message>
 where
 	P::Message: 'a,
 {
 	let wrapper = CanvasWrapper { program, state };
-	Canvas::new(wrapper)
-		.width(Length::Fill)
-		.height(Length::Fill)
-		.into()
+	Canvas::new(wrapper).width(Length::Fill).height(Length::Fill).into()
 }
 
 // ============================================================================
@@ -304,14 +283,7 @@ where
 // ============================================================================
 
 /// Draw a line in local coordinates
-pub fn draw_line(
-	frame: &mut Frame,
-	state: &CanvasState,
-	_bounds: Rectangle,
-	p1: Point,
-	p2: Point,
-	stroke: Stroke,
-) {
+pub fn draw_line(frame: &mut Frame, state: &CanvasState, _bounds: Rectangle, p1: Point, p2: Point, stroke: Stroke) {
 	let sp1 = local_to_frame(state, p1);
 	let sp2 = local_to_frame(state, p2);
 	frame.stroke(&Path::line(sp1, sp2), stroke);
@@ -346,26 +318,14 @@ pub fn draw_circle_stroke(
 }
 
 /// Draw a filled rectangle in local coordinates
-pub fn draw_rect_filled(
-	frame: &mut Frame,
-	state: &CanvasState,
-	_bounds: Rectangle,
-	rect: Rectangle,
-	color: Color,
-) {
+pub fn draw_rect_filled(frame: &mut Frame, state: &CanvasState, _bounds: Rectangle, rect: Rectangle, color: Color) {
 	let top_left = local_to_frame(state, rect.position());
 	let size = Size::new(rect.width * state.scale, rect.height * state.scale);
 	frame.fill_rectangle(top_left, size, color);
 }
 
 /// Draw a rectangle stroke in local coordinates
-pub fn draw_rect_stroke(
-	frame: &mut Frame,
-	state: &CanvasState,
-	_bounds: Rectangle,
-	rect: Rectangle,
-	stroke: Stroke,
-) {
+pub fn draw_rect_stroke(frame: &mut Frame, state: &CanvasState, _bounds: Rectangle, rect: Rectangle, stroke: Stroke) {
 	let top_left = local_to_frame(state, rect.position());
 	let size = Size::new(rect.width * state.scale, rect.height * state.scale);
 	let path = Path::rectangle(top_left, size);

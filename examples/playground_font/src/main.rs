@@ -10,13 +10,9 @@ impl eframe::App for FontPlaygroundApp {
 	fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
 		// ==== [BEGIN] Custom font ============================================
 		let mut fonts = egui::FontDefinitions::default();
-		let font_data = egui::FontData::from_static(include_bytes!(
-			"../../../assets/fonts/Rubik/Rubik_regular.ttf"
-		));
+		let font_data = egui::FontData::from_static(include_bytes!("../../../assets/fonts/Rubik/Rubik_regular.ttf"));
 
-		fonts
-			.font_data
-			.insert("rubik".to_string(), font_data.into());
+		fonts.font_data.insert("rubik".to_string(), font_data.into());
 
 		fonts
 			.families
@@ -41,9 +37,7 @@ fn main() -> eframe::Result<()> {
 	}
 	env_logger::init();
 
-	let options = eframe::NativeOptions {
-		..Default::default()
-	};
+	let options = eframe::NativeOptions { ..Default::default() };
 
 	log::debug!("Print localized strings from the font:");
 	glyph_engine::print_localized_strings("./assets/fonts/Rubik/Rubik_regular.ttf");

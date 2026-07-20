@@ -1,3 +1,7 @@
+use constants::style::{
+	BORDER_ACTIVE_COLOR, BORDER_RADIUS, BORDER_THICKNESS, FONT_LABEL, INPUT_HEIGHT, SPACE_1, SPACE_2, SPACE_4,
+	TEXT_PRIMARY_COLOR, WIDGET_COLOR,
+};
 use iced::advanced::layout::{self, Layout};
 use iced::advanced::renderer;
 use iced::advanced::widget::{self, Widget};
@@ -6,7 +10,7 @@ use iced::event::Event;
 use iced::keyboard;
 use iced::mouse::Cursor;
 use iced::widget::text_input;
-use iced::{Border, Color, Element, Length, Point, Rectangle, Size};
+use iced::{Border, Element, Length, Point, Rectangle, Size};
 
 pub struct DraggableNumber<'a, Message, Theme = iced::Theme, Renderer = iced::Renderer>
 where
@@ -85,8 +89,7 @@ impl Default for State {
 	}
 }
 
-impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
-	for DraggableNumber<'a, Message, Theme, Renderer>
+impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for DraggableNumber<'a, Message, Theme, Renderer>
 where
 	Message: Clone,
 	Renderer: iced::advanced::text::Renderer,
@@ -95,39 +98,25 @@ where
 	fn size(&self) -> Size<Length> {
 		Size {
 			width: self.width,
-			height: Length::Fixed(20.0), // TODO Measure?
+			height: Length::Fixed(INPUT_HEIGHT),
 		}
 	}
 
-	fn layout(
-		&mut self,
-		tree: &mut widget::Tree,
-		renderer: &Renderer,
-		limits: &layout::Limits,
-	) -> layout::Node {
+	fn layout(&mut self, tree: &mut widget::Tree, renderer: &Renderer, limits: &layout::Limits) -> layout::Node {
 		let state = tree.state.downcast_ref::<State>();
 
 		if state.mode == Mode::Editing {
+			let text_value = state.text_value.clone();
 			let mut text_input: text_input::TextInput<Message, Theme, Renderer> =
-				text_input::TextInput::new("", &state.text_value);
+				text_input::TextInput::new("", &text_value)
+					.padding([SPACE_1 as u16, SPACE_2 as u16])
+					.size(FONT_LABEL);
 			Widget::layout(&mut text_input, tree, renderer, limits)
 		} else {
-			let text_size = Size::new(50.0, 20.0);
-			// 	renderer.measure(
-			// 	&format!("{:.2}", self.value),
-			// 	12.0,
-			// 	16.0.into(),
-			// 	renderer.default_font(),
-			// 	limits.max().width,
-			// 	iced::advanced::text::Shaping::Basic,
-			// );
-
-			let padding_h = 10.0; // Padding::from(5.0) -> left+right = 10.0
-			let padding_v = 10.0; // top+bottom = 10.0
 			let size = limits.resolve(
 				self.width,
-				Length::Shrink,
-				Size::new(text_size.width + padding_h, text_size.height + padding_v),
+				Length::Fixed(INPUT_HEIGHT),
+				Size::new(SPACE_4 * 6.0, INPUT_HEIGHT),
 			);
 			layout::Node::new(size)
 		}
@@ -147,7 +136,9 @@ where
 
 		if state.mode == Mode::Editing {
 			let text_input: text_input::TextInput<Message, Theme, Renderer> =
-				text_input::TextInput::new("", &state.text_value);
+				text_input::TextInput::new("", &state.text_value)
+					.padding([SPACE_1 as u16, SPACE_2 as u16])
+					.size(FONT_LABEL);
 			Widget::draw(
 				&text_input,
 				&tree.children[0],
@@ -165,13 +156,13 @@ where
 				renderer::Quad {
 					bounds,
 					border: Border {
-						radius: 4.0.into(),
-						width: 1.0,
-						color: Color::from_rgb(0.3, 0.3, 0.3),
+						radius: BORDER_RADIUS.into(),
+						width: BORDER_THICKNESS,
+						color: BORDER_ACTIVE_COLOR,
 					},
 					..Default::default()
 				},
-				Color::from_rgb(0.15, 0.15, 0.15),
+				WIDGET_COLOR,
 			);
 
 			let content = format!("{:.2}", self.value);
@@ -180,8 +171,8 @@ where
 				iced::advanced::text::Text {
 					content,
 					bounds: Size::new(bounds.width, bounds.height),
-					size: 12.0.into(),
-					line_height: iced::advanced::text::LineHeight::Relative(1.3),
+					size: FONT_LABEL.into(),
+					line_height: iced::advanced::text::LineHeight::Relative(1.2),
 					font: renderer.default_font(),
 					align_x: iced::alignment::Horizontal::Center.into(),
 					align_y: iced::alignment::Vertical::Center,
@@ -189,7 +180,7 @@ where
 					shaping: iced::advanced::text::Shaping::Basic,
 				},
 				bounds.center(),
-				Color::WHITE,
+				TEXT_PRIMARY_COLOR,
 				*viewport,
 			);
 		}
@@ -202,9 +193,9 @@ where
 	}
 
 	fn diff(&self, tree: &mut widget::Tree) {
-		tree.diff_children(&[Element::<Message, Theme, Renderer>::new(
-			text_input::TextInput::new("", ""),
-		)]);
+		tree.diff_children(&[Element::<Message, Theme, Renderer>::new(text_input::TextInput::new(
+			"", "",
+		))]);
 	}
 
 	fn tag(&self) -> widget::tree::Tag {
@@ -237,10 +228,6 @@ where
 				state.mode = Mode::Idle;
 				shell.capture_event();
 			}
-			// Forward to text input? Currently hard to check return value for message interception.
-			// Just skipping logic for MVP.
-			// User is stuck in edit mode until click outside?
-			// User is stuck in edit mode until click outside?
 			return;
 		}
 
@@ -266,10 +253,7 @@ where
 						shell.capture_event();
 					}
 				}
-				Mode::Dragging {
-					start_pos,
-					start_value,
-				} => {
+				Mode::Dragging { start_pos, start_value } => {
 					let delta = start_pos.y - position.y;
 					let new_val = start_value + delta * self.step;
 					let new_val = (new_val * 1000.0).round() / 1000.0;
@@ -282,27 +266,23 @@ where
 				}
 				_ => {}
 			},
-			Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
-				match state.mode {
-					Mode::PotentialDrag { .. } => {
-						// Clicked. Reset to Idle for now (Editing disabled in MVP)
-						if let Some(cursor_position) = cursor.position()
-							&& bounds.contains(cursor_position)
-							&& keyboard::Modifiers::default().command()
-						{
-							// TODO: Get modifiers
-							shell.publish((self.on_change)(self.default_value));
-						}
-						state.mode = Mode::Idle;
-						shell.capture_event();
+			Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => match state.mode {
+				Mode::PotentialDrag { .. } => {
+					if let Some(cursor_position) = cursor.position()
+						&& bounds.contains(cursor_position)
+						&& keyboard::Modifiers::default().command()
+					{
+						shell.publish((self.on_change)(self.default_value));
 					}
-					Mode::Dragging { .. } => {
-						state.mode = Mode::Idle;
-						shell.capture_event();
-					}
-					_ => {}
+					state.mode = Mode::Idle;
+					shell.capture_event();
 				}
-			}
+				Mode::Dragging { .. } => {
+					state.mode = Mode::Idle;
+					shell.capture_event();
+				}
+				_ => {}
+			},
 			_ => {}
 		}
 	}

@@ -24,6 +24,7 @@ pub fn main() -> iced::Result {
 
 	iced::application(NadeApp::new, NadeApp::update, NadeApp::view)
 		.subscription(NadeApp::subscription)
+		.theme(constants::style::app_theme())
 		.title(APP_TITLE)
 		.window_size((WINDOW_WIDTH, WINDOW_HEIGHT))
 		.run()

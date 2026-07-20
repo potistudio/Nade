@@ -32,7 +32,7 @@ fn on_window_resize(event: iced::Event, _status: iced::event::Status, _id: iced:
 
 /// アプリケーションのテーマを返す
 pub fn theme(_state: &NadeApp) -> Theme {
-	Theme::Dark
+	constants::style::app_theme()
 }
 
 // =============================================================================
@@ -137,9 +137,7 @@ impl NadeApp {
 		let main = LayoutBuilder::hsplit(center, inspector, 0.78);
 		let layout = LayoutBuilder::hsplit(project, main, 0.18);
 
-		let mut system = PanelSystem::new()
-			.with_layout(layout)
-			.with_ids(builder.next_area_id());
+		let mut system = PanelSystem::new().with_layout(layout).with_ids(builder.next_area_id());
 		// 初期ウィンドウサイズを設定（main.rsのwindow_settingsと合わせる）
 		system.update(PanelSystemMessage::<PanelContent, AppPanelMessage>::WindowResized(
 			Size::new(1280.0, 720.0),
@@ -251,14 +249,16 @@ impl NadeApp {
 			PanelContent::Timeline => {
 				panels::timeline::view(panel_id, &self.timeline.state, &self.timeline.model, self.current_time)
 			}
-			PanelContent::MainPreview => {
-				container(text("Preview").size(14).color(iced::Color::from_rgb(0.4, 0.4, 0.4)))
-					.width(Length::Fill)
-					.height(Length::Fill)
-					.center_x(Length::Fill)
-					.center_y(Length::Fill)
-					.into()
-			}
+			PanelContent::MainPreview => container(
+				text("Preview")
+					.size(constants::style::FONT_LABEL)
+					.color(constants::style::TEXT_MUTED_COLOR),
+			)
+			.width(Length::Fill)
+			.height(Length::Fill)
+			.center_x(Length::Fill)
+			.center_y(Length::Fill)
+			.into(),
 			PanelContent::Inspector => panels::inspector::view(None),
 			PanelContent::Project => panels::browser::view(&self.project, &self.project_pane),
 		}
