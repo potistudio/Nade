@@ -90,6 +90,13 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 		self
 	}
 
+	/// `LayoutBuilder` で採番済みの次IDを同期する
+	pub fn with_ids(mut self, next_panel_id: usize, next_container_id: usize) -> Self {
+		self.next_panel_id = next_panel_id;
+		self.next_container_id = next_container_id;
+		self
+	}
+
 	/// ルートノードへの参照を取得
 	pub fn root(&self) -> &DockNode<C> {
 		&self.root
@@ -162,8 +169,13 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 						start_ratio,
 						..
 					} => {
-						let new_ratio =
-							self.calculate_new_ratio(start_pos, pos, start_ratio, direction);
+						let new_ratio = self.calculate_new_ratio(
+							&path,
+							start_pos,
+							pos,
+							start_ratio,
+							direction,
+						);
 						self.set_ratio_at_path(&path, new_ratio);
 						self.drag_state = DragState::Resizing {
 							path,
@@ -249,20 +261,67 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 
 	fn calculate_new_ratio(
 		&self,
+		path: &[usize],
 		start_pos: Point,
 		current_pos: Point,
 		start_ratio: f32,
 		direction: SplitDirection,
 	) -> f32 {
+		let region = self.size_at_path(path);
 		let size = match direction {
-			SplitDirection::Horizontal => self.window_size.width.max(100.0),
-			SplitDirection::Vertical => self.window_size.height.max(100.0),
+			SplitDirection::Horizontal => region.width.max(100.0),
+			SplitDirection::Vertical => region.height.max(100.0),
 		};
 		let delta = match direction {
 			SplitDirection::Horizontal => (current_pos.x - start_pos.x) / size,
 			SplitDirection::Vertical => (current_pos.y - start_pos.y) / size,
 		};
 		(start_ratio + delta).clamp(0.15, 0.85)
+	}
+
+	/// パスで指すノードの領域サイズを、ウィンドウサイズと分割比から算出する
+	fn size_at_path(&self, path: &[usize]) -> Size {
+		let mut size = self.window_size;
+		let mut node = &self.root;
+
+		for &index in path {
+			let DockNode::Split {
+				direction,
+				ratio,
+				first,
+				second,
+			} = node
+			else {
+				break;
+			};
+
+			match direction {
+				SplitDirection::Horizontal => {
+					let first_width = size.width * *ratio;
+					let second_width = size.width * (1.0 - *ratio);
+					if index == 0 {
+						size = Size::new(first_width, size.height);
+						node = first;
+					} else {
+						size = Size::new(second_width, size.height);
+						node = second;
+					}
+				}
+				SplitDirection::Vertical => {
+					let first_height = size.height * *ratio;
+					let second_height = size.height * (1.0 - *ratio);
+					if index == 0 {
+						size = Size::new(size.width, first_height);
+						node = first;
+					} else {
+						size = Size::new(size.width, second_height);
+						node = second;
+					}
+				}
+			}
+		}
+
+		size
 	}
 
 	/// ビューを生成
@@ -942,16 +1001,17 @@ impl<C: Clone + std::fmt::Debug + PartialEq + Eq + 'static> PanelSystem<C> {
 		Self::add_panel_recursive(&mut self.root, container_id, panel);
 	}
 
-	fn add_panel_recursive(node: &mut DockNode<C>, container_id: usize, panel: Panel<C>) {
+	fn add_panel_recursive(node: &mut DockNode<C>, container_id: usize, panel: Panel<C>) -> bool {
 		match node {
 			DockNode::Leaf(container) if container.id == container_id => {
 				container.add_panel(panel);
+				true
 			}
 			DockNode::Split { first, second, .. } => {
-				Self::add_panel_recursive(first, container_id, panel.clone());
-				Self::add_panel_recursive(second, container_id, panel);
+				Self::add_panel_recursive(first, container_id, panel.clone())
+					|| Self::add_panel_recursive(second, container_id, panel)
 			}
-			_ => {}
+			_ => false,
 		}
 	}
 
