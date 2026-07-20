@@ -11,7 +11,7 @@ pub enum CornerAction {
 	SplitHorizontal,
 	/// 上下分割
 	SplitVertical,
-	/// 他エリアへ移動（入れ替え）
+	/// 他エリアへ移動（サイズ付きドック）
 	Move,
 }
 
@@ -44,23 +44,38 @@ pub enum DragState {
 		start_pos: Point,
 		current_pos: Point,
 		action: Option<CornerAction>,
-		/// 分割比率（first / 全体）。Split のとき有効
+		/// 分割比率（first / 全体）
 		ratio: f32,
 		/// 移動先エリア。Move のとき有効
 		target_area_id: Option<usize>,
+		/// Move / Split の分割方向
+		direction: Option<SplitDirection>,
+		/// 移動先で新しいエリアを first 側に置くか
+		new_is_first: bool,
 	},
 }
 
 impl DragState {
-	pub fn corner_preview(&self) -> Option<(usize, CornerAction, f32, Option<usize>)> {
+	pub fn corner_preview(
+		&self,
+	) -> Option<(usize, CornerAction, f32, Option<usize>, Option<SplitDirection>, bool)> {
 		match self {
 			Self::CornerDrag {
 				area_id,
 				action: Some(action),
 				ratio,
 				target_area_id,
+				direction,
+				new_is_first,
 				..
-			} => Some((*area_id, *action, *ratio, *target_area_id)),
+			} => Some((
+				*area_id,
+				*action,
+				*ratio,
+				*target_area_id,
+				*direction,
+				*new_is_first,
+			)),
 			_ => None,
 		}
 	}
