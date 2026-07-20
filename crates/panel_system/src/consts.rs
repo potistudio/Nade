@@ -6,6 +6,8 @@ pub const HEADER_HEIGHT: f32 = 28.0;
 pub const RESIZE_HANDLE_SIZE: f32 = 4.0;
 pub const CORNER_SIZE: f32 = 14.0;
 pub const CORNER_DRAG_THRESHOLD: f32 = 24.0;
+/// 移動ドロップ時、中央この範囲（正規化座標の半幅）は全体移動
+pub const MOVE_CENTER_ZONE: f32 = 0.22;
 
 pub mod colors {
 	use super::Color;

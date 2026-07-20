@@ -9,7 +9,10 @@ use iced::{
 
 use crate::{
 	AreaKind,
-	consts::{CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, RESIZE_HANDLE_SIZE, colors},
+	consts::{
+		CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, MOVE_CENTER_ZONE, RESIZE_HANDLE_SIZE,
+		colors,
+	},
 	container::Area,
 	drag::{CornerAction, DragState},
 	node::{DockNode, SplitDirection},
@@ -33,6 +36,17 @@ impl CornerDragUpdate {
 			new_is_first: false,
 		}
 	}
+}
+
+enum DropLayout {
+	/// 中央ドロップ: エリア全体を入れ替え
+	FullMove,
+	/// 中央から離れた方向へ分割ドック
+	Split {
+		direction: SplitDirection,
+		ratio: f32,
+		new_is_first: bool,
+	},
 }
 
 // =============================================================================
@@ -185,8 +199,19 @@ impl<C: AreaKind> PanelSystem<C> {
 				{
 					match action {
 						CornerAction::Move => {
-							if let (Some(target), Some(direction)) = (target_area_id, direction) {
-								self.move_area_into(area_id, target, direction, ratio, new_is_first);
+							if let Some(target) = target_area_id {
+								if let Some(direction) = direction {
+									self.move_area_into(
+										area_id,
+										target,
+										direction,
+										ratio,
+										new_is_first,
+									);
+								} else {
+									// 中央ドロップ → 全体移動（入れ替え）
+									self.swap_areas(area_id, target);
+								}
 							}
 						}
 						CornerAction::SplitHorizontal | CornerAction::SplitVertical => {
@@ -299,16 +324,29 @@ impl<C: AreaKind> PanelSystem<C> {
 
 	/// コーナードラッグ中の操作（分割 or 他エリアへの移動）を算出する
 	fn corner_drag_update(&self, source_id: usize, start_pos: Point, pos: Point) -> CornerDragUpdate {
-		// 他エリア上 → サイズ付き移動（ターゲットを分割してドック）
+		// 他エリア上 → 中央基準の移動（中央=全体 / 外側=その方向へ分割）
 		if let Some(target_id) = self.area_at_point(pos) {
 			if target_id != source_id {
-				if let Some((direction, ratio, new_is_first)) = self.drop_layout_at(target_id, pos) {
-					return CornerDragUpdate {
-						action: Some(CornerAction::Move),
-						ratio,
-						target_area_id: Some(target_id),
-						direction: Some(direction),
-						new_is_first,
+				if let Some(drop) = self.drop_layout_at(target_id, pos) {
+					return match drop {
+						DropLayout::FullMove => CornerDragUpdate {
+							action: Some(CornerAction::Move),
+							ratio: 0.5,
+							target_area_id: Some(target_id),
+							direction: None,
+							new_is_first: false,
+						},
+						DropLayout::Split {
+							direction,
+							ratio,
+							new_is_first,
+						} => CornerDragUpdate {
+							action: Some(CornerAction::Move),
+							ratio,
+							target_area_id: Some(target_id),
+							direction: Some(direction),
+							new_is_first,
+						},
 					};
 				}
 			}
@@ -363,12 +401,11 @@ impl<C: AreaKind> PanelSystem<C> {
 		}
 	}
 
-	/// ドロップ位置から、ターゲット内の分割方向・比率・どちら側に置くかを決める
-	fn drop_layout_at(
-		&self,
-		target_id: usize,
-		pos: Point,
-	) -> Option<(SplitDirection, f32, bool)> {
+	/// ドロップ位置を中央基準で解釈する
+	///
+	/// - 中央付近 → 全体移動
+	/// - 中央から上/下/左/右へ離れる → その方向への分割（分割線はカーソル位置）
+	fn drop_layout_at(&self, target_id: usize, pos: Point) -> Option<DropLayout> {
 		let path = self.area_path(target_id)?;
 		let bounds = self.bounds_at_path(&path);
 		if bounds.width <= 1.0 || bounds.height <= 1.0 {
@@ -377,26 +414,29 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		let rx = ((pos.x - bounds.x) / bounds.width).clamp(0.0, 1.0);
 		let ry = ((pos.y - bounds.y) / bounds.height).clamp(0.0, 1.0);
+		let dx = rx - 0.5;
+		let dy = ry - 0.5;
 
-		let to_left = rx;
-		let to_right = 1.0 - rx;
-		let to_top = ry;
-		let to_bottom = 1.0 - ry;
+		// 中央ゾーン → 全体移動
+		if dx.abs() < MOVE_CENTER_ZONE && dy.abs() < MOVE_CENTER_ZONE {
+			return Some(DropLayout::FullMove);
+		}
 
-		if to_left.min(to_right) <= to_top.min(to_bottom) {
-			let new_is_first = to_left <= to_right;
-			Some((
-				SplitDirection::Horizontal,
-				rx.clamp(0.15, 0.85),
+		// 中央から離れた主軸方向へ分割
+		if dx.abs() > dy.abs() {
+			let new_is_first = dx < 0.0; // 左 = first
+			Some(DropLayout::Split {
+				direction: SplitDirection::Horizontal,
+				ratio: rx.clamp(0.15, 0.85),
 				new_is_first,
-			))
+			})
 		} else {
-			let new_is_first = to_top <= to_bottom;
-			Some((
-				SplitDirection::Vertical,
-				ry.clamp(0.15, 0.85),
+			let new_is_first = dy < 0.0; // 上 = first
+			Some(DropLayout::Split {
+				direction: SplitDirection::Vertical,
+				ratio: ry.clamp(0.15, 0.85),
 				new_is_first,
-			))
+			})
 		}
 	}
 
@@ -699,7 +739,11 @@ impl<C: AreaKind> PanelSystem<C> {
 			|(source_id, action, ratio, target_id, direction, new_is_first)| match action {
 				CornerAction::Move => {
 					if target_id == Some(area_id) {
-						direction.map(|dir| self.view_dock_preview(dir, ratio, new_is_first))
+						if let Some(dir) = direction {
+							Some(self.view_dock_preview(dir, ratio, new_is_first))
+						} else {
+							Some(self.view_full_move_preview())
+						}
 					} else if source_id == area_id {
 						Some(self.view_move_source_preview())
 					} else {
@@ -804,6 +848,34 @@ impl<C: AreaKind> PanelSystem<C> {
 				..Default::default()
 			})
 			.into()
+	}
+
+	fn view_full_move_preview<'a, M>(&self) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
+		container(
+			container(text("Move").size(14).color(colors::TEXT_SECONDARY))
+				.padding([8, 14])
+				.style(|_| container::Style {
+					background: Some(colors::HEADER_BG.into()),
+					border: iced::Border {
+						color: colors::ACCENT,
+						width: 1.0,
+						radius: 4.0.into(),
+					},
+					..Default::default()
+				}),
+		)
+		.width(Length::Fill)
+		.height(Length::Fill)
+		.center_x(Length::Fill)
+		.center_y(Length::Fill)
+		.style(|_| container::Style {
+			background: Some(colors::SPLIT_PREVIEW.into()),
+			..Default::default()
+		})
+		.into()
 	}
 
 	fn view_dock_preview<'a, M>(
@@ -1050,6 +1122,52 @@ impl<C: AreaKind> PanelSystem<C> {
 			new_is_first,
 		);
 		self.join_area(source_id);
+	}
+
+	/// 2つのエリアをレイアウト上で入れ替える（全体移動）
+	fn swap_areas(&mut self, a_id: usize, b_id: usize) {
+		if a_id == b_id {
+			return;
+		}
+		let Some(path_a) = self.area_path(a_id) else {
+			return;
+		};
+		let Some(path_b) = self.area_path(b_id) else {
+			return;
+		};
+		let Some(area_a) = Self::find_area_clone(&self.root, a_id) else {
+			return;
+		};
+		let Some(area_b) = Self::find_area_clone(&self.root, b_id) else {
+			return;
+		};
+
+		Self::set_leaf_at_path(&mut self.root, &path_a, area_b);
+		Self::set_leaf_at_path(&mut self.root, &path_b, area_a);
+	}
+
+	fn find_area_clone(node: &DockNode<C>, area_id: usize) -> Option<Area<C>> {
+		match node {
+			DockNode::Leaf(area) if area.id == area_id => Some(area.clone()),
+			DockNode::Split { first, second, .. } => Self::find_area_clone(first, area_id)
+				.or_else(|| Self::find_area_clone(second, area_id)),
+			_ => None,
+		}
+	}
+
+	fn set_leaf_at_path(node: &mut DockNode<C>, path: &[usize], area: Area<C>) {
+		if path.is_empty() {
+			*node = DockNode::Leaf(area);
+			return;
+		}
+
+		if let DockNode::Split { first, second, .. } = node {
+			match path.first() {
+				Some(0) => Self::set_leaf_at_path(first, &path[1..], area),
+				Some(1) => Self::set_leaf_at_path(second, &path[1..], area),
+				_ => {}
+			}
+		}
 	}
 
 	fn split_area(
