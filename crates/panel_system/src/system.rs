@@ -730,9 +730,9 @@ impl<C: AreaKind> PanelSystem<C> {
 		let body = content_view(area.id, &area.content);
 
 		let editor_menu: Element<'_, PanelSystemMessage<C, M>> = if menu_open {
-			const MENU_ICON: f32 = 14.0;
-			const COL_WIDTH: f32 = 148.0;
-			const ROW_HEIGHT: f32 = 22.0;
+			const MENU_ICON: f32 = 12.0;
+			const COL_WIDTH: f32 = 104.0;
+			const ROW_HEIGHT: f32 = 18.0;
 
 			let columns = row(C::menu_columns()
 				.into_iter()
@@ -748,7 +748,7 @@ impl<C: AreaKind> PanelSystem<C> {
 							snap: true,
 						}),
 					]
-					.spacing(3)
+					.spacing(2)
 					.width(Length::Fill);
 
 					let items = column(
@@ -768,18 +768,18 @@ impl<C: AreaKind> PanelSystem<C> {
 								};
 
 								let row_content = row![
-									container(panel_icon_svg_colored(kind.icon(), MENU_ICON, icon_color)).width(18),
+									container(panel_icon_svg_colored(kind.icon(), MENU_ICON, icon_color)).width(14),
 									text(kind.label()).size(constants::style::FONT_UI).color(label_color),
 								]
-								.spacing(6)
+								.spacing(4)
 								.align_y(iced::Alignment::Center);
 
 								button(row_content)
 									.padding(iced::Padding {
-										top: 3.0,
-										right: 6.0,
-										bottom: 3.0,
-										left: 4.0,
+										top: 1.0,
+										right: 4.0,
+										bottom: 1.0,
+										left: 2.0,
 									})
 									.width(Length::Fill)
 									.height(ROW_HEIGHT)
@@ -789,21 +789,21 @@ impl<C: AreaKind> PanelSystem<C> {
 							})
 							.collect::<Vec<_>>(),
 					)
-					.spacing(1);
+					.spacing(0);
 
-					container(column![header, items].spacing(4).height(Length::Shrink))
+					container(column![header, items].spacing(2).height(Length::Shrink))
 						.width(COL_WIDTH)
 						.height(Length::Shrink)
 						.padding(iced::Padding {
-							top: 6.0,
-							right: 6.0,
-							bottom: 6.0,
-							left: 6.0,
+							top: 4.0,
+							right: 3.0,
+							bottom: 4.0,
+							left: 3.0,
 						})
 						.into()
 				})
 				.collect::<Vec<_>>())
-			.spacing(2)
+			.spacing(0)
 			.align_y(iced::Alignment::Start)
 			.height(Length::Shrink);
 
