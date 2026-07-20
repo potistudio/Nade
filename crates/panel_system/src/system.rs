@@ -1360,13 +1360,15 @@ fn button_style(status: iced::widget::button::Status) -> iced::widget::button::S
 	}
 }
 
-/// 中央ゾーン外側の座標を、中央=0.5・端=最小/最大になるよう倍率マップする
+/// 中央ゾーン外側の座標を、中央=0.5・端=その方向の薄い分割になるよう倍率マップする
 fn ratio_from_center(pos: f32, new_is_first: bool) -> f32 {
 	const MIN_RATIO: f32 = 0.15;
+	const MAX_RATIO: f32 = 0.85;
 	let zone = MOVE_CENTER_ZONE;
 
 	if new_is_first {
 		// 上/左: [0, 0.5 - zone] → [MIN_RATIO, 0.5]
+		// 端に近いほど first（移動先）が薄い
 		let boundary = 0.5 - zone;
 		let t = if boundary > f32::EPSILON {
 			(pos / boundary).clamp(0.0, 1.0)
@@ -1375,15 +1377,15 @@ fn ratio_from_center(pos: f32, new_is_first: bool) -> f32 {
 		};
 		MIN_RATIO + t * (0.5 - MIN_RATIO)
 	} else {
-		// 下/右: [0.5 + zone, 1] → [0.5, MIN_RATIO]
-		// （端に近いほど移動先側が大きくなる）
+		// 下/右: [0.5 + zone, 1] → [0.5, MAX_RATIO]
+		// 端に近いほど second（移動先）が薄い
 		let boundary = 0.5 + zone;
 		let t = if (1.0 - boundary) > f32::EPSILON {
 			((pos - boundary) / (1.0 - boundary)).clamp(0.0, 1.0)
 		} else {
 			0.0
 		};
-		0.5 - t * (0.5 - MIN_RATIO)
+		0.5 + t * (MAX_RATIO - 0.5)
 	}
 }
 
