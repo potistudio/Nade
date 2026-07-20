@@ -3,7 +3,7 @@
 //! 単一エディタのエリア分割・結合・種別切替・リサイズを提供します。
 
 use iced::{
-	Color, Element, Length, Point, Size,
+	Color, Element, Length, Point, Rectangle, Size,
 	widget::{Space, button, column, container, mouse_area, pick_list, row, stack, text},
 };
 
@@ -102,6 +102,7 @@ impl<C: AreaKind> PanelSystem<C> {
 					start_pos: self.last_mouse_pos,
 					current_pos: self.last_mouse_pos,
 					action: None,
+					ratio: 0.5,
 				};
 			}
 
@@ -114,29 +115,13 @@ impl<C: AreaKind> PanelSystem<C> {
 						start_pos,
 						..
 					} => {
-						let dx = pos.x - start_pos.x;
-						let dy = pos.y - start_pos.y;
-						let distance = (dx * dx + dy * dy).sqrt();
-						let action = if distance > CORNER_DRAG_THRESHOLD {
-							// 角からエリア内側（左上方向）へドラッグ → 分割
-							// 外向き（右下）は結合候補だが、結合は Join ボタンで行う
-							if dx < 0.0 || dy < 0.0 {
-								Some(if dx.abs() > dy.abs() {
-									CornerAction::SplitHorizontal
-								} else {
-									CornerAction::SplitVertical
-								})
-							} else {
-								None
-							}
-						} else {
-							None
-						};
+						let (action, ratio) = self.corner_drag_preview(area_id, start_pos, pos);
 						self.drag_state = DragState::CornerDrag {
 							area_id,
 							start_pos,
 							current_pos: pos,
 							action,
+							ratio,
 						};
 					}
 					DragState::Resizing {
@@ -165,10 +150,11 @@ impl<C: AreaKind> PanelSystem<C> {
 				if let DragState::CornerDrag {
 					area_id,
 					action: Some(action),
+					ratio,
 					..
 				} = &self.drag_state
 				{
-					self.split_area(*area_id, action.direction());
+					self.split_area(*area_id, action.direction(), *ratio);
 				}
 				self.drag_state = DragState::None;
 			}
@@ -269,6 +255,133 @@ impl<C: AreaKind> PanelSystem<C> {
 		}
 
 		size
+	}
+
+	/// コーナードラッグ中の分割方向と比率を算出する
+	fn corner_drag_preview(
+		&self,
+		area_id: usize,
+		start_pos: Point,
+		pos: Point,
+	) -> (Option<CornerAction>, f32) {
+		let dx = pos.x - start_pos.x;
+		let dy = pos.y - start_pos.y;
+		let distance = (dx * dx + dy * dy).sqrt();
+
+		if distance <= CORNER_DRAG_THRESHOLD || (dx >= 0.0 && dy >= 0.0) {
+			return (None, 0.5);
+		}
+
+		let action = if dx.abs() > dy.abs() {
+			CornerAction::SplitHorizontal
+		} else {
+			CornerAction::SplitVertical
+		};
+
+		let ratio = self
+			.area_path(area_id)
+			.map(|path| {
+				let bounds = self.bounds_at_path(&path);
+				match action {
+					CornerAction::SplitHorizontal => {
+						if bounds.width > 1.0 {
+							((pos.x - bounds.x) / bounds.width).clamp(0.15, 0.85)
+						} else {
+							0.5
+						}
+					}
+					CornerAction::SplitVertical => {
+						if bounds.height > 1.0 {
+							((pos.y - bounds.y) / bounds.height).clamp(0.15, 0.85)
+						} else {
+							0.5
+						}
+					}
+				}
+			})
+			.unwrap_or(0.5);
+
+		(Some(action), ratio)
+	}
+
+	fn area_path(&self, area_id: usize) -> Option<Vec<usize>> {
+		let mut path = Vec::new();
+		if Self::find_area_path(&self.root, area_id, &mut path) {
+			Some(path)
+		} else {
+			None
+		}
+	}
+
+	fn find_area_path(node: &DockNode<C>, area_id: usize, path: &mut Vec<usize>) -> bool {
+		match node {
+			DockNode::Leaf(area) => area.id == area_id,
+			DockNode::Split { first, second, .. } => {
+				path.push(0);
+				if Self::find_area_path(first, area_id, path) {
+					return true;
+				}
+				path.pop();
+				path.push(1);
+				if Self::find_area_path(second, area_id, path) {
+					return true;
+				}
+				path.pop();
+				false
+			}
+			DockNode::Empty => false,
+		}
+	}
+
+	fn bounds_at_path(&self, path: &[usize]) -> Rectangle {
+		let mut bounds = Rectangle::new(Point::ORIGIN, self.window_size);
+		let mut node = &self.root;
+
+		for &index in path {
+			let DockNode::Split {
+				direction,
+				ratio,
+				first,
+				second,
+			} = node
+			else {
+				break;
+			};
+
+			match direction {
+				SplitDirection::Horizontal => {
+					let first_width = bounds.width * *ratio;
+					let second_width = bounds.width * (1.0 - *ratio);
+					if index == 0 {
+						bounds = Rectangle::new(bounds.position(), Size::new(first_width, bounds.height));
+						node = first;
+					} else {
+						bounds = Rectangle::new(
+							Point::new(bounds.x + first_width, bounds.y),
+							Size::new(second_width, bounds.height),
+						);
+						node = second;
+					}
+				}
+				SplitDirection::Vertical => {
+					let first_height = bounds.height * *ratio;
+					let second_height = bounds.height * (1.0 - *ratio);
+					if index == 0 {
+						bounds =
+							Rectangle::new(bounds.position(), Size::new(bounds.width, first_height));
+						node = first;
+					} else {
+						bounds = Rectangle::new(
+							Point::new(bounds.x, bounds.y + first_height),
+							Size::new(bounds.width, second_height),
+						);
+						node = second;
+					}
+				}
+			}
+		}
+
+		bounds
 	}
 
 	pub fn view<'a, F, M>(&'a self, content_view: F) -> Element<'a, PanelSystemMessage<C, M>>
@@ -427,9 +540,9 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		let body = content_view(area.id, &area.content);
 
-		let split_preview = self.drag_state.corner_action().and_then(|(id, action)| {
+		let split_preview = self.drag_state.corner_preview().and_then(|(id, action, ratio)| {
 			if id == area_id {
-				Some(self.view_split_preview(action))
+				Some(self.view_split_preview(action, ratio))
 			} else {
 				None
 			}
@@ -516,22 +629,28 @@ impl<C: AreaKind> PanelSystem<C> {
 	fn view_split_preview<'a, M>(
 		&self,
 		action: CornerAction,
+		ratio: f32,
 	) -> Element<'a, PanelSystemMessage<C, M>>
 	where
 		M: Clone + std::fmt::Debug + 'static,
 	{
+		const TOTAL: u16 = 10000;
+		let first_portion = ((ratio * TOTAL as f32).round() as u16).clamp(1, TOTAL - 1);
+		let second_portion = TOTAL - first_portion;
+
+		// 新規エリア側（second）をハイライトし、分割線位置を示す
 		let preview: Element<'_, PanelSystemMessage<C, M>> = match action {
 			CornerAction::SplitHorizontal => row![
 				container(Space::new())
-					.width(Length::FillPortion(1))
+					.width(Length::FillPortion(first_portion))
+					.height(Length::Fill),
+				container(Space::new())
+					.width(Length::FillPortion(second_portion))
 					.height(Length::Fill)
 					.style(|_| container::Style {
 						background: Some(colors::SPLIT_PREVIEW.into()),
 						..Default::default()
 					}),
-				container(Space::new())
-					.width(Length::FillPortion(1))
-					.height(Length::Fill),
 			]
 			.width(Length::Fill)
 			.height(Length::Fill)
@@ -539,14 +658,14 @@ impl<C: AreaKind> PanelSystem<C> {
 			CornerAction::SplitVertical => column![
 				container(Space::new())
 					.width(Length::Fill)
-					.height(Length::FillPortion(1))
+					.height(Length::FillPortion(first_portion)),
+				container(Space::new())
+					.width(Length::Fill)
+					.height(Length::FillPortion(second_portion))
 					.style(|_| container::Style {
 						background: Some(colors::SPLIT_PREVIEW.into()),
 						..Default::default()
 					}),
-				container(Space::new())
-					.width(Length::Fill)
-					.height(Length::FillPortion(1)),
 			]
 			.width(Length::Fill)
 			.height(Length::Fill)
@@ -703,7 +822,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		}
 	}
 
-	fn split_area(&mut self, area_id: usize, direction: SplitDirection) {
+	fn split_area(&mut self, area_id: usize, direction: SplitDirection, ratio: f32) {
 		let Some(content) = self.find_area_content(area_id) else {
 			return;
 		};
@@ -711,8 +830,9 @@ impl<C: AreaKind> PanelSystem<C> {
 		let new_id = self.next_area_id;
 		self.next_area_id += 1;
 		let new_area = Area::new(new_id, content);
+		let ratio = ratio.clamp(0.15, 0.85);
 
-		Self::split_area_recursive(&mut self.root, area_id, new_area, direction);
+		Self::split_area_recursive(&mut self.root, area_id, new_area, direction, ratio);
 	}
 
 	fn split_area_recursive(
@@ -720,21 +840,22 @@ impl<C: AreaKind> PanelSystem<C> {
 		area_id: usize,
 		new_area: Area<C>,
 		direction: SplitDirection,
+		ratio: f32,
 	) -> bool {
 		match node {
 			DockNode::Leaf(area) if area.id == area_id => {
 				let existing = std::mem::replace(node, DockNode::Empty);
 				*node = DockNode::Split {
 					direction,
-					ratio: 0.5,
+					ratio,
 					first: Box::new(existing),
 					second: Box::new(DockNode::Leaf(new_area)),
 				};
 				true
 			}
 			DockNode::Split { first, second, .. } => {
-				Self::split_area_recursive(first, area_id, new_area.clone(), direction)
-					|| Self::split_area_recursive(second, area_id, new_area, direction)
+				Self::split_area_recursive(first, area_id, new_area.clone(), direction, ratio)
+					|| Self::split_area_recursive(second, area_id, new_area, direction, ratio)
 			}
 			_ => false,
 		}

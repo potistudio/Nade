@@ -5,7 +5,7 @@ use iced::Point;
 use crate::node::SplitDirection;
 
 /// コーナー操作のプレビュー
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CornerAction {
 	/// 左右分割
 	SplitHorizontal,
@@ -41,17 +41,20 @@ pub enum DragState {
 		start_pos: Point,
 		current_pos: Point,
 		action: Option<CornerAction>,
+		/// 分割比率（first / 全体）。`action` があるとき有効
+		ratio: f32,
 	},
 }
 
 impl DragState {
-	pub fn corner_action(&self) -> Option<(usize, CornerAction)> {
+	pub fn corner_preview(&self) -> Option<(usize, CornerAction, f32)> {
 		match self {
 			Self::CornerDrag {
 				area_id,
 				action: Some(action),
+				ratio,
 				..
-			} => Some((*area_id, *action)),
+			} => Some((*area_id, *action, *ratio)),
 			_ => None,
 		}
 	}
