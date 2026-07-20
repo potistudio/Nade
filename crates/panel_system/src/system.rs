@@ -422,19 +422,19 @@ impl<C: AreaKind> PanelSystem<C> {
 			return Some(DropLayout::FullMove);
 		}
 
-		// 中央から離れた主軸方向へ分割
+		// 中央から離れた主軸方向へ分割（分割位置は中央基準で倍率マップ）
 		if dx.abs() > dy.abs() {
 			let new_is_first = dx < 0.0; // 左 = first
 			Some(DropLayout::Split {
 				direction: SplitDirection::Horizontal,
-				ratio: rx.clamp(0.15, 0.85),
+				ratio: ratio_from_center(rx, new_is_first),
 				new_is_first,
 			})
 		} else {
 			let new_is_first = dy < 0.0; // 上 = first
 			Some(DropLayout::Split {
 				direction: SplitDirection::Vertical,
-				ratio: ry.clamp(0.15, 0.85),
+				ratio: ratio_from_center(ry, new_is_first),
 				new_is_first,
 			})
 		}
@@ -1357,6 +1357,33 @@ fn button_style(status: iced::widget::button::Status) -> iced::widget::button::S
 			..Default::default()
 		},
 		..Default::default()
+	}
+}
+
+/// 中央ゾーン外側の座標を、中央=0.5・端=最小/最大になるよう倍率マップする
+fn ratio_from_center(pos: f32, new_is_first: bool) -> f32 {
+	const MIN_RATIO: f32 = 0.15;
+	let zone = MOVE_CENTER_ZONE;
+
+	if new_is_first {
+		// 上/左: [0, 0.5 - zone] → [MIN_RATIO, 0.5]
+		let boundary = 0.5 - zone;
+		let t = if boundary > f32::EPSILON {
+			(pos / boundary).clamp(0.0, 1.0)
+		} else {
+			1.0
+		};
+		MIN_RATIO + t * (0.5 - MIN_RATIO)
+	} else {
+		// 下/右: [0.5 + zone, 1] → [0.5, MIN_RATIO]
+		// （端に近いほど移動先側が大きくなる）
+		let boundary = 0.5 + zone;
+		let t = if (1.0 - boundary) > f32::EPSILON {
+			((pos - boundary) / (1.0 - boundary)).clamp(0.0, 1.0)
+		} else {
+			0.0
+		};
+		0.5 - t * (0.5 - MIN_RATIO)
 	}
 }
 
