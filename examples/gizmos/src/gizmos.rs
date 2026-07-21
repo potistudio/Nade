@@ -22,17 +22,17 @@ const GRID_BASE_COLOR: (f32, f32, f32) = (0.18, 0.18, 0.18);
 const GRID_MAX_ALPHA: f32 = 0.8;
 const GRID_MIN_SCREEN_SPACING: f32 = 8.0; // Minimum screen pixels between grid lines before fading
 const GRID_FADE_RANGE: f32 = 16.0; // Screen pixels range for fading
-const ORIGIN_AXIS_COLOR: Color = Color::from_rgb8(86, 128, 194);
-const BACKGROUND_COLOR: Color = Color::from_rgb8(48, 48, 48);
+const ORIGIN_AXIS_COLOR: Color = Color::from_rgb8(64, 140, 196);
+const BACKGROUND_COLOR: Color = Color::from_rgb8(28, 34, 42);
 
 const HANDLE_RADIUS: f32 = 5.0;
 const CONTROL_POINT_RADIUS: f32 = 3.5;
 const BEZIER_SEGMENTS: usize = 64;
 const HIT_THRESHOLD: f32 = 12.0;
 
-const BEZIER_COLOR: Color = Color::from_rgb8(232, 125, 13);
-const HANDLE_COLOR: Color = Color::from_rgb8(230, 230, 230);
-const CONTROL_LINE_COLOR: Color = Color::from_rgb8(153, 153, 153);
+const BEZIER_COLOR: Color = Color::from_rgb8(72, 196, 220);
+const HANDLE_COLOR: Color = Color::from_rgb8(220, 228, 236);
+const CONTROL_LINE_COLOR: Color = Color::from_rgb8(140, 152, 168);
 
 const ZOOM_SPEED: f32 = 0.01;
 const MIN_SCALE: f32 = 0.01;
@@ -553,7 +553,7 @@ impl GizmosCanvasWithState<'_> {
 			let center = self.local_to_frame(h.position());
 			let highlight_stroke = Stroke::default()
 				.with_width(2.0)
-				.with_color(Color::from_rgb8(232, 125, 13));
+				.with_color(Color::from_rgb8(72, 196, 220));
 			frame.stroke(&Path::circle(center, HANDLE_RADIUS + 3.0), highlight_stroke);
 		}
 	}

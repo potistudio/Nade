@@ -14,7 +14,9 @@ pub enum DockNode<C: Clone + std::fmt::Debug> {
 	/// 分割ノード
 	Split {
 		direction: SplitDirection,
-		ratio: f32,
+		/// Size in pixels of the first child along the split axis.
+		/// Values in `0.0..=1.0` are treated as ratios until materialized.
+		first_size: f32,
 		first: Box<DockNode<C>>,
 		second: Box<DockNode<C>>,
 	},

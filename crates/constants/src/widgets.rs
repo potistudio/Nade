@@ -1,4 +1,4 @@
-//! Flat Blender-like iced widget styles.
+//! Flat cool-dark iced widget styles.
 //!
 //! Apply via `.style(widgets::button_tool)` etc. Theme alone only fixes the
 //! palette; these Catalog style fns control borders, radius, and interaction.
@@ -225,7 +225,7 @@ pub fn button_ghost(_theme: &Theme, status: button::Status) -> button::Style {
 	}
 }
 
-/// Blender editor-type selector: compact dark chip with subtle border.
+/// Editor-type selector: compact dark chip with subtle border.
 pub fn button_editor_type(_theme: &Theme, status: button::Status) -> button::Style {
 	let (background, border_color) = match status {
 		button::Status::Active => (Some(WIDGET_COLOR.into()), BORDER_SUBTLE_COLOR),
@@ -243,7 +243,7 @@ pub fn button_editor_type(_theme: &Theme, status: button::Status) -> button::Sty
 	}
 }
 
-/// Blender editor-type menu row. `selected` draws the blue active highlight.
+/// Editor-type menu row. `selected` draws the cool-blue active highlight.
 pub fn button_menu_item(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
 	button_menu_item_faded(selected, 1.0)
 }
@@ -357,7 +357,7 @@ pub fn text_input(_theme: &Theme, status: text_input_widget::Status) -> text_inp
 }
 
 // ---------------------------------------------------------------------------
-// Slider — thin rail, rectangular Blender-like handle
+// Slider — thin rail, rectangular handle
 // ---------------------------------------------------------------------------
 
 pub fn slider(_theme: &Theme, status: slider_widget::Status) -> slider_widget::Style {

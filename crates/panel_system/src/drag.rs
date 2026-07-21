@@ -36,7 +36,7 @@ pub enum DragState {
 		direction: SplitDirection,
 		start_pos: Point,
 		current_pos: Point,
-		start_ratio: f32,
+		start_first_size: f32,
 	},
 	/// エリア角をドラッグ中（分割 or 移動）
 	CornerDrag {
@@ -44,7 +44,7 @@ pub enum DragState {
 		start_pos: Point,
 		current_pos: Point,
 		action: Option<CornerAction>,
-		/// 分割比率（first / 全体）
+		/// 分割比率（first / 全体）— preview / apply 用
 		ratio: f32,
 		/// 移動先エリア。Move のとき有効
 		target_area_id: Option<usize>,

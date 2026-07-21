@@ -33,10 +33,10 @@ impl Default for GridConfig {
 	fn default() -> Self {
 		Self {
 			spacing: 20.0,
-			line_color: Color::from_rgb8(36, 36, 36),
+			line_color: Color::from_rgb8(32, 40, 52),
 			line_width: 1.0,
 			show_origin_axes: true,
-			origin_axis_color: Color::from_rgb8(86, 128, 194),
+			origin_axis_color: Color::from_rgb8(64, 140, 196),
 		}
 	}
 }
@@ -61,7 +61,7 @@ impl Default for CanvasState {
 		Self {
 			scale: 1.0,
 			offset: Vector::ZERO,
-			background_color: Color::from_rgb8(48, 48, 48),
+			background_color: Color::from_rgb8(28, 34, 42),
 			grid_config: Some(GridConfig::default()),
 			cache: canvas::Cache::default(),
 		}

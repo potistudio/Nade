@@ -13,7 +13,8 @@ use iced::{
 use crate::{
 	AreaKind,
 	consts::{
-		CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, MOVE_CENTER_ZONE, PANEL_GAP, RESIZE_HIT_SIZE, colors,
+		CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, MIN_PANEL_SIZE, MOVE_CENTER_ZONE, PANEL_GAP,
+		RESIZE_HIT_SIZE, colors,
 	},
 	container::Area,
 	drag::{CornerAction, DragState},
@@ -64,13 +65,12 @@ fn editor_menu_transition(area_id: usize, from: f32, to: f32) -> EditorMenuState
 	}
 }
 
-/// Child bounds for a split, accounting for the visible [`PANEL_GAP`] gutter.
-fn split_child_bounds(bounds: Rectangle, direction: SplitDirection, ratio: f32) -> (Rectangle, Rectangle) {
-	let ratio = ratio.clamp(0.0, 1.0);
+/// Child bounds for a split. `first_size` is pixels, or a ratio when `<= 1.0`.
+fn split_child_bounds(bounds: Rectangle, direction: SplitDirection, first_size: f32) -> (Rectangle, Rectangle) {
 	match direction {
 		SplitDirection::Horizontal => {
 			let available = (bounds.width - PANEL_GAP).max(0.0);
-			let first_width = available * ratio;
+			let first_width = leading_size(first_size, available);
 			let second_width = (available - first_width).max(0.0);
 			(
 				Rectangle::new(bounds.position(), Size::new(first_width, bounds.height)),
@@ -82,7 +82,7 @@ fn split_child_bounds(bounds: Rectangle, direction: SplitDirection, ratio: f32) 
 		}
 		SplitDirection::Vertical => {
 			let available = (bounds.height - PANEL_GAP).max(0.0);
-			let first_height = available * ratio;
+			let first_height = leading_size(first_size, available);
 			let second_height = (available - first_height).max(0.0);
 			(
 				Rectangle::new(bounds.position(), Size::new(bounds.width, first_height)),
@@ -92,6 +92,27 @@ fn split_child_bounds(bounds: Rectangle, direction: SplitDirection, ratio: f32) 
 				),
 			)
 		}
+	}
+}
+
+fn leading_size(first_size: f32, available: f32) -> f32 {
+	if available <= 0.0 {
+		return 0.0;
+	}
+	let min = MIN_PANEL_SIZE.min(available * 0.5);
+	let max = (available - min).max(min);
+	let raw = if first_size <= 1.0 {
+		available * first_size.clamp(0.0, 1.0)
+	} else {
+		first_size
+	};
+	raw.clamp(min, max)
+}
+
+fn available_along(bounds: Rectangle, direction: SplitDirection) -> f32 {
+	match direction {
+		SplitDirection::Horizontal => (bounds.width - PANEL_GAP).max(0.0),
+		SplitDirection::Vertical => (bounds.height - PANEL_GAP).max(0.0),
 	}
 }
 
@@ -297,17 +318,18 @@ impl<C: AreaKind> PanelSystem<C> {
 						path,
 						direction,
 						start_pos,
-						start_ratio,
+						start_first_size,
 						..
 					} => {
-						let new_ratio = self.calculate_new_ratio(&path, start_pos, pos, start_ratio, direction);
-						self.set_ratio_at_path(&path, new_ratio);
+						let new_size =
+							self.calculate_new_first_size(&path, start_pos, pos, start_first_size, direction);
+						self.set_first_size_at_path(&path, new_size);
 						self.drag_state = DragState::Resizing {
 							path,
 							direction,
 							start_pos,
 							current_pos: pos,
-							start_ratio,
+							start_first_size,
 						};
 					}
 					_ => {}
@@ -352,13 +374,13 @@ impl<C: AreaKind> PanelSystem<C> {
 			}
 
 			PanelSystemMessage::ResizeStart(path, direction) => {
-				if let Some(ratio) = self.get_ratio_at_path(&path) {
+				if let Some(first_size) = self.get_first_size_at_path(&path) {
 					self.drag_state = DragState::Resizing {
 						path,
 						direction,
 						start_pos: self.last_mouse_pos,
 						current_pos: self.last_mouse_pos,
-						start_ratio: ratio,
+						start_first_size: first_size,
 					};
 				}
 			}
@@ -371,28 +393,59 @@ impl<C: AreaKind> PanelSystem<C> {
 
 			PanelSystemMessage::WindowResized(size) => {
 				self.window_size = size;
+				self.materialize_split_sizes();
 			}
 		}
 	}
 
-	fn calculate_new_ratio(
+	fn calculate_new_first_size(
 		&self,
 		path: &[usize],
 		start_pos: Point,
 		current_pos: Point,
-		start_ratio: f32,
+		start_first_size: f32,
 		direction: SplitDirection,
 	) -> f32 {
-		let region = self.size_at_path(path);
-		let size = match direction {
-			SplitDirection::Horizontal => (region.width - PANEL_GAP).max(100.0),
-			SplitDirection::Vertical => (region.height - PANEL_GAP).max(100.0),
-		};
+		let bounds = self.bounds_at_path(path);
+		let available = available_along(bounds, direction);
+		let min = MIN_PANEL_SIZE.min(available * 0.5);
+		let max = (available - min).max(min);
 		let delta = match direction {
-			SplitDirection::Horizontal => (current_pos.x - start_pos.x) / size,
-			SplitDirection::Vertical => (current_pos.y - start_pos.y) / size,
+			SplitDirection::Horizontal => current_pos.x - start_pos.x,
+			SplitDirection::Vertical => current_pos.y - start_pos.y,
 		};
-		(start_ratio + delta).clamp(0.15, 0.85)
+		let materialized = if start_first_size <= 1.0 {
+			available * start_first_size.clamp(0.0, 1.0)
+		} else {
+			start_first_size
+		};
+		(materialized + delta).clamp(min, max)
+	}
+
+	/// Convert ratio-sized splits to pixels and clamp to the current window.
+	fn materialize_split_sizes(&mut self) {
+		let root_bounds = Rectangle::new(Point::ORIGIN, self.window_size);
+		Self::materialize_node(&mut self.root, root_bounds);
+	}
+
+	fn materialize_node(node: &mut DockNode<C>, bounds: Rectangle) {
+		let DockNode::Split {
+			direction,
+			first_size,
+			first,
+			second,
+		} = node
+		else {
+			return;
+		};
+		let available = available_along(bounds, *direction);
+		// Only convert ratio → px. Keep stored px on window resize so the Fill side absorbs change.
+		if *first_size <= 1.0 {
+			*first_size = leading_size(*first_size, available);
+		}
+		let (first_bounds, second_bounds) = split_child_bounds(bounds, *direction, *first_size);
+		Self::materialize_node(first, first_bounds);
+		Self::materialize_node(second, second_bounds);
 	}
 
 	fn size_at_path(&self, path: &[usize]) -> Size {
@@ -402,7 +455,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		for &index in path {
 			let DockNode::Split {
 				direction,
-				ratio,
+				first_size,
 				first,
 				second,
 			} = node
@@ -413,7 +466,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			match direction {
 				SplitDirection::Horizontal => {
 					let (first_bounds, second_bounds) =
-						split_child_bounds(Rectangle::new(Point::ORIGIN, size), *direction, *ratio);
+						split_child_bounds(Rectangle::new(Point::ORIGIN, size), *direction, *first_size);
 					if index == 0 {
 						size = first_bounds.size();
 						node = first;
@@ -424,7 +477,7 @@ impl<C: AreaKind> PanelSystem<C> {
 				}
 				SplitDirection::Vertical => {
 					let (first_bounds, second_bounds) =
-						split_child_bounds(Rectangle::new(Point::ORIGIN, size), *direction, *ratio);
+						split_child_bounds(Rectangle::new(Point::ORIGIN, size), *direction, *first_size);
 					if index == 0 {
 						size = first_bounds.size();
 						node = first;
@@ -572,11 +625,11 @@ impl<C: AreaKind> PanelSystem<C> {
 			}
 			DockNode::Split {
 				direction,
-				ratio,
+				first_size,
 				first,
 				second,
 			} => {
-				let (first_bounds, second_bounds) = split_child_bounds(bounds, *direction, *ratio);
+				let (first_bounds, second_bounds) = split_child_bounds(bounds, *direction, *first_size);
 				Self::find_area_at_point(first, pos, first_bounds)
 					.or_else(|| Self::find_area_at_point(second, pos, second_bounds))
 			}
@@ -620,7 +673,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		for &index in path {
 			let DockNode::Split {
 				direction,
-				ratio,
+				first_size,
 				first,
 				second,
 			} = node
@@ -630,7 +683,7 @@ impl<C: AreaKind> PanelSystem<C> {
 
 			match direction {
 				SplitDirection::Horizontal | SplitDirection::Vertical => {
-					let (first_bounds, second_bounds) = split_child_bounds(bounds, *direction, *ratio);
+					let (first_bounds, second_bounds) = split_child_bounds(bounds, *direction, *first_size);
 					if index == 0 {
 						bounds = first_bounds;
 						node = first;
@@ -858,7 +911,7 @@ impl<C: AreaKind> PanelSystem<C> {
 
 			DockNode::Split {
 				direction,
-				ratio,
+				first_size,
 				first,
 				second,
 			} => {
@@ -866,71 +919,77 @@ impl<C: AreaKind> PanelSystem<C> {
 				first_path.push(0);
 				let mut second_path = path.clone();
 				second_path.push(1);
-
-				let first_view = self.view_node(first, first_path, content_view);
-				let second_view = self.view_node(second, second_path, content_view);
-
-				const TOTAL_PORTIONS: u16 = 10000;
-				let first_portion = ((*ratio * TOTAL_PORTIONS as f32).round() as u16).clamp(1, TOTAL_PORTIONS - 1);
-				let second_portion = TOTAL_PORTIONS - first_portion;
-
-				let first_len = Length::FillPortion(first_portion);
-				let second_len = Length::FillPortion(second_portion);
-				let resize_path = path;
+				let direction = *direction;
+				let available = available_along(self.bounds_at_path(&path), direction);
+				let leading = leading_size(*first_size, available);
 				let overhang = Length::Fixed(((RESIZE_HIT_SIZE - PANEL_GAP) * 0.5).max(0.0));
+				let gutter_path = path.clone();
+				let hit_path = path;
 
 				match direction {
 					SplitDirection::Horizontal => row![
 						stack![
-							container(first_view).width(Length::Fill).height(Length::Fill),
+							container(self.view_node(first, first_path, content_view))
+								.width(Length::Fill)
+								.height(Length::Fill),
 							row![
 								Space::new().width(Length::Fill),
-								self.view_resize_hit(*direction, resize_path.clone(), overhang, Length::Fill),
+								self.view_resize_hit(direction, hit_path.clone(), overhang, Length::Fill),
 							]
 							.width(Length::Fill)
 							.height(Length::Fill),
 						]
-						.width(first_len)
+						.width(Length::Fixed(leading))
 						.height(Length::Fill),
-						self.view_panel_gutter(*direction, resize_path.clone()),
+						self.view_panel_gutter(direction, gutter_path),
 						stack![
-							container(second_view).width(Length::Fill).height(Length::Fill),
+							container(self.view_node(second, second_path, content_view))
+								.width(Length::Fill)
+								.height(Length::Fill),
 							row![
-								self.view_resize_hit(*direction, resize_path, overhang, Length::Fill),
+								self.view_resize_hit(direction, hit_path, overhang, Length::Fill),
 								Space::new().width(Length::Fill),
 							]
 							.width(Length::Fill)
 							.height(Length::Fill),
 						]
-						.width(second_len)
+						.width(Length::Fill)
 						.height(Length::Fill),
 					]
+					.width(Length::Fill)
+					.height(Length::Fill)
 					.into(),
 					SplitDirection::Vertical => column![
 						stack![
-							container(first_view).width(Length::Fill).height(Length::Fill),
+							container(self.view_node(first, first_path, content_view))
+								.width(Length::Fill)
+								.height(Length::Fill),
 							column![
 								Space::new().height(Length::Fill),
-								self.view_resize_hit(*direction, resize_path.clone(), Length::Fill, overhang),
+								self.view_resize_hit(direction, hit_path.clone(), Length::Fill, overhang),
 							]
 							.width(Length::Fill)
 							.height(Length::Fill),
 						]
 						.width(Length::Fill)
-						.height(first_len),
-						self.view_panel_gutter(*direction, resize_path.clone()),
+						.height(Length::Fixed(leading)),
+						self.view_panel_gutter(direction, gutter_path),
 						stack![
-							container(second_view).width(Length::Fill).height(Length::Fill),
+							container(self.view_node(second, second_path, content_view))
+								.width(Length::Fill)
+								.height(Length::Fill),
 							column![
-								self.view_resize_hit(*direction, resize_path, Length::Fill, overhang),
+								self.view_resize_hit(direction, hit_path, Length::Fill, overhang),
 								Space::new().height(Length::Fill),
 							]
 							.width(Length::Fill)
 							.height(Length::Fill),
 						]
 						.width(Length::Fill)
-						.height(second_len),
+						.height(Length::Fill),
 					]
+					.width(Length::Fill)
+					.height(Length::Fill)
 					.into(),
 				}
 			}
@@ -1341,13 +1400,24 @@ impl<C: AreaKind> PanelSystem<C> {
 		let Some(content) = self.find_area_content(source_id) else {
 			return;
 		};
+		let Some(path) = self.area_path(target_id) else {
+			return;
+		};
+		let available = available_along(self.bounds_at_path(&path), direction);
+		let first_size = leading_size(ratio.clamp(0.15, 0.85), available);
 
 		let new_id = self.next_area_id;
 		self.next_area_id += 1;
 		let new_area = Area::new(new_id, content);
-		let ratio = ratio.clamp(0.15, 0.85);
 
-		Self::split_area_recursive(&mut self.root, target_id, new_area, direction, ratio, new_is_first);
+		Self::split_area_recursive(
+			&mut self.root,
+			target_id,
+			new_area,
+			direction,
+			first_size,
+			new_is_first,
+		);
 		self.join_area(source_id);
 	}
 
@@ -1402,13 +1472,22 @@ impl<C: AreaKind> PanelSystem<C> {
 		let Some(content) = self.find_area_content(area_id) else {
 			return;
 		};
+		let Some(path) = self.area_path(area_id) else {
+			return;
+		};
+		let bounds = self.bounds_at_path(&path);
+		let available = match direction {
+			SplitDirection::Horizontal => bounds.width,
+			SplitDirection::Vertical => bounds.height,
+		};
+		let available = (available - PANEL_GAP).max(0.0);
+		let first_size = leading_size(ratio.clamp(0.15, 0.85), available);
 
 		let new_id = self.next_area_id;
 		self.next_area_id += 1;
 		let new_area = Area::new(new_id, content);
-		let ratio = ratio.clamp(0.15, 0.85);
 
-		Self::split_area_recursive(&mut self.root, area_id, new_area, direction, ratio, new_is_first);
+		Self::split_area_recursive(&mut self.root, area_id, new_area, direction, first_size, new_is_first);
 	}
 
 	fn split_area_recursive(
@@ -1416,7 +1495,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		area_id: usize,
 		new_area: Area<C>,
 		direction: SplitDirection,
-		ratio: f32,
+		first_size: f32,
 		new_is_first: bool,
 	) -> bool {
 		match node {
@@ -1426,14 +1505,14 @@ impl<C: AreaKind> PanelSystem<C> {
 				*node = if new_is_first {
 					DockNode::Split {
 						direction,
-						ratio,
+						first_size,
 						first: Box::new(new_leaf),
 						second: Box::new(existing),
 					}
 				} else {
 					DockNode::Split {
 						direction,
-						ratio,
+						first_size,
 						first: Box::new(existing),
 						second: Box::new(new_leaf),
 					}
@@ -1441,8 +1520,8 @@ impl<C: AreaKind> PanelSystem<C> {
 				true
 			}
 			DockNode::Split { first, second, .. } => {
-				Self::split_area_recursive(first, area_id, new_area.clone(), direction, ratio, new_is_first)
-					|| Self::split_area_recursive(second, area_id, new_area, direction, ratio, new_is_first)
+				Self::split_area_recursive(first, area_id, new_area.clone(), direction, first_size, new_is_first)
+					|| Self::split_area_recursive(second, area_id, new_area, direction, first_size, new_is_first)
 			}
 			_ => false,
 		}
@@ -1493,22 +1572,22 @@ impl<C: AreaKind> PanelSystem<C> {
 		}
 	}
 
-	fn get_ratio_at_path(&self, path: &[usize]) -> Option<f32> {
-		Self::get_ratio_recursive(&self.root, path)
+	fn get_first_size_at_path(&self, path: &[usize]) -> Option<f32> {
+		Self::get_first_size_recursive(&self.root, path)
 	}
 
-	fn get_ratio_recursive(node: &DockNode<C>, path: &[usize]) -> Option<f32> {
+	fn get_first_size_recursive(node: &DockNode<C>, path: &[usize]) -> Option<f32> {
 		if path.is_empty() {
-			if let DockNode::Split { ratio, .. } = node {
-				return Some(*ratio);
+			if let DockNode::Split { first_size, .. } = node {
+				return Some(*first_size);
 			}
 			return None;
 		}
 
 		if let DockNode::Split { first, second, .. } = node {
 			match path.first() {
-				Some(0) => Self::get_ratio_recursive(first, &path[1..]),
-				Some(1) => Self::get_ratio_recursive(second, &path[1..]),
+				Some(0) => Self::get_first_size_recursive(first, &path[1..]),
+				Some(1) => Self::get_first_size_recursive(second, &path[1..]),
 				_ => None,
 			}
 		} else {
@@ -1516,22 +1595,22 @@ impl<C: AreaKind> PanelSystem<C> {
 		}
 	}
 
-	fn set_ratio_at_path(&mut self, path: &[usize], new_ratio: f32) {
-		Self::set_ratio_recursive(&mut self.root, path, new_ratio);
+	fn set_first_size_at_path(&mut self, path: &[usize], new_size: f32) {
+		Self::set_first_size_recursive(&mut self.root, path, new_size);
 	}
 
-	fn set_ratio_recursive(node: &mut DockNode<C>, path: &[usize], new_ratio: f32) {
+	fn set_first_size_recursive(node: &mut DockNode<C>, path: &[usize], new_size: f32) {
 		if path.is_empty() {
-			if let DockNode::Split { ratio, .. } = node {
-				*ratio = new_ratio;
+			if let DockNode::Split { first_size, .. } = node {
+				*first_size = new_size;
 			}
 			return;
 		}
 
 		if let DockNode::Split { first, second, .. } = node {
 			match path.first() {
-				Some(0) => Self::set_ratio_recursive(first, &path[1..], new_ratio),
-				Some(1) => Self::set_ratio_recursive(second, &path[1..], new_ratio),
+				Some(0) => Self::set_first_size_recursive(first, &path[1..], new_size),
+				Some(1) => Self::set_first_size_recursive(second, &path[1..], new_size),
 				_ => {}
 			}
 		}
@@ -1625,7 +1704,7 @@ impl<C: AreaKind> LayoutBuilder<C> {
 	pub fn hsplit(first: DockNode<C>, second: DockNode<C>, ratio: f32) -> DockNode<C> {
 		DockNode::Split {
 			direction: SplitDirection::Horizontal,
-			ratio,
+			first_size: ratio,
 			first: Box::new(first),
 			second: Box::new(second),
 		}
@@ -1634,7 +1713,7 @@ impl<C: AreaKind> LayoutBuilder<C> {
 	pub fn vsplit(first: DockNode<C>, second: DockNode<C>, ratio: f32) -> DockNode<C> {
 		DockNode::Split {
 			direction: SplitDirection::Vertical,
-			ratio,
+			first_size: ratio,
 			first: Box::new(first),
 			second: Box::new(second),
 		}

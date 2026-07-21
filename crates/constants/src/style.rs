@@ -1,6 +1,6 @@
-//! Shared Blender-inspired design system.
+//! Shared cool dark design system.
 //!
-//! Flat chrome, compact density, muted greys, blue selection, orange accent.
+//! Flat chrome, compact density, blue-grey surfaces, cyan accent.
 //! Prefer these tokens and [`crate::widgets`] style fns over inline magic numbers.
 
 use iced::theme::Palette;
@@ -10,48 +10,48 @@ use iced::{Color, Theme};
 // Accent
 // ---------------------------------------------------------------------------
 
-/// Active tool / highlight accent (Blender orange).
-pub const ACCENT_COLOR: Color = Color::from_rgb8(232, 125, 13);
+/// Active tool / playhead / highlight (cool cyan).
+pub const ACCENT_COLOR: Color = Color::from_rgb8(72, 196, 220);
 
-/// List / dock selection (Blender blue).
-pub const SELECTION_COLOR: Color = Color::from_rgb8(86, 128, 194);
+/// List / dock selection (cool blue).
+pub const SELECTION_COLOR: Color = Color::from_rgb8(64, 140, 196);
 
-pub const SUCCESS_COLOR: Color = Color::from_rgb8(108, 153, 79);
-pub const WARNING_COLOR: Color = Color::from_rgb8(204, 153, 51);
-pub const DANGER_COLOR: Color = Color::from_rgb8(184, 72, 72);
+pub const SUCCESS_COLOR: Color = Color::from_rgb8(72, 168, 132);
+pub const WARNING_COLOR: Color = Color::from_rgb8(196, 156, 72);
+pub const DANGER_COLOR: Color = Color::from_rgb8(196, 84, 96);
 
 // ---------------------------------------------------------------------------
 // Background hierarchy (window → panel → widget)
 // ---------------------------------------------------------------------------
 
-/// App / dock chrome background (`#161616`).
-pub const BACKGROUND_COLOR: Color = Color::from_rgb8(22, 22, 22);
+/// App / dock chrome background (`#0f1318`).
+pub const BACKGROUND_COLOR: Color = Color::from_rgb8(15, 19, 24);
 
-/// Raised panel surface (`#383838`).
-pub const PANEL_COLOR: Color = Color::from_rgb8(56, 56, 56);
+/// Raised panel surface (`#1c222a`).
+pub const PANEL_COLOR: Color = Color::from_rgb8(28, 34, 42);
 
-/// Header / toolbar strip (`#424242`).
-pub const HEADER_COLOR: Color = Color::from_rgb8(66, 66, 66);
+/// Header / toolbar strip (`#252c36`).
+pub const HEADER_COLOR: Color = Color::from_rgb8(37, 44, 54);
 
-/// Hover / alternating row (`#3e3e3e`).
-pub const BACKGROUND_SELECTED_COLOR: Color = Color::from_rgb8(62, 62, 62);
+/// Hover / alternating row (`#222933`).
+pub const BACKGROUND_SELECTED_COLOR: Color = Color::from_rgb8(34, 41, 51);
 
 /// Selected row fill (same as selection blue).
 pub const BACKGROUND_ACTIVE_COLOR: Color = SELECTION_COLOR;
 
-/// Recessed widget / input fill (`#1d1d1d`).
-pub const WIDGET_COLOR: Color = Color::from_rgb8(29, 29, 29);
+/// Recessed widget / input fill (`#12171d`).
+pub const WIDGET_COLOR: Color = Color::from_rgb8(18, 23, 29);
 
-/// Widget hover (`#545454`).
-pub const WIDGET_HOVER_COLOR: Color = Color::from_rgb8(84, 84, 84);
+/// Widget hover (`#323a46`).
+pub const WIDGET_HOVER_COLOR: Color = Color::from_rgb8(50, 58, 70);
 
 // ---------------------------------------------------------------------------
 // Text
 // ---------------------------------------------------------------------------
 
-pub const TEXT_PRIMARY_COLOR: Color = Color::from_rgb8(230, 230, 230);
-pub const TEXT_SECONDARY_COLOR: Color = Color::from_rgb8(153, 153, 153);
-pub const TEXT_MUTED_COLOR: Color = Color::from_rgb8(102, 102, 102);
+pub const TEXT_PRIMARY_COLOR: Color = Color::from_rgb8(220, 228, 236);
+pub const TEXT_SECONDARY_COLOR: Color = Color::from_rgb8(140, 152, 168);
+pub const TEXT_MUTED_COLOR: Color = Color::from_rgb8(96, 108, 124);
 /// Text on selected / accent backgrounds.
 pub const TEXT_PRIMARY_COLOR_INVERTED: Color = Color::from_rgb8(255, 255, 255);
 
@@ -59,18 +59,18 @@ pub const TEXT_PRIMARY_COLOR_INVERTED: Color = Color::from_rgb8(255, 255, 255);
 // Borders / radius
 // ---------------------------------------------------------------------------
 
-pub const BORDER_COLOR: Color = Color::from_rgb8(29, 29, 29);
-pub const BORDER_SUBTLE_COLOR: Color = Color::from_rgb8(42, 42, 42);
-pub const BORDER_ACTIVE_COLOR: Color = Color::from_rgb8(120, 120, 120);
+pub const BORDER_COLOR: Color = Color::from_rgb8(18, 23, 29);
+pub const BORDER_SUBTLE_COLOR: Color = Color::from_rgb8(36, 44, 54);
+pub const BORDER_ACTIVE_COLOR: Color = Color::from_rgb8(112, 128, 148);
 
 pub const BORDER_THICKNESS: f32 = 1.0;
-/// Blender widgets use a slight radius.
+/// Compact widget radius.
 pub const BORDER_RADIUS: f32 = 3.0;
 /// Rounded panel chrome.
 pub const PANEL_RADIUS: f32 = 6.0;
 
 // ---------------------------------------------------------------------------
-// Density (Blender-like compact UI)
+// Density (compact UI)
 // ---------------------------------------------------------------------------
 
 pub const SPACE_1: f32 = 2.0;
@@ -100,7 +100,7 @@ pub const TREE_INDENT: f32 = 14.0;
 // Iced Theme
 // ---------------------------------------------------------------------------
 
-/// Blender Dark palette for stock iced widgets (buttons, pick lists, etc.).
+/// Cool dark palette for stock iced widgets (buttons, pick lists, etc.).
 pub const PALETTE: Palette = Palette {
 	background: BACKGROUND_COLOR,
 	text: TEXT_PRIMARY_COLOR,
@@ -110,7 +110,7 @@ pub const PALETTE: Palette = Palette {
 	danger: DANGER_COLOR,
 };
 
-/// Application theme — custom palette so default widgets match Blender Dark.
+/// Application theme — custom cool dark palette.
 pub fn app_theme() -> Theme {
-	Theme::custom("BlenderDark", PALETTE)
+	Theme::custom("NadeCoolDark", PALETTE)
 }
