@@ -19,8 +19,8 @@ use crate::{
 
 /// Editor-type dropdown open/close duration.
 const EDITOR_MENU_ANIM_SECS: f32 = 0.14;
-/// Slide distance (px) while the menu fades in.
-const EDITOR_MENU_SLIDE_PX: f32 = 6.0;
+/// Vertical slide distance (px) while the menu fades in.
+const EDITOR_MENU_SLIDE_Y_PX: f32 = 6.0;
 
 #[derive(Debug, Clone)]
 struct EditorMenuState {
@@ -905,14 +905,14 @@ impl<C: AreaKind> PanelSystem<C> {
 			.align_y(iced::Alignment::Start)
 			.height(Length::Shrink);
 
-			let slide = (1.0 - anim) * -EDITOR_MENU_SLIDE_PX;
+			let slide_y = (1.0 - anim) * -EDITOR_MENU_SLIDE_Y_PX;
 
 			float(
 				container(columns)
 					.height(Length::Shrink)
 					.style(move |theme| constants::widgets::editor_menu_panel_faded(theme, anim)),
 			)
-			.translate(move |_bounds, _viewport| Vector::new(0.0, slide))
+			.translate(move |_bounds, _viewport| Vector::new(0.0, slide_y))
 			.into()
 		} else {
 			Space::new().width(0).height(0).into()
