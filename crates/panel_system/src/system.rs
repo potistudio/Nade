@@ -25,10 +25,26 @@ const EDITOR_MENU_SLIDE_PX: f32 = 6.0;
 #[derive(Debug, Clone)]
 struct EditorMenuState {
 	area_id: usize,
-	/// 0.0 = fully closed, 1.0 = fully open
-	progress: f32,
-	opening: bool,
-	last_tick: Instant,
+	/// Openness at animation start.
+	from: f32,
+	/// Openness target (`1.0` open, `0.0` closed).
+	to: f32,
+	started: Instant,
+}
+
+impl EditorMenuState {
+	fn value(&self) -> f32 {
+		let t = self.started.elapsed().as_secs_f32() / EDITOR_MENU_ANIM_SECS;
+		if t >= 1.0 {
+			self.to
+		} else {
+			self.from + (self.to - self.from) * ease_out_cubic(t)
+		}
+	}
+
+	fn is_finished(&self) -> bool {
+		self.started.elapsed().as_secs_f32() >= EDITOR_MENU_ANIM_SECS
+	}
 }
 
 fn ease_out_cubic(t: f32) -> f32 {
@@ -36,13 +52,12 @@ fn ease_out_cubic(t: f32) -> f32 {
 	1.0 - (1.0 - t).powi(3)
 }
 
-/// Visual menu openness: ease-out toward open, and ease-out toward closed.
-fn menu_anim_value(progress: f32, opening: bool) -> f32 {
-	if opening {
-		ease_out_cubic(progress)
-	} else {
-		// Progress falls 1→0; ease-out the close so it decelerates into fully closed.
-		1.0 - ease_out_cubic(1.0 - progress)
+fn editor_menu_transition(area_id: usize, from: f32, to: f32) -> EditorMenuState {
+	EditorMenuState {
+		area_id,
+		from,
+		to,
+		started: Instant::now(),
 	}
 }
 
@@ -142,52 +157,37 @@ impl<C: AreaKind> PanelSystem<C> {
 
 	/// Whether the editor menu open/close animation still needs ticks.
 	pub fn is_editor_menu_animating(&self) -> bool {
-		self.editor_menu
-			.as_ref()
-			.is_some_and(|menu| (menu.opening && menu.progress < 1.0) || (!menu.opening && menu.progress > 0.0))
+		self.editor_menu.as_ref().is_some_and(|menu| !menu.is_finished())
 	}
 
 	fn open_editor_menu(&mut self, area_id: usize) {
-		if let Some(menu) = &mut self.editor_menu
-			&& menu.area_id == area_id
-		{
-			menu.opening = !menu.opening;
-			menu.last_tick = Instant::now();
+		if let Some(menu) = self.editor_menu.as_ref().filter(|menu| menu.area_id == area_id) {
+			let current = menu.value();
+			let to = if menu.to > 0.0 { 0.0 } else { 1.0 };
+			self.editor_menu = Some(editor_menu_transition(area_id, current, to));
 			return;
 		}
-		self.editor_menu = Some(EditorMenuState {
-			area_id,
-			progress: 0.0,
-			opening: true,
-			last_tick: Instant::now(),
-		});
+		self.editor_menu = Some(editor_menu_transition(area_id, 0.0, 1.0));
 	}
 
 	fn close_editor_menu(&mut self) {
-		if let Some(menu) = &mut self.editor_menu {
-			menu.opening = false;
-			menu.last_tick = Instant::now();
+		let Some(menu) = self.editor_menu.as_ref() else {
+			return;
+		};
+		if menu.to == 0.0 {
+			return;
 		}
+		let area_id = menu.area_id;
+		let current = menu.value();
+		self.editor_menu = Some(editor_menu_transition(area_id, current, 0.0));
 	}
 
 	fn tick_editor_menu(&mut self) {
-		let finished = {
-			let Some(menu) = self.editor_menu.as_mut() else {
-				return;
-			};
-			let now = Instant::now();
-			let dt = now.duration_since(menu.last_tick).as_secs_f32().min(0.05);
-			menu.last_tick = now;
-			let delta = dt / EDITOR_MENU_ANIM_SECS;
-			if menu.opening {
-				menu.progress = (menu.progress + delta).min(1.0);
-				false
-			} else {
-				menu.progress = (menu.progress - delta).max(0.0);
-				menu.progress <= 0.0
-			}
-		};
-		if finished {
+		if self
+			.editor_menu
+			.as_ref()
+			.is_some_and(|menu| menu.is_finished() && menu.to <= 0.0)
+		{
 			self.editor_menu = None;
 		}
 	}
@@ -766,7 +766,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			.editor_menu
 			.as_ref()
 			.filter(|menu| menu.area_id == area_id)
-			.map(|menu| menu_anim_value(menu.progress, menu.opening));
+			.map(EditorMenuState::value);
 		let menu_open = menu_progress.is_some_and(|p| p > 0.001);
 		let anim = menu_progress.unwrap_or(0.0);
 

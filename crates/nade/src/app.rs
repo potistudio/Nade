@@ -162,6 +162,10 @@ impl NadeApp {
 				if self.is_playing {
 					self.current_time += 1.0 / 60.0;
 				}
+				if self.panel_system.is_editor_menu_animating() {
+					self.panel_system
+						.update(PanelSystemMessage::<PanelContent, AppPanelMessage>::AnimTick);
+				}
 				Task::none()
 			}
 
@@ -265,14 +269,15 @@ impl NadeApp {
 	}
 
 	pub(super) fn subscription(&self) -> Subscription<Message> {
-		let tick = iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::Tick);
-		let resize = iced::event::listen_with(on_window_resize);
-		let editor_menu = if self.panel_system.is_editor_menu_animating() {
-			iced::time::every(std::time::Duration::from_millis(16))
-				.map(|_| Message::PanelSystem(PanelSystemMessage::AnimTick))
+		// Speed up the global tick while the editor menu animates so every panel
+		// redraws smoothly (timeline already redraws often from pointer events).
+		let tick_ms = if self.panel_system.is_editor_menu_animating() {
+			16
 		} else {
-			Subscription::none()
+			50
 		};
-		Subscription::batch([tick, resize, editor_menu])
+		let tick = iced::time::every(std::time::Duration::from_millis(tick_ms)).map(|_| Message::Tick);
+		let resize = iced::event::listen_with(on_window_resize);
+		Subscription::batch([tick, resize])
 	}
 }
