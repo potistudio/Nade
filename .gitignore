@@ -1,7 +1,8 @@
-# Cargo build artifacts
+# macOS dummy files
+.DS_Store
+
+# Cargo artifacts
 target/
 
-# macOS system files
-.DS_Store
-Thumbs.db
-ref/
+# Personal references
+refs/

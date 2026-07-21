@@ -4,11 +4,11 @@ members = ["apps/*", "crates/*", "examples/*"]
 default-members = ["crates/nade"]
 
 [workspace.package]
-authors = ["potistudio <potistudio@proton.me>"]
 version = "0.0.1"
+edition = "2024"
+authors = ["potistudio <potistudio@proton.me>"]
 license = "MIT"
 publish = false
-edition = "2024"
 
 [profile.release]
 codegen-units = 1
@@ -18,18 +18,18 @@ lto = true
 all = "warn"
 
 [workspace.dependencies]
-log = "0.4.29"
-iced = { version = "0.14", features = ["advanced", "canvas", "svg"] }
-anyhow = "1.0.100"
-env_logger = "0.11.8"
+anyhow = "1.0.104"
 constants = { path = "crates/constants" }
-nade-engine = { path = "crates/engine" }
-nade-timeline = { path = "crates/timeline_panel" }
 core = { path = "crates/core" }
-inspector_panel = { path = "crates/inspector_panel" }
 domain = { path = "crates/domain" }
-operators = { path = "crates/operators" }
-uuid = { version = "1.19.0", features = ["v4", "serde"] }
-serde = { version = "1.0.228", features = ["derive"] }
+env_logger = "0.11.11"
 effects = { path = "crates/effects" }
 encoder = { path = "crates/encoder" }
+iced = { version = "0.14.0", features = ["advanced", "canvas", "svg"] }
+inspector_panel = { path = "crates/inspector_panel" }
+log = "0.4.33"
+nade-engine = { path = "crates/engine" }
+nade-timeline = { path = "crates/timeline_panel" }
+operators = { path = "crates/operators" }
+serde = { version = "1.0.229", features = ["derive"] }
+uuid = { version = "1.24.0", features = ["v4", "serde"] }
