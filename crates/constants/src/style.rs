@@ -24,8 +24,8 @@ pub const DANGER_COLOR: Color = Color::from_rgb8(184, 72, 72);
 // Background hierarchy (window → panel → widget)
 // ---------------------------------------------------------------------------
 
-/// App / dock chrome background (`#303030`).
-pub const BACKGROUND_COLOR: Color = Color::from_rgb8(48, 48, 48);
+/// App / dock chrome background (`#161616`).
+pub const BACKGROUND_COLOR: Color = Color::from_rgb8(22, 22, 22);
 
 /// Raised panel surface (`#383838`).
 pub const PANEL_COLOR: Color = Color::from_rgb8(56, 56, 56);
@@ -64,9 +64,10 @@ pub const BORDER_SUBTLE_COLOR: Color = Color::from_rgb8(42, 42, 42);
 pub const BORDER_ACTIVE_COLOR: Color = Color::from_rgb8(120, 120, 120);
 
 pub const BORDER_THICKNESS: f32 = 1.0;
-/// Blender widgets use a slight radius; panels stay square.
+/// Blender widgets use a slight radius.
 pub const BORDER_RADIUS: f32 = 3.0;
-pub const PANEL_RADIUS: f32 = 0.0;
+/// Rounded panel chrome.
+pub const PANEL_RADIUS: f32 = 6.0;
 
 // ---------------------------------------------------------------------------
 // Density (Blender-like compact UI)

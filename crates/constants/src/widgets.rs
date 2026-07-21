@@ -116,8 +116,13 @@ pub fn panel_body(_theme: &Theme) -> container::Style {
 		text_color: Some(TEXT_PRIMARY_COLOR),
 		border: Border {
 			color: BORDER_COLOR,
-			width: BORDER_THICKNESS,
-			radius: PANEL_RADIUS.into(),
+			width: 0.0,
+			radius: Radius {
+				top_left: 0.0,
+				top_right: 0.0,
+				bottom_right: PANEL_RADIUS,
+				bottom_left: PANEL_RADIUS,
+			},
 		},
 		..Default::default()
 	}
@@ -130,7 +135,12 @@ pub fn panel_header(_theme: &Theme) -> container::Style {
 		border: Border {
 			color: BORDER_COLOR,
 			width: 0.0,
-			radius: PANEL_RADIUS.into(),
+			radius: Radius {
+				top_left: PANEL_RADIUS,
+				top_right: PANEL_RADIUS,
+				bottom_right: 0.0,
+				bottom_left: 0.0,
+			},
 		},
 		..Default::default()
 	}

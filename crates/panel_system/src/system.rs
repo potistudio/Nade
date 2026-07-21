@@ -6,12 +6,15 @@ use std::time::Instant;
 
 use iced::{
 	Color, Element, Length, Point, Rectangle, Size, Vector,
+	mouse,
 	widget::{Space, button, column, container, float, mouse_area, row, rule, stack, svg, text},
 };
 
 use crate::{
 	AreaKind,
-	consts::{CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, MOVE_CENTER_ZONE, RESIZE_HANDLE_SIZE, colors},
+	consts::{
+		CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, MOVE_CENTER_ZONE, PANEL_GAP, RESIZE_HIT_SIZE, colors,
+	},
 	container::Area,
 	drag::{CornerAction, DragState},
 	node::{DockNode, SplitDirection},
@@ -58,6 +61,37 @@ fn editor_menu_transition(area_id: usize, from: f32, to: f32) -> EditorMenuState
 		from,
 		to,
 		started: Instant::now(),
+	}
+}
+
+/// Child bounds for a split, accounting for the visible [`PANEL_GAP`] gutter.
+fn split_child_bounds(bounds: Rectangle, direction: SplitDirection, ratio: f32) -> (Rectangle, Rectangle) {
+	let ratio = ratio.clamp(0.0, 1.0);
+	match direction {
+		SplitDirection::Horizontal => {
+			let available = (bounds.width - PANEL_GAP).max(0.0);
+			let first_width = available * ratio;
+			let second_width = (available - first_width).max(0.0);
+			(
+				Rectangle::new(bounds.position(), Size::new(first_width, bounds.height)),
+				Rectangle::new(
+					Point::new(bounds.x + first_width + PANEL_GAP, bounds.y),
+					Size::new(second_width, bounds.height),
+				),
+			)
+		}
+		SplitDirection::Vertical => {
+			let available = (bounds.height - PANEL_GAP).max(0.0);
+			let first_height = available * ratio;
+			let second_height = (available - first_height).max(0.0);
+			(
+				Rectangle::new(bounds.position(), Size::new(bounds.width, first_height)),
+				Rectangle::new(
+					Point::new(bounds.x, bounds.y + first_height + PANEL_GAP),
+					Size::new(bounds.width, second_height),
+				),
+			)
+		}
 	}
 }
 
@@ -119,7 +153,6 @@ where
 	JoinArea(usize),
 	ResizeStart(Vec<usize>, SplitDirection),
 	ResizeEnd,
-	ResizeHandleHover(Option<(Vec<usize>, SplitDirection)>),
 	WindowResized(Size),
 	/// アプリケーション固有のメッセージ
 	AppMessage(M),
@@ -137,7 +170,6 @@ pub struct PanelSystem<C: AreaKind> {
 	drag_state: DragState,
 	last_mouse_pos: Point,
 	window_size: Size,
-	hover_resize_handle: Option<(Vec<usize>, SplitDirection)>,
 	/// エディタ種別メニュー（開閉アニメーション付き）
 	editor_menu: Option<EditorMenuState>,
 }
@@ -150,7 +182,6 @@ impl<C: AreaKind> PanelSystem<C> {
 			drag_state: DragState::None,
 			last_mouse_pos: Point::ORIGIN,
 			window_size: Size::new(800.0, 600.0),
-			hover_resize_handle: None,
 			editor_menu: None,
 		}
 	}
@@ -338,12 +369,6 @@ impl<C: AreaKind> PanelSystem<C> {
 
 			PanelSystemMessage::AppMessage(_) => {}
 
-			PanelSystemMessage::ResizeHandleHover(handle) => {
-				if !matches!(self.drag_state, DragState::Resizing { .. }) {
-					self.hover_resize_handle = handle;
-				}
-			}
-
 			PanelSystemMessage::WindowResized(size) => {
 				self.window_size = size;
 			}
@@ -360,8 +385,8 @@ impl<C: AreaKind> PanelSystem<C> {
 	) -> f32 {
 		let region = self.size_at_path(path);
 		let size = match direction {
-			SplitDirection::Horizontal => region.width.max(100.0),
-			SplitDirection::Vertical => region.height.max(100.0),
+			SplitDirection::Horizontal => (region.width - PANEL_GAP).max(100.0),
+			SplitDirection::Vertical => (region.height - PANEL_GAP).max(100.0),
 		};
 		let delta = match direction {
 			SplitDirection::Horizontal => (current_pos.x - start_pos.x) / size,
@@ -387,24 +412,24 @@ impl<C: AreaKind> PanelSystem<C> {
 
 			match direction {
 				SplitDirection::Horizontal => {
-					let first_width = size.width * *ratio;
-					let second_width = size.width * (1.0 - *ratio);
+					let (first_bounds, second_bounds) =
+						split_child_bounds(Rectangle::new(Point::ORIGIN, size), *direction, *ratio);
 					if index == 0 {
-						size = Size::new(first_width, size.height);
+						size = first_bounds.size();
 						node = first;
 					} else {
-						size = Size::new(second_width, size.height);
+						size = second_bounds.size();
 						node = second;
 					}
 				}
 				SplitDirection::Vertical => {
-					let first_height = size.height * *ratio;
-					let second_height = size.height * (1.0 - *ratio);
+					let (first_bounds, second_bounds) =
+						split_child_bounds(Rectangle::new(Point::ORIGIN, size), *direction, *ratio);
 					if index == 0 {
-						size = Size::new(size.width, first_height);
+						size = first_bounds.size();
 						node = first;
 					} else {
-						size = Size::new(size.width, second_height);
+						size = second_bounds.size();
 						node = second;
 					}
 				}
@@ -551,28 +576,7 @@ impl<C: AreaKind> PanelSystem<C> {
 				first,
 				second,
 			} => {
-				let (first_bounds, second_bounds) = match direction {
-					SplitDirection::Horizontal => {
-						let first_width = bounds.width * *ratio;
-						(
-							Rectangle::new(bounds.position(), Size::new(first_width, bounds.height)),
-							Rectangle::new(
-								Point::new(bounds.x + first_width, bounds.y),
-								Size::new(bounds.width * (1.0 - *ratio), bounds.height),
-							),
-						)
-					}
-					SplitDirection::Vertical => {
-						let first_height = bounds.height * *ratio;
-						(
-							Rectangle::new(bounds.position(), Size::new(bounds.width, first_height)),
-							Rectangle::new(
-								Point::new(bounds.x, bounds.y + first_height),
-								Size::new(bounds.width, bounds.height * (1.0 - *ratio)),
-							),
-						)
-					}
-				};
+				let (first_bounds, second_bounds) = split_child_bounds(bounds, *direction, *ratio);
 				Self::find_area_at_point(first, pos, first_bounds)
 					.or_else(|| Self::find_area_at_point(second, pos, second_bounds))
 			}
@@ -625,31 +629,13 @@ impl<C: AreaKind> PanelSystem<C> {
 			};
 
 			match direction {
-				SplitDirection::Horizontal => {
-					let first_width = bounds.width * *ratio;
-					let second_width = bounds.width * (1.0 - *ratio);
+				SplitDirection::Horizontal | SplitDirection::Vertical => {
+					let (first_bounds, second_bounds) = split_child_bounds(bounds, *direction, *ratio);
 					if index == 0 {
-						bounds = Rectangle::new(bounds.position(), Size::new(first_width, bounds.height));
+						bounds = first_bounds;
 						node = first;
 					} else {
-						bounds = Rectangle::new(
-							Point::new(bounds.x + first_width, bounds.y),
-							Size::new(second_width, bounds.height),
-						);
-						node = second;
-					}
-				}
-				SplitDirection::Vertical => {
-					let first_height = bounds.height * *ratio;
-					let second_height = bounds.height * (1.0 - *ratio);
-					if index == 0 {
-						bounds = Rectangle::new(bounds.position(), Size::new(bounds.width, first_height));
-						node = first;
-					} else {
-						bounds = Rectangle::new(
-							Point::new(bounds.x, bounds.y + first_height),
-							Size::new(bounds.width, second_height),
-						);
+						bounds = second_bounds;
 						node = second;
 					}
 				}
@@ -694,6 +680,19 @@ impl<C: AreaKind> PanelSystem<C> {
 				_ => PanelSystemMessage::ResizeEnd,
 			};
 
+			let cursor = match &self.drag_state {
+				DragState::Resizing {
+					direction: SplitDirection::Horizontal,
+					..
+				} => mouse::Interaction::ResizingHorizontally,
+				DragState::Resizing {
+					direction: SplitDirection::Vertical,
+					..
+				} => mouse::Interaction::ResizingVertically,
+				DragState::CornerDrag { .. } => mouse::Interaction::Grabbing,
+				_ => mouse::Interaction::Idle,
+			};
+
 			let overlay = mouse_area(
 				container(Space::new())
 					.width(Length::Fill)
@@ -703,6 +702,7 @@ impl<C: AreaKind> PanelSystem<C> {
 						..Default::default()
 					}),
 			)
+			.interaction(cursor)
 			.on_move(PanelSystemMessage::MouseMove)
 			.on_release(release);
 
@@ -877,18 +877,59 @@ impl<C: AreaKind> PanelSystem<C> {
 				let first_len = Length::FillPortion(first_portion);
 				let second_len = Length::FillPortion(second_portion);
 				let resize_path = path;
+				let overhang = Length::Fixed(((RESIZE_HIT_SIZE - PANEL_GAP) * 0.5).max(0.0));
 
 				match direction {
 					SplitDirection::Horizontal => row![
-						container(first_view).width(first_len).height(Length::Fill),
-						self.view_resize_handle(*direction, resize_path),
-						container(second_view).width(second_len).height(Length::Fill),
+						stack![
+							container(first_view).width(Length::Fill).height(Length::Fill),
+							row![
+								Space::new().width(Length::Fill),
+								self.view_resize_hit(*direction, resize_path.clone(), overhang, Length::Fill),
+							]
+							.width(Length::Fill)
+							.height(Length::Fill),
+						]
+						.width(first_len)
+						.height(Length::Fill),
+						self.view_panel_gutter(*direction, resize_path.clone()),
+						stack![
+							container(second_view).width(Length::Fill).height(Length::Fill),
+							row![
+								self.view_resize_hit(*direction, resize_path, overhang, Length::Fill),
+								Space::new().width(Length::Fill),
+							]
+							.width(Length::Fill)
+							.height(Length::Fill),
+						]
+						.width(second_len)
+						.height(Length::Fill),
 					]
 					.into(),
 					SplitDirection::Vertical => column![
-						container(first_view).width(Length::Fill).height(first_len),
-						self.view_resize_handle(*direction, resize_path),
-						container(second_view).width(Length::Fill).height(second_len),
+						stack![
+							container(first_view).width(Length::Fill).height(Length::Fill),
+							column![
+								Space::new().height(Length::Fill),
+								self.view_resize_hit(*direction, resize_path.clone(), Length::Fill, overhang),
+							]
+							.width(Length::Fill)
+							.height(Length::Fill),
+						]
+						.width(Length::Fill)
+						.height(first_len),
+						self.view_panel_gutter(*direction, resize_path.clone()),
+						stack![
+							container(second_view).width(Length::Fill).height(Length::Fill),
+							column![
+								self.view_resize_hit(*direction, resize_path, Length::Fill, overhang),
+								Space::new().height(Length::Fill),
+							]
+							.width(Length::Fill)
+							.height(Length::Fill),
+						]
+						.width(Length::Fill)
+						.height(second_len),
 					]
 					.into(),
 				}
@@ -999,7 +1040,19 @@ impl<C: AreaKind> PanelSystem<C> {
 			.height(Length::Fill)
 			.style(constants::widgets::panel_body);
 
-		column![header, body_container].spacing(0).into()
+		container(column![header, body_container].spacing(0))
+			.width(Length::Fill)
+			.height(Length::Fill)
+			.clip(true)
+			.style(|_| container::Style {
+				border: iced::Border {
+					color: Color::TRANSPARENT,
+					width: 0.0,
+					radius: constants::style::PANEL_RADIUS.into(),
+				},
+				..Default::default()
+			})
+			.into()
 	}
 
 	fn view_corner_overlay<'a, M>(
@@ -1150,7 +1203,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		}
 	}
 
-	fn view_resize_handle<'a, M>(
+	fn view_panel_gutter<'a, M>(
 		&self,
 		direction: SplitDirection,
 		path: Vec<usize>,
@@ -1158,76 +1211,58 @@ impl<C: AreaKind> PanelSystem<C> {
 	where
 		M: Clone + std::fmt::Debug + 'static,
 	{
-		let is_any_resizing = matches!(&self.drag_state, DragState::Resizing { .. });
-
-		let is_active = match &self.drag_state {
-			DragState::Resizing {
-				path: p, direction: d, ..
-			} => *p == path && *d == direction,
-			_ => false,
-		};
-
-		let is_hovered = if is_any_resizing {
-			false
-		} else {
-			self.hover_resize_handle
-				.as_ref()
-				.map(|(p, d)| *p == path && *d == direction)
-				.unwrap_or(false)
-		};
-
 		let (width, height): (Length, Length) = match direction {
-			SplitDirection::Horizontal => (Length::Fixed(RESIZE_HANDLE_SIZE), Length::Fill),
-			SplitDirection::Vertical => (Length::Fill, Length::Fixed(RESIZE_HANDLE_SIZE)),
+			SplitDirection::Horizontal => (Length::Fixed(PANEL_GAP), Length::Fill),
+			SplitDirection::Vertical => (Length::Fill, Length::Fixed(PANEL_GAP)),
 		};
 
-		let handle_size = if is_active || is_hovered { 3.0 } else { 1.0 };
+		stack![
+			container(Space::new())
+				.width(width)
+				.height(height)
+				.style(|_| container::Style {
+					background: Some(colors::RESIZE_HANDLE.into()),
+					..Default::default()
+				}),
+			self.view_resize_hit(direction, path, width, height),
+		]
+		.width(width)
+		.height(height)
+		.into()
+	}
 
-		let bg_color = if is_active {
-			colors::RESIZE_HANDLE_ACTIVE
-		} else if is_hovered {
-			colors::RESIZE_HANDLE_HOVER
-		} else {
-			colors::RESIZE_HANDLE
+	fn view_resize_hit<'a, M>(
+		&self,
+		direction: SplitDirection,
+		path: Vec<usize>,
+		width: Length,
+		height: Length,
+	) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
+		if matches!(width, Length::Fixed(w) if w <= 0.0) || matches!(height, Length::Fixed(h) if h <= 0.0) {
+			return Space::new().width(width).height(height).into();
+		}
+
+		let is_any_resizing = matches!(&self.drag_state, DragState::Resizing { .. });
+		let cursor = match direction {
+			SplitDirection::Horizontal => mouse::Interaction::ResizingHorizontally,
+			SplitDirection::Vertical => mouse::Interaction::ResizingVertically,
 		};
 
-		let inner_handle = match direction {
-			SplitDirection::Horizontal => container(
-				container(Space::new())
-					.width(Length::Fixed(handle_size))
-					.height(Length::Fill)
-					.style(move |_| container::Style {
-						background: Some(bg_color.into()),
-						..Default::default()
-					}),
-			)
+		let hit = container(Space::new())
 			.width(width)
 			.height(height)
-			.center_x(width)
-			.center_y(height),
-			SplitDirection::Vertical => container(
-				container(Space::new())
-					.width(Length::Fill)
-					.height(Length::Fixed(handle_size))
-					.style(move |_| container::Style {
-						background: Some(bg_color.into()),
-						..Default::default()
-					}),
-			)
-			.width(width)
-			.height(height)
-			.center_x(width)
-			.center_y(height),
-		};
+			.style(|_| container::Style {
+				background: Some(Color::TRANSPARENT.into()),
+				..Default::default()
+			});
 
-		let path_clone = path.clone();
-		let path_for_press = path;
-
-		let ma = mouse_area(inner_handle)
-			.on_press(PanelSystemMessage::ResizeStart(path_for_press, direction))
-			.on_release(PanelSystemMessage::ResizeEnd)
-			.on_enter(PanelSystemMessage::ResizeHandleHover(Some((path_clone, direction))))
-			.on_exit(PanelSystemMessage::ResizeHandleHover(None));
+		let ma = mouse_area(hit)
+			.interaction(cursor)
+			.on_press(PanelSystemMessage::ResizeStart(path, direction))
+			.on_release(PanelSystemMessage::ResizeEnd);
 
 		if is_any_resizing {
 			ma.into()
