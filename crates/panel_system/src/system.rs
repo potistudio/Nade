@@ -672,6 +672,18 @@ impl<C: AreaKind> PanelSystem<C> {
 			.height(Length::Fill)
 			.style(constants::widgets::window);
 
+		// Editor menu is drawn at the window root so short panels (timeline) cannot
+		// clip it — Float still inherits the leaf viewport when nested inside an area.
+		let base: Element<'_, PanelSystemMessage<C, M>> =
+			if let Some(menu_layer) = self.view_editor_menu_layer() {
+				stack![base, menu_layer]
+					.width(Length::Fill)
+					.height(Length::Fill)
+					.into()
+			} else {
+				base.into()
+			};
+
 		// ドラッグ中は全面オーバーレイで他パネル上でも追従できるようにする
 		if matches!(
 			self.drag_state,
@@ -698,6 +710,135 @@ impl<C: AreaKind> PanelSystem<C> {
 		} else {
 			mouse_area(base).on_move(PanelSystemMessage::MouseMove).into()
 		}
+	}
+
+	/// Window-level editor menu, positioned from the host area's absolute bounds.
+	fn view_editor_menu_layer<'a, M>(&'a self) -> Option<Element<'a, PanelSystemMessage<C, M>>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
+		let menu_state = self.editor_menu.as_ref()?;
+		let anim = menu_state.value();
+		if anim <= 0.001 {
+			return None;
+		}
+		let area = Self::find_area_clone(&self.root, menu_state.area_id)?;
+		let path = self.area_path(menu_state.area_id)?;
+		let bounds = self.bounds_at_path(&path);
+		let menu = self.view_editor_menu(area.id, area.content, anim);
+
+		let slide_y = (1.0 - anim) * -EDITOR_MENU_SLIDE_Y_PX;
+		let floating = float(menu).translate(move |_bounds, _viewport| Vector::new(0.0, slide_y));
+
+		Some(
+			column![
+				Space::new().height(bounds.y + HEADER_HEIGHT),
+				row![
+					Space::new().width(bounds.x + constants::style::SPACE_2),
+					floating,
+					Space::new().width(Length::Fill),
+				]
+				.height(Length::Shrink),
+				Space::new().height(Length::Fill),
+			]
+			.width(Length::Fill)
+			.height(Length::Fill)
+			.into(),
+		)
+	}
+
+	fn view_editor_menu<'a, M>(
+		&'a self,
+		area_id: usize,
+		content: C,
+		anim: f32,
+	) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
+		const MENU_ICON: f32 = 12.0;
+		const COL_WIDTH: f32 = 104.0;
+		const ROW_HEIGHT: f32 = 18.0;
+
+		let columns = row(C::menu_columns()
+			.into_iter()
+			.map(|(category, kinds)| {
+				let content = content.clone();
+				let header = column![
+					constants::widgets::ui_label(category, constants::style::FONT_TINY)
+						.color(constants::style::TEXT_SECONDARY_COLOR.scale_alpha(anim)),
+					rule::horizontal(1).style(move |_theme| rule::Style {
+						color: constants::style::BORDER_SUBTLE_COLOR.scale_alpha(anim),
+						radius: 0.0.into(),
+						fill_mode: rule::FillMode::Full,
+						snap: true,
+					}),
+				]
+				.spacing(2)
+				.width(Length::Fill);
+
+				let items = column(
+					kinds
+						.into_iter()
+						.map(move |kind| {
+							let selected = kind == content;
+							let icon_color = if selected {
+								constants::style::TEXT_PRIMARY_COLOR_INVERTED.scale_alpha(anim)
+							} else {
+								constants::style::TEXT_PRIMARY_COLOR.scale_alpha(anim)
+							};
+							let label_color = if selected {
+								constants::style::TEXT_PRIMARY_COLOR_INVERTED.scale_alpha(anim)
+							} else {
+								constants::style::TEXT_PRIMARY_COLOR.scale_alpha(anim)
+							};
+
+							let row_content = constants::widgets::icon_label_row(
+								panel_icon_svg_colored(kind.icon(), MENU_ICON, icon_color, anim),
+								kind.label(),
+								constants::style::FONT_UI,
+								label_color,
+								MENU_ICON,
+								4.0,
+							);
+
+							button(constants::widgets::button_body(row_content))
+								.padding(iced::Padding {
+									top: 0.0,
+									right: 4.0,
+									bottom: 0.0,
+									left: 2.0,
+								})
+								.width(Length::Fill)
+								.height(ROW_HEIGHT)
+								.style(constants::widgets::button_menu_item_faded(selected, anim))
+								.on_press(PanelSystemMessage::ChangeEditor(area_id, kind))
+								.into()
+						})
+						.collect::<Vec<_>>(),
+				)
+				.spacing(0);
+
+				container(column![header, items].spacing(2).height(Length::Shrink))
+					.width(COL_WIDTH)
+					.height(Length::Shrink)
+					.padding(iced::Padding {
+						top: 4.0,
+						right: 3.0,
+						bottom: 4.0,
+						left: 3.0,
+					})
+					.into()
+			})
+			.collect::<Vec<_>>())
+		.spacing(0)
+		.align_y(iced::Alignment::Start)
+		.height(Length::Shrink);
+
+		container(columns)
+			.height(Length::Shrink)
+			.style(move |theme| constants::widgets::editor_menu_panel_faded(theme, anim))
+			.into()
 	}
 
 	fn view_node<'a, F, M>(
@@ -762,13 +903,6 @@ impl<C: AreaKind> PanelSystem<C> {
 	{
 		let area_id = area.id;
 		let can_join = self.area_has_sibling(area_id);
-		let menu_progress = self
-			.editor_menu
-			.as_ref()
-			.filter(|menu| menu.area_id == area_id)
-			.map(EditorMenuState::value);
-		let menu_open = menu_progress.is_some_and(|p| p > 0.001);
-		let anim = menu_progress.unwrap_or(0.0);
 
 		// Blender-style editor type chip: [icon] [▾]
 		const ICON_SIZE: f32 = 14.0;
@@ -826,98 +960,6 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		let body = content_view(area.id, &area.content);
 
-		let editor_menu: Element<'_, PanelSystemMessage<C, M>> = if menu_open {
-			const MENU_ICON: f32 = 12.0;
-			const COL_WIDTH: f32 = 104.0;
-			const ROW_HEIGHT: f32 = 18.0;
-
-			let columns = row(C::menu_columns()
-				.into_iter()
-				.map(|(category, kinds)| {
-					let header = column![
-						constants::widgets::ui_label(category, constants::style::FONT_TINY)
-							.color(constants::style::TEXT_SECONDARY_COLOR.scale_alpha(anim)),
-						rule::horizontal(1).style(move |_theme| rule::Style {
-							color: constants::style::BORDER_SUBTLE_COLOR.scale_alpha(anim),
-							radius: 0.0.into(),
-							fill_mode: rule::FillMode::Full,
-							snap: true,
-						}),
-					]
-					.spacing(2)
-					.width(Length::Fill);
-
-					let items = column(
-						kinds
-							.into_iter()
-							.map(|kind| {
-								let selected = kind == area.content;
-								let icon_color = if selected {
-									constants::style::TEXT_PRIMARY_COLOR_INVERTED.scale_alpha(anim)
-								} else {
-									constants::style::TEXT_PRIMARY_COLOR.scale_alpha(anim)
-								};
-								let label_color = if selected {
-									constants::style::TEXT_PRIMARY_COLOR_INVERTED.scale_alpha(anim)
-								} else {
-									constants::style::TEXT_PRIMARY_COLOR.scale_alpha(anim)
-								};
-
-								let row_content = constants::widgets::icon_label_row(
-									panel_icon_svg_colored(kind.icon(), MENU_ICON, icon_color, anim),
-									kind.label(),
-									constants::style::FONT_UI,
-									label_color,
-									MENU_ICON,
-									4.0,
-								);
-
-								button(constants::widgets::button_body(row_content))
-									.padding(iced::Padding {
-										top: 0.0,
-										right: 4.0,
-										bottom: 0.0,
-										left: 2.0,
-									})
-									.width(Length::Fill)
-									.height(ROW_HEIGHT)
-									.style(constants::widgets::button_menu_item_faded(selected, anim))
-									.on_press(PanelSystemMessage::ChangeEditor(area_id, kind))
-									.into()
-							})
-							.collect::<Vec<_>>(),
-					)
-					.spacing(0);
-
-					container(column![header, items].spacing(2).height(Length::Shrink))
-						.width(COL_WIDTH)
-						.height(Length::Shrink)
-						.padding(iced::Padding {
-							top: 4.0,
-							right: 3.0,
-							bottom: 4.0,
-							left: 3.0,
-						})
-						.into()
-				})
-				.collect::<Vec<_>>())
-			.spacing(0)
-			.align_y(iced::Alignment::Start)
-			.height(Length::Shrink);
-
-			let slide_y = (1.0 - anim) * -EDITOR_MENU_SLIDE_Y_PX;
-
-			float(
-				container(columns)
-					.height(Length::Shrink)
-					.style(move |theme| constants::widgets::editor_menu_panel_faded(theme, anim)),
-			)
-			.translate(move |_bounds, _viewport| Vector::new(0.0, slide_y))
-			.into()
-		} else {
-			Space::new().width(0).height(0).into()
-		};
-
 		let overlay_preview = self.drag_state.corner_preview().and_then(
 			|(source_id, action, ratio, target_id, direction, new_is_first)| match action {
 				CornerAction::Move => {
@@ -942,22 +984,12 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		let corner = self.view_corner(area_id);
 
-		// Keep the menu content-sized — Fill height in the stack was stretching the
-		// selected row to the full panel height.
-		let menu_overlay = column![
-			Space::new().height(HEADER_HEIGHT),
-			row![editor_menu, Space::new().width(Length::Fill)].height(Length::Shrink),
-			Space::new().height(Length::Fill),
-		]
-		.width(Length::Fill)
-		.height(Length::Fill);
-
 		let body_stack = if let Some(preview) = overlay_preview {
-			stack![body, preview, self.view_corner_overlay(corner), menu_overlay,]
+			stack![body, preview, self.view_corner_overlay(corner)]
 				.width(Length::Fill)
 				.height(Length::Fill)
 		} else {
-			stack![body, self.view_corner_overlay(corner), menu_overlay,]
+			stack![body, self.view_corner_overlay(corner)]
 				.width(Length::Fill)
 				.height(Length::Fill)
 		};
