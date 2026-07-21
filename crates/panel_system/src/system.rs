@@ -36,6 +36,16 @@ fn ease_out_cubic(t: f32) -> f32 {
 	1.0 - (1.0 - t).powi(3)
 }
 
+/// Visual menu openness: ease-out toward open, and ease-out toward closed.
+fn menu_anim_value(progress: f32, opening: bool) -> f32 {
+	if opening {
+		ease_out_cubic(progress)
+	} else {
+		// Progress falls 1→0; ease-out the close so it decelerates into fully closed.
+		1.0 - ease_out_cubic(1.0 - progress)
+	}
+}
+
 struct CornerDragUpdate {
 	action: Option<CornerAction>,
 	ratio: f32,
@@ -756,7 +766,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			.editor_menu
 			.as_ref()
 			.filter(|menu| menu.area_id == area_id)
-			.map(|menu| ease_out_cubic(menu.progress));
+			.map(|menu| menu_anim_value(menu.progress, menu.opening));
 		let menu_open = menu_progress.is_some_and(|p| p > 0.001);
 		let anim = menu_progress.unwrap_or(0.0);
 
