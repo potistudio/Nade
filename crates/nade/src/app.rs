@@ -267,6 +267,12 @@ impl NadeApp {
 	pub(super) fn subscription(&self) -> Subscription<Message> {
 		let tick = iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::Tick);
 		let resize = iced::event::listen_with(on_window_resize);
-		Subscription::batch([tick, resize])
+		let editor_menu = if self.panel_system.is_editor_menu_animating() {
+			iced::time::every(std::time::Duration::from_millis(16))
+				.map(|_| Message::PanelSystem(PanelSystemMessage::AnimTick))
+		} else {
+			Subscription::none()
+		};
+		Subscription::batch([tick, resize, editor_menu])
 	}
 }

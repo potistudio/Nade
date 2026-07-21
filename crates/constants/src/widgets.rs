@@ -235,14 +235,28 @@ pub fn button_editor_type(_theme: &Theme, status: button::Status) -> button::Sty
 
 /// Blender editor-type menu row. `selected` draws the blue active highlight.
 pub fn button_menu_item(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+	button_menu_item_faded(selected, 1.0)
+}
+
+/// Menu row with alpha for open/close animation.
+pub fn button_menu_item_faded(selected: bool, alpha: f32) -> impl Fn(&Theme, button::Status) -> button::Style {
 	move |_theme, status| {
 		let (background, text_color) = if selected {
-			(Some(SELECTION_COLOR.into()), TEXT_PRIMARY_COLOR_INVERTED)
+			(
+				Some(SELECTION_COLOR.scale_alpha(alpha).into()),
+				TEXT_PRIMARY_COLOR_INVERTED.scale_alpha(alpha),
+			)
 		} else {
 			match status {
-				button::Status::Hovered => (Some(BACKGROUND_SELECTED_COLOR.into()), TEXT_PRIMARY_COLOR),
-				button::Status::Pressed => (Some(SELECTION_COLOR.into()), TEXT_PRIMARY_COLOR_INVERTED),
-				_ => (None, TEXT_PRIMARY_COLOR),
+				button::Status::Hovered => (
+					Some(BACKGROUND_SELECTED_COLOR.scale_alpha(alpha).into()),
+					TEXT_PRIMARY_COLOR.scale_alpha(alpha),
+				),
+				button::Status::Pressed => (
+					Some(SELECTION_COLOR.scale_alpha(alpha).into()),
+					TEXT_PRIMARY_COLOR_INVERTED.scale_alpha(alpha),
+				),
+				_ => (None, TEXT_PRIMARY_COLOR.scale_alpha(alpha)),
 			}
 		};
 
@@ -259,12 +273,16 @@ pub fn button_menu_item(selected: bool) -> impl Fn(&Theme, button::Status) -> bu
 	}
 }
 
-pub fn editor_menu_panel(_theme: &Theme) -> container::Style {
+pub fn editor_menu_panel(theme: &Theme) -> container::Style {
+	editor_menu_panel_faded(theme, 1.0)
+}
+
+pub fn editor_menu_panel_faded(_theme: &Theme, alpha: f32) -> container::Style {
 	container::Style {
-		background: Some(WIDGET_COLOR.into()),
-		text_color: Some(TEXT_PRIMARY_COLOR),
+		background: Some(WIDGET_COLOR.scale_alpha(alpha).into()),
+		text_color: Some(TEXT_PRIMARY_COLOR.scale_alpha(alpha)),
 		border: Border {
-			color: BORDER_COLOR,
+			color: BORDER_COLOR.scale_alpha(alpha),
 			width: BORDER_THICKNESS,
 			radius: BORDER_RADIUS.into(),
 		},

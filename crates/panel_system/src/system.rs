@@ -2,9 +2,11 @@
 //!
 //! 単一エディタのエリア分割・結合・種別切替・リサイズを提供します。
 
+use std::time::Instant;
+
 use iced::{
-	Color, Element, Length, Point, Rectangle, Size,
-	widget::{Space, button, column, container, mouse_area, row, rule, stack, svg, text},
+	Color, Element, Length, Point, Rectangle, Size, Vector,
+	widget::{Space, button, column, container, float, mouse_area, row, rule, stack, svg, text},
 };
 
 use crate::{
@@ -14,6 +16,25 @@ use crate::{
 	drag::{CornerAction, DragState},
 	node::{DockNode, SplitDirection},
 };
+
+/// Editor-type dropdown open/close duration.
+const EDITOR_MENU_ANIM_SECS: f32 = 0.14;
+/// Slide distance (px) while the menu fades in.
+const EDITOR_MENU_SLIDE_PX: f32 = 6.0;
+
+#[derive(Debug, Clone)]
+struct EditorMenuState {
+	area_id: usize,
+	/// 0.0 = fully closed, 1.0 = fully open
+	progress: f32,
+	opening: bool,
+	last_tick: Instant,
+}
+
+fn ease_out_cubic(t: f32) -> f32 {
+	let t = t.clamp(0.0, 1.0);
+	1.0 - (1.0 - t).powi(3)
+}
 
 struct CornerDragUpdate {
 	action: Option<CornerAction>,
@@ -63,6 +84,8 @@ where
 	ToggleEditorMenu(usize),
 	/// エディタ種別メニューを閉じる
 	CloseEditorMenu,
+	/// エディタ種別メニューの開閉アニメーションを進める
+	AnimTick,
 	/// 角ドラッグ開始
 	CornerDragStart(usize),
 	MouseMove(Point),
@@ -90,8 +113,8 @@ pub struct PanelSystem<C: AreaKind> {
 	last_mouse_pos: Point,
 	window_size: Size,
 	hover_resize_handle: Option<(Vec<usize>, SplitDirection)>,
-	/// 開いているエディタ種別メニューのエリア ID
-	editor_menu_open: Option<usize>,
+	/// エディタ種別メニュー（開閉アニメーション付き）
+	editor_menu: Option<EditorMenuState>,
 }
 
 impl<C: AreaKind> PanelSystem<C> {
@@ -103,7 +126,59 @@ impl<C: AreaKind> PanelSystem<C> {
 			last_mouse_pos: Point::ORIGIN,
 			window_size: Size::new(800.0, 600.0),
 			hover_resize_handle: None,
-			editor_menu_open: None,
+			editor_menu: None,
+		}
+	}
+
+	/// Whether the editor menu open/close animation still needs ticks.
+	pub fn is_editor_menu_animating(&self) -> bool {
+		self.editor_menu
+			.as_ref()
+			.is_some_and(|menu| (menu.opening && menu.progress < 1.0) || (!menu.opening && menu.progress > 0.0))
+	}
+
+	fn open_editor_menu(&mut self, area_id: usize) {
+		if let Some(menu) = &mut self.editor_menu
+			&& menu.area_id == area_id
+		{
+			menu.opening = !menu.opening;
+			menu.last_tick = Instant::now();
+			return;
+		}
+		self.editor_menu = Some(EditorMenuState {
+			area_id,
+			progress: 0.0,
+			opening: true,
+			last_tick: Instant::now(),
+		});
+	}
+
+	fn close_editor_menu(&mut self) {
+		if let Some(menu) = &mut self.editor_menu {
+			menu.opening = false;
+			menu.last_tick = Instant::now();
+		}
+	}
+
+	fn tick_editor_menu(&mut self) {
+		let finished = {
+			let Some(menu) = self.editor_menu.as_mut() else {
+				return;
+			};
+			let now = Instant::now();
+			let dt = now.duration_since(menu.last_tick).as_secs_f32().min(0.05);
+			menu.last_tick = now;
+			let delta = dt / EDITOR_MENU_ANIM_SECS;
+			if menu.opening {
+				menu.progress = (menu.progress + delta).min(1.0);
+				false
+			} else {
+				menu.progress = (menu.progress - delta).max(0.0);
+				menu.progress <= 0.0
+			}
+		};
+		if finished {
+			self.editor_menu = None;
 		}
 	}
 
@@ -132,19 +207,19 @@ impl<C: AreaKind> PanelSystem<C> {
 		match message {
 			PanelSystemMessage::ChangeEditor(area_id, content) => {
 				self.set_area_content(area_id, content);
-				self.editor_menu_open = None;
+				self.close_editor_menu();
 			}
 
 			PanelSystemMessage::ToggleEditorMenu(area_id) => {
-				self.editor_menu_open = if self.editor_menu_open == Some(area_id) {
-					None
-				} else {
-					Some(area_id)
-				};
+				self.open_editor_menu(area_id);
 			}
 
 			PanelSystemMessage::CloseEditorMenu => {
-				self.editor_menu_open = None;
+				self.close_editor_menu();
+			}
+
+			PanelSystemMessage::AnimTick => {
+				self.tick_editor_menu();
 			}
 
 			PanelSystemMessage::CornerDragStart(area_id) => {
@@ -231,7 +306,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			}
 
 			PanelSystemMessage::JoinArea(area_id) => {
-				self.editor_menu_open = None;
+				self.close_editor_menu();
 				self.join_area(area_id);
 			}
 
@@ -677,7 +752,13 @@ impl<C: AreaKind> PanelSystem<C> {
 	{
 		let area_id = area.id;
 		let can_join = self.area_has_sibling(area_id);
-		let menu_open = self.editor_menu_open == Some(area_id);
+		let menu_progress = self
+			.editor_menu
+			.as_ref()
+			.filter(|menu| menu.area_id == area_id)
+			.map(|menu| ease_out_cubic(menu.progress));
+		let menu_open = menu_progress.is_some_and(|p| p > 0.001);
+		let anim = menu_progress.unwrap_or(0.0);
 
 		// Blender-style editor type chip: [icon] [▾]
 		const ICON_SIZE: f32 = 14.0;
@@ -745,9 +826,9 @@ impl<C: AreaKind> PanelSystem<C> {
 				.map(|(category, kinds)| {
 					let header = column![
 						constants::widgets::ui_label(category, constants::style::FONT_TINY)
-							.color(constants::style::TEXT_SECONDARY_COLOR),
-						rule::horizontal(1).style(|_theme| rule::Style {
-							color: constants::style::BORDER_SUBTLE_COLOR,
+							.color(constants::style::TEXT_SECONDARY_COLOR.scale_alpha(anim)),
+						rule::horizontal(1).style(move |_theme| rule::Style {
+							color: constants::style::BORDER_SUBTLE_COLOR.scale_alpha(anim),
 							radius: 0.0.into(),
 							fill_mode: rule::FillMode::Full,
 							snap: true,
@@ -762,18 +843,18 @@ impl<C: AreaKind> PanelSystem<C> {
 							.map(|kind| {
 								let selected = kind == area.content;
 								let icon_color = if selected {
-									constants::style::TEXT_PRIMARY_COLOR_INVERTED
+									constants::style::TEXT_PRIMARY_COLOR_INVERTED.scale_alpha(anim)
 								} else {
-									constants::style::TEXT_PRIMARY_COLOR
+									constants::style::TEXT_PRIMARY_COLOR.scale_alpha(anim)
 								};
 								let label_color = if selected {
-									constants::style::TEXT_PRIMARY_COLOR_INVERTED
+									constants::style::TEXT_PRIMARY_COLOR_INVERTED.scale_alpha(anim)
 								} else {
-									constants::style::TEXT_PRIMARY_COLOR
+									constants::style::TEXT_PRIMARY_COLOR.scale_alpha(anim)
 								};
 
 								let row_content = constants::widgets::icon_label_row(
-									panel_icon_svg_colored(kind.icon(), MENU_ICON, icon_color),
+									panel_icon_svg_colored(kind.icon(), MENU_ICON, icon_color, anim),
 									kind.label(),
 									constants::style::FONT_UI,
 									label_color,
@@ -790,7 +871,7 @@ impl<C: AreaKind> PanelSystem<C> {
 									})
 									.width(Length::Fill)
 									.height(ROW_HEIGHT)
-									.style(constants::widgets::button_menu_item(selected))
+									.style(constants::widgets::button_menu_item_faded(selected, anim))
 									.on_press(PanelSystemMessage::ChangeEditor(area_id, kind))
 									.into()
 							})
@@ -814,10 +895,15 @@ impl<C: AreaKind> PanelSystem<C> {
 			.align_y(iced::Alignment::Start)
 			.height(Length::Shrink);
 
-			container(columns)
-				.height(Length::Shrink)
-				.style(constants::widgets::editor_menu_panel)
-				.into()
+			let slide = (1.0 - anim) * -EDITOR_MENU_SLIDE_PX;
+
+			float(
+				container(columns)
+					.height(Length::Shrink)
+					.style(move |theme| constants::widgets::editor_menu_panel_faded(theme, anim)),
+			)
+			.translate(move |_bounds, _viewport| Vector::new(0.0, slide))
+			.into()
 		} else {
 			Space::new().width(0).height(0).into()
 		};
@@ -1386,14 +1472,20 @@ fn chevron_down_handle() -> svg::Handle {
 }
 
 fn panel_icon_svg<'a, Message: 'a>(handle: svg::Handle, size: f32) -> Element<'a, Message> {
-	panel_icon_svg_colored(handle, size, constants::style::TEXT_PRIMARY_COLOR)
+	panel_icon_svg_colored(handle, size, constants::style::TEXT_PRIMARY_COLOR, 1.0)
 }
 
-fn panel_icon_svg_colored<'a, Message: 'a>(handle: svg::Handle, size: f32, color: Color) -> Element<'a, Message> {
+fn panel_icon_svg_colored<'a, Message: 'a>(
+	handle: svg::Handle,
+	size: f32,
+	color: Color,
+	opacity: f32,
+) -> Element<'a, Message> {
 	constants::widgets::icon_slot(
 		svg(handle)
 			.width(size)
 			.height(size)
+			.opacity(opacity)
 			.style(move |_theme, _status| svg::Style { color: Some(color) }),
 		size,
 	)
