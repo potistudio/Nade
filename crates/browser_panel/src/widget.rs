@@ -2,7 +2,7 @@ use crate::{ProjectPaneMessage, ProjectPaneState};
 use constants::style::*;
 use constants::widgets;
 use domain::{Asset, AssetType, Project};
-use iced::widget::{column, container, mouse_area, row, text};
+use iced::widget::{button, column, container, mouse_area, row, scrollable, text};
 use iced::{Element, Length};
 
 #[derive(Debug)]
@@ -18,9 +18,16 @@ impl<'a> ProjectPaneWidget<'a> {
 
 	pub fn view(self, state: &'a ProjectPaneState) -> Element<'a, ProjectPaneMessage> {
 		let project = self.project;
-		let root_assets = project.assets();
+		let root_assets = project.root_assets();
 
-		// No inner header — dock chrome already provides the editor title.
+		let toolbar = row![
+			tool_button("Import", ProjectPaneMessage::ImportMedia),
+			tool_button("Folder", ProjectPaneMessage::NewFolder),
+			tool_button("Add", ProjectPaneMessage::AddToTimeline),
+		]
+		.spacing(SPACE_1)
+		.padding([SPACE_1, SPACE_2]);
+
 		let tree = column(
 			root_assets
 				.iter()
@@ -31,7 +38,9 @@ impl<'a> ProjectPaneWidget<'a> {
 		let clear_area = mouse_area(container(text("")).width(Length::Fill).height(Length::Fill))
 			.on_press(ProjectPaneMessage::ClearSelection);
 
-		container(column![tree, clear_area])
+		let body = scrollable(column![tree, clear_area].width(Length::Fill)).height(Length::Fill);
+
+		container(column![toolbar, body].spacing(SPACE_1))
 			.width(Length::Fill)
 			.height(Length::Fill)
 			.padding([SPACE_1, 0.0])
@@ -41,6 +50,17 @@ impl<'a> ProjectPaneWidget<'a> {
 }
 
 //* -------- Private API -------- */
+fn tool_button<'a>(label: &'a str, message: ProjectPaneMessage) -> Element<'a, ProjectPaneMessage> {
+	button(widgets::button_body(
+		widgets::ui_label(label, FONT_TINY).color(TEXT_PRIMARY_COLOR),
+	))
+	.height(ROW_HEIGHT + SPACE_1 * 2.0)
+	.padding([0.0, SPACE_2])
+	.style(widgets::button_ghost)
+	.on_press(message)
+	.into()
+}
+
 fn view_item<'a>(
 	project: &'a Project,
 	asset: &'a Asset,
@@ -109,7 +129,9 @@ fn view_item<'a>(
 		.align_y(iced::Alignment::Center)
 		.style(widgets::list_row(is_selected));
 
-	let selectable_row = mouse_area(row_container).on_press(ProjectPaneMessage::Select(asset.id()));
+	let selectable_row = mouse_area(row_container)
+		.on_press(ProjectPaneMessage::Select(asset.id()))
+		.on_double_click(ProjectPaneMessage::OpenItem(asset.id()));
 	let mut children = vec![selectable_row.into()];
 
 	if is_expanded {

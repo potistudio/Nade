@@ -3,6 +3,7 @@
 //! アプリケーション全体で使用されるメッセージ型を定義します。
 
 use panel_system::PanelSystemMessage;
+use std::path::PathBuf;
 use timeline_panel::TimelineMessage;
 
 use crate::panel_content::PanelContent;
@@ -33,4 +34,6 @@ pub enum Message {
 	WindowClosed(iced::window::Id),
 	/// タイムラインパネルメッセージ
 	Timeline(TimelineMessage),
+	/// ファイルダイアログで選ばれたメディア（キャンセル時は None）
+	MediaImported(Option<PathBuf>),
 }

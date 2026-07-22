@@ -1,5 +1,6 @@
 use core::{AssetId, BitDepth, CompositionId, NodeId, SampleRate};
 use std::collections::HashMap;
+use std::path::Path;
 
 use crate::{
 	asset::{Asset, AssetType},
@@ -71,9 +72,18 @@ impl Project {
 		self.compositions.values().map(|comp| comp.id()).collect()
 	}
 
-	/// Returns a references to the list of assets in the project
+	/// Returns IDs of all assets in the project (flat).
 	pub fn assets(&self) -> Vec<AssetId> {
 		self.assets.iter().map(|asset| asset.id()).collect()
+	}
+
+	/// Returns IDs of root assets (no parent) for the project tree.
+	pub fn root_assets(&self) -> Vec<AssetId> {
+		self.assets
+			.iter()
+			.filter(|asset| asset.parent.is_none())
+			.map(|asset| asset.id())
+			.collect()
 	}
 
 	/// Returns a reference to the list of nodes in the project
@@ -82,14 +92,42 @@ impl Project {
 	}
 
 	//==== Factory Method ======================================================
-	/// Adds a new asset to the project with the given name and type, and returns its ID
+	/// Adds a new root asset to the project with the given name and type.
 	pub fn create_asset(&mut self, name: impl Into<String>, kind: AssetType) -> AssetId {
-		let id = AssetId::new(self.assets.len());
-		let asset = Asset::new(id, name.into(), kind, None);
+		self.create_asset_in(None, name, kind)
+	}
 
-		self.assets.push(asset);
+	/// Adds a new asset under an optional parent folder.
+	pub fn create_asset_in(&mut self, parent: Option<AssetId>, name: impl Into<String>, kind: AssetType) -> AssetId {
+		let id = AssetId::new(self.assets.len());
+		self.assets.push(Asset::new(id, name.into(), kind, parent));
+
+		if let Some(parent_id) = parent
+			&& let Some(parent_asset) = self.assets.iter_mut().find(|asset| asset.id() == parent_id)
+		{
+			parent_asset.children.push(id);
+		}
 
 		id
+	}
+
+	/// Creates a folder asset under an optional parent.
+	pub fn create_folder(&mut self, name: impl Into<String>, parent: Option<AssetId>) -> AssetId {
+		self.create_asset_in(parent, name, AssetType::Folder)
+	}
+
+	/// Imports a media file into the project tree.
+	///
+	/// Returns `None` when the extension is not a supported media type.
+	pub fn import_media(&mut self, path: impl AsRef<Path>, parent: Option<AssetId>) -> Option<AssetId> {
+		let path = path.as_ref();
+		let kind = AssetType::from_path(path)?;
+		let name = path.file_name()?.to_string_lossy().into_owned();
+		let id = self.create_asset_in(parent, name, kind);
+		if let Some(asset) = self.asset_mut(id) {
+			asset.source_path = Some(path.to_path_buf());
+		}
+		Some(id)
 	}
 
 	/// Adds a new composition to the project with the given description and returns its ID
@@ -198,5 +236,33 @@ mod tests {
 		assert_eq!(project.asset(asset_id).unwrap().id(), asset_id);
 		assert_eq!(project.asset(asset_id).unwrap().name, "Test Asset");
 		assert_eq!(project.asset(asset_id).unwrap().kind(), AssetType::Video);
+	}
+
+	#[test]
+	fn create_asset_in_builds_hierarchy() {
+		let mut project = Project::default();
+		let folder = project.create_folder("Assets", None);
+		let child = project.create_asset_in(Some(folder), "clip.mov", AssetType::Video);
+
+		assert_eq!(project.root_assets(), vec![folder]);
+		assert_eq!(project.asset(folder).unwrap().children, vec![child]);
+		assert_eq!(project.asset(child).unwrap().parent, Some(folder));
+	}
+
+	#[test]
+	fn import_media_sets_source_path() {
+		let mut project = Project::default();
+		let folder = project.create_folder("Assets", None);
+		let id = project
+			.import_media("/tmp/demo.png", Some(folder))
+			.expect("png is supported");
+
+		let asset = project.asset(id).unwrap();
+		assert_eq!(asset.kind(), AssetType::Image);
+		assert_eq!(asset.name, "demo.png");
+		assert_eq!(
+			asset.source_path.as_deref(),
+			Some(std::path::Path::new("/tmp/demo.png"))
+		);
 	}
 }

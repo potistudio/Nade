@@ -14,8 +14,9 @@ use std::thread;
 use std::time::Instant;
 use timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
 
-use core::{CoreEffect, FrameData, Model, Msg, update};
+use core::{AssetId, CoreEffect, FrameData, Model, Msg, update};
 use domain::{AssetType, Project};
+use std::path::PathBuf;
 
 use crate::message::{AppPanelMessage, Message};
 use crate::panel_content::PanelContent;
@@ -119,10 +120,9 @@ pub(super) struct NadeApp {
 //==== Iced API ================================================================
 impl NadeApp {
 	pub(super) fn new() -> (Self, Task<Message>) {
-		let mut project = Project::default();
-		project.create_asset("hogehoge image", AssetType::Image);
-		project.create_asset("0001-0004.mov", AssetType::Video);
-		project.create_asset("16mm Burn 6.mov", AssetType::Video);
+		let (project, assets_folder) = Self::create_sample_project();
+		let mut project_pane = ProjectPaneState::default();
+		project_pane.expanded_ids.insert(assets_folder);
 
 		let panel_system = Self::create_panel_layout();
 		let (render_tx, render_rx) = unbounded::<FrameData>();
@@ -132,7 +132,7 @@ impl NadeApp {
 			project,
 			current_model: Model::default(),
 			timeline: TimelinePanelState::default(),
-			project_pane: ProjectPaneState::default(),
+			project_pane,
 			panel_system,
 			render_tx,
 			render_rx: Arc::new(std::sync::Mutex::new(render_rx)),
@@ -147,6 +147,21 @@ impl NadeApp {
 		app.apply_core_msg(Msg::SetTime(0.0));
 
 		(app, Task::none())
+	}
+
+	fn create_sample_project() -> (Project, AssetId) {
+		let mut project = Project::default();
+		let assets = project.create_folder("Assets", None);
+		project.create_asset_in(Some(assets), "Background.png", AssetType::Image);
+		project.create_asset_in(Some(assets), "0001-0004.mov", AssetType::Video);
+		project.create_asset_in(Some(assets), "BGM.mp3", AssetType::Audio);
+
+		let scenes = project.create_folder("Scenes", None);
+		project.create_composition("Scene 1", 1920, 1080, 60.0);
+		project.create_asset_in(Some(scenes), "Scene 1", AssetType::Composition);
+		project.create_asset("Main Composition", AssetType::Composition);
+
+		(project, assets)
 	}
 
 	/// 初期パネルレイアウトを構築
@@ -265,16 +280,24 @@ impl NadeApp {
 			}
 
 			Message::PanelSystem(msg) => {
+				let mut task = Task::none();
 				match &msg {
 					PanelSystemMessage::AppMessage(AppPanelMessage::Timeline { message, .. }) => {
 						self.apply_timeline_message(message.clone());
 					}
 					PanelSystemMessage::AppMessage(AppPanelMessage::Project(project_msg)) => {
-						self.apply_project_message(project_msg.clone());
+						task = self.apply_project_message(project_msg.clone());
 					}
 					_ => {}
 				}
 				self.panel_system.update(msg);
+				task
+			}
+
+			Message::MediaImported(path) => {
+				if let Some(path) = path {
+					self.import_media_path(path);
+				}
 				Task::none()
 			}
 
@@ -310,24 +333,130 @@ impl NadeApp {
 		}
 	}
 
-	fn apply_project_message(&mut self, msg: ProjectPaneMessage) {
+	fn apply_project_message(&mut self, msg: ProjectPaneMessage) -> Task<Message> {
 		match msg {
 			ProjectPaneMessage::ToggleExpand(id) => {
-				if self.project_pane.expanded_ids.contains(&id) {
-					self.project_pane.expanded_ids.remove(&id);
-				} else {
-					self.project_pane.expanded_ids.insert(id);
-				}
+				self.toggle_expand(id);
+				Task::none()
 			}
 			ProjectPaneMessage::Select(id) => {
 				self.project_pane.selected_id = Some(id);
+				Task::none()
 			}
 			ProjectPaneMessage::ClearSelection => {
 				self.project_pane.selected_id = None;
+				Task::none()
 			}
 			ProjectPaneMessage::OpenItem(id) => {
-				self.project_pane.selected_id = Some(id);
+				self.open_item(id);
+				Task::none()
 			}
+			ProjectPaneMessage::ImportMedia => Self::pick_media_file(),
+			ProjectPaneMessage::NewFolder => {
+				self.create_folder_under_selection();
+				Task::none()
+			}
+			ProjectPaneMessage::AddToTimeline => {
+				self.add_selected_asset_to_timeline();
+				Task::none()
+			}
+		}
+	}
+
+	fn toggle_expand(&mut self, id: AssetId) {
+		if self.project_pane.expanded_ids.contains(&id) {
+			self.project_pane.expanded_ids.remove(&id);
+		} else {
+			self.project_pane.expanded_ids.insert(id);
+		}
+	}
+
+	fn open_item(&mut self, id: AssetId) {
+		self.project_pane.selected_id = Some(id);
+		if let Some(asset) = self.project.asset(id)
+			&& asset.kind() == AssetType::Folder
+		{
+			self.project_pane.expanded_ids.insert(id);
+		}
+	}
+
+	fn pick_media_file() -> Task<Message> {
+		Task::perform(
+			async {
+				rfd::AsyncFileDialog::new()
+					.set_title("Import Media")
+					.add_filter(
+						"Media",
+						&[
+							"png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "mov", "mp4", "mkv", "avi",
+							"webm", "m4v", "mp3", "wav", "flac", "aac", "ogg", "m4a",
+						],
+					)
+					.pick_file()
+					.await
+					.map(|handle| handle.path().to_path_buf())
+			},
+			Message::MediaImported,
+		)
+	}
+
+	fn import_media_path(&mut self, path: PathBuf) {
+		let parent = self.import_parent();
+		match self.project.import_media(&path, parent) {
+			Some(id) => {
+				if let Some(parent_id) = parent {
+					self.project_pane.expanded_ids.insert(parent_id);
+				}
+				self.project_pane.selected_id = Some(id);
+				log::info!("Imported media: {}", path.display());
+			}
+			None => {
+				log::warn!("Unsupported media type: {}", path.display());
+			}
+		}
+	}
+
+	fn import_parent(&self) -> Option<AssetId> {
+		let selected = self.project_pane.selected_id?;
+		let asset = self.project.asset(selected)?;
+		match asset.kind() {
+			AssetType::Folder => Some(selected),
+			_ => asset.parent,
+		}
+	}
+
+	fn create_folder_under_selection(&mut self) {
+		let parent = self.import_parent();
+		let name = unique_folder_name(&self.project, parent);
+		let id = self.project.create_folder(name, parent);
+		if let Some(parent_id) = parent {
+			self.project_pane.expanded_ids.insert(parent_id);
+		}
+		self.project_pane.selected_id = Some(id);
+		self.project_pane.expanded_ids.insert(id);
+	}
+
+	fn add_selected_asset_to_timeline(&mut self) {
+		let Some(id) = self.project_pane.selected_id else {
+			return;
+		};
+		let Some(asset) = self.project.asset(id) else {
+			return;
+		};
+		if !asset.kind().is_media() {
+			log::debug!("Add to timeline ignored for non-media asset");
+			return;
+		}
+
+		let name = asset.name.clone();
+		let start_time = self.current_model.preview.time;
+		let duration = 5.0;
+		let clip_id = next_clip_id(&self.timeline.model);
+		let track_index = if asset.kind() == AssetType::Audio { 1 } else { 0 };
+
+		if let Some(track) = self.timeline.model.tracks.get_mut(track_index) {
+			track.add_clip(TimelineClip::new(clip_id, &name, start_time, duration));
+			log::info!("Added `{name}` to timeline at {start_time:.2}s");
 		}
 	}
 
@@ -389,4 +518,37 @@ impl NadeApp {
 
 		Subscription::batch([render_subscription, keyboard_subscription, tick, resize])
 	}
+}
+
+fn next_clip_id(model: &TimelineModel) -> usize {
+	model
+		.tracks
+		.iter()
+		.flat_map(|track| track.clips.iter().map(|clip| clip.id))
+		.max()
+		.map(|id| id + 1)
+		.unwrap_or(0)
+}
+
+fn unique_folder_name(project: &Project, parent: Option<AssetId>) -> String {
+	let existing: Vec<&str> = project
+		.assets()
+		.iter()
+		.filter_map(|id| project.asset(*id))
+		.filter(|asset| asset.parent == parent && asset.kind() == AssetType::Folder)
+		.map(|asset| asset.name.as_str())
+		.collect();
+
+	if !existing.iter().any(|name| *name == "New Folder") {
+		return "New Folder".to_string();
+	}
+
+	for index in 2.. {
+		let candidate = format!("New Folder {index}");
+		if !existing.iter().any(|name| *name == candidate) {
+			return candidate;
+		}
+	}
+
+	unreachable!()
 }
