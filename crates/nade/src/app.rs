@@ -3,16 +3,24 @@
 //! NadeのメインUIアプリケーション実装です。
 
 use browser_panel::{ProjectPaneMessage, ProjectPaneState};
-use iced::widget::{container, text};
+use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
+use iced::keyboard;
+use iced::widget::container;
 use iced::{Element, Length, Size, Subscription, Task, Theme};
 use panel_system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Instant;
 use timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
 
+use core::{CoreEffect, FrameData, Model, Msg, update};
 use domain::{AssetType, Project};
 
 use crate::message::{AppPanelMessage, Message};
 use crate::panel_content::PanelContent;
 use crate::panels;
+use crate::services::render_service::{RenderConnection, build_render_stream};
 
 // =============================================================================
 // ウィンドウイベント
@@ -79,11 +87,8 @@ pub(super) struct NadeApp {
 	/// Project data (assets, metadata, etc.)
 	project: Project,
 
-	/// 現在の再生時間
-	current_time: f32,
-
-	/// 再生中かどうか
-	is_playing: bool,
+	/// Core preview / playback model
+	current_model: Model,
 
 	/// タイムラインパネル
 	timeline: TimelinePanelState,
@@ -93,6 +98,22 @@ pub(super) struct NadeApp {
 
 	/// パネルシステム（レイアウト・リサイズ管理）
 	panel_system: PanelSystem<PanelContent>,
+
+	/// レンダリング結果送信用チャンネル
+	render_tx: Sender<FrameData>,
+	/// レンダリング結果受信用チャンネル（Subscriptionで使用）
+	render_rx: Arc<std::sync::Mutex<Receiver<FrameData>>>,
+	/// レンダリングServiceのシャットダウン通知
+	render_shutdown_tx: Option<Sender<()>>,
+	/// レンダリングServiceのシャットダウン受信機（Serviceへ渡す）
+	render_shutdown_rx: Arc<std::sync::Mutex<Receiver<()>>>,
+
+	/// バックグラウンドレンダリング中かどうか
+	is_rendering: Arc<AtomicBool>,
+	/// FPS計算用カウンタ
+	frame_count: u32,
+	/// FPS更新の基準時刻
+	fps_update_time: Instant,
 }
 
 //==== Iced API ================================================================
@@ -104,15 +125,26 @@ impl NadeApp {
 		project.create_asset("16mm Burn 6.mov", AssetType::Video);
 
 		let panel_system = Self::create_panel_layout();
+		let (render_tx, render_rx) = unbounded::<FrameData>();
+		let (shutdown_tx, shutdown_rx) = bounded(1);
 
-		let app = Self {
+		let mut app = Self {
 			project,
-			current_time: 0.0,
-			is_playing: false,
+			current_model: Model::default(),
 			timeline: TimelinePanelState::default(),
 			project_pane: ProjectPaneState::default(),
 			panel_system,
+			render_tx,
+			render_rx: Arc::new(std::sync::Mutex::new(render_rx)),
+			render_shutdown_tx: Some(shutdown_tx),
+			render_shutdown_rx: Arc::new(std::sync::Mutex::new(shutdown_rx)),
+			is_rendering: Arc::new(AtomicBool::new(false)),
+			frame_count: 0,
+			fps_update_time: Instant::now(),
 		};
+
+		// 初期フレームを描画
+		app.apply_core_msg(Msg::SetTime(0.0));
 
 		(app, Task::none())
 	}
@@ -145,22 +177,80 @@ impl NadeApp {
 		system
 	}
 
+	/// CoreロジックをUIスレッドで適用し、副作用のみを非同期実行する
+	fn apply_core_msg(&mut self, msg: Msg) {
+		let (next_model, effects) = update(self.current_model.clone(), msg);
+		self.current_model = next_model;
+		self.handle_effects(effects);
+	}
+
+	/// CoreEffectの実行（重い処理のみバックグラウンドへ）
+	fn handle_effects(&mut self, effects: Vec<CoreEffect>) {
+		for effect in effects {
+			match effect {
+				CoreEffect::RenderFrame { time, width, height } => {
+					if self.is_rendering.load(Ordering::SeqCst) {
+						log::trace!("Skipping frame render - previous render still in progress");
+						continue;
+					}
+					self.spawn_render(time, width, height);
+				}
+			}
+		}
+	}
+
+	/// レンダリングだけを別スレッドで実行する
+	fn spawn_render(&self, time: f32, width: u32, height: u32) {
+		self.is_rendering.store(true, Ordering::SeqCst);
+		let is_rendering = Arc::clone(&self.is_rendering);
+		let render_tx = self.render_tx.clone();
+
+		thread::spawn(move || {
+			let frame_num = (time * 60.0).max(0.0) as u32;
+			let img_buffer = renderer::render_frame(frame_num, width, height);
+			let frame_data = FrameData {
+				width,
+				height,
+				pixels: bytes::Bytes::from(img_buffer.into_raw()),
+			};
+
+			if render_tx.send(frame_data).is_err() {
+				log::info!("Render thread: receiver dropped before frame delivery.");
+			}
+			is_rendering.store(false, Ordering::SeqCst);
+		});
+	}
+
+	/// バックグラウンドレンダリング完了を処理する
+	fn handle_render_completed(&mut self, frame: FrameData) {
+		self.apply_core_msg(Msg::FrameRendered(frame));
+
+		self.frame_count += 1;
+		let now = Instant::now();
+		let elapsed = now.duration_since(self.fps_update_time).as_secs_f32();
+		if elapsed >= 0.5 {
+			self.current_model.preview.fps = self.frame_count as f32 / elapsed;
+			self.frame_count = 0;
+			self.fps_update_time = now;
+		}
+	}
+
 	pub(super) fn update(&mut self, message: Message) -> Task<Message> {
 		match message {
 			Message::RenderCompleted(frame) => {
-				log::debug!("Render completed: {:?}", frame);
+				self.handle_render_completed(frame);
 				Task::none()
 			}
 
 			Message::TogglePlay => {
-				self.is_playing = !self.is_playing;
-				log::debug!("Toggling play/pause: {}", self.is_playing);
+				self.apply_core_msg(Msg::TogglePlay);
+				log::debug!("Toggling play/pause: {}", self.current_model.preview.is_playing);
 				Task::none()
 			}
 
 			Message::Tick => {
-				if self.is_playing {
-					self.current_time += 1.0 / 60.0;
+				if self.current_model.preview.is_playing {
+					self.apply_core_msg(Msg::Tick);
 				}
 				if self.panel_system.is_editor_menu_animating() {
 					self.panel_system
@@ -188,18 +278,26 @@ impl NadeApp {
 				Task::none()
 			}
 
-			Message::WindowClosed(id) => iced::window::close(id),
+			Message::WindowClosed(id) => {
+				if let Some(tx) = self.render_shutdown_tx.take()
+					&& let Err(e) = tx.send(())
+				{
+					log::error!("App: Failed to send render shutdown: {:?}", e);
+				}
+				iced::window::close(id)
+			}
 		}
 	}
 
 	fn apply_timeline_message(&mut self, msg: TimelineMessage) {
+		let current_time = self.current_model.preview.time;
 		let timeline_update = self
 			.timeline
 			.state
-			.apply_message(&mut self.timeline.model, msg, self.current_time);
+			.apply_message(&mut self.timeline.model, msg, current_time);
 
 		if let Some(time) = timeline_update.playhead_time {
-			self.current_time = time;
+			self.apply_core_msg(Msg::SetTime(time));
 		}
 
 		if let Some((from_index, to_index)) = self.timeline.state.take_reorder()
@@ -250,34 +348,45 @@ impl NadeApp {
 		content: &PanelContent,
 	) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
 		match content {
-			PanelContent::Timeline => {
-				panels::timeline::view(panel_id, &self.timeline.state, &self.timeline.model, self.current_time)
-			}
-			PanelContent::MainPreview => container(
-				text("Preview")
-					.size(constants::style::FONT_LABEL)
-					.color(constants::style::TEXT_MUTED_COLOR),
-			)
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.center_x(Length::Fill)
-			.center_y(Length::Fill)
-			.into(),
-			PanelContent::Inspector => panels::inspector::view(None),
+			PanelContent::Timeline => panels::timeline::view(
+				panel_id,
+				&self.timeline.state,
+				&self.timeline.model,
+				self.current_model.preview.time,
+			),
+			PanelContent::MainPreview => panels::preview::view(&self.current_model.preview),
+			PanelContent::Inspector => panels::inspector::view(self.current_model.preview.selection.as_ref()),
 			PanelContent::Project => panels::browser::view(&self.project, &self.project_pane),
 		}
 	}
 
 	pub(super) fn subscription(&self) -> Subscription<Message> {
-		// Speed up the global tick while the editor menu animates so every panel
-		// redraws smoothly (timeline already redraws often from pointer events).
-		let tick_ms = if self.panel_system.is_editor_menu_animating() {
+		let render_subscription = Subscription::run_with(
+			RenderConnection(self.render_rx.clone(), self.render_shutdown_rx.clone()),
+			build_render_stream,
+		);
+
+		let keyboard_subscription = iced::event::listen_with(|event, _status, _id| {
+			if let iced::Event::Keyboard(keyboard::Event::KeyPressed {
+				key: keyboard::Key::Named(keyboard::key::Named::Space),
+				..
+			}) = event
+			{
+				Some(Message::TogglePlay)
+			} else {
+				None
+			}
+		});
+
+		// 再生中・メニューアニメ中は ~60fps、それ以外は間引き
+		let tick_ms = if self.current_model.preview.is_playing || self.panel_system.is_editor_menu_animating() {
 			16
 		} else {
 			50
 		};
 		let tick = iced::time::every(std::time::Duration::from_millis(tick_ms)).map(|_| Message::Tick);
 		let resize = iced::event::listen_with(on_window_resize);
-		Subscription::batch([tick, resize])
+
+		Subscription::batch([render_subscription, keyboard_subscription, tick, resize])
 	}
 }

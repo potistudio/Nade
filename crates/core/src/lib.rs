@@ -170,6 +170,47 @@ pub enum CoreEffect {
 }
 
 // =============================================================================
+// Update Logic
+// =============================================================================
+
+pub fn update(mut model: Model, msg: Msg) -> (Model, Vec<CoreEffect>) {
+	let mut effects = Vec::new();
+
+	match msg {
+		Msg::Tick => {
+			if model.preview.is_playing {
+				model.preview.time += 1.0 / 60.0;
+				effects.push(CoreEffect::RenderFrame {
+					time: model.preview.time,
+					width: model.preview.width,
+					height: model.preview.height,
+				});
+			}
+		}
+		Msg::SetTime(t) => {
+			model.preview.time = t;
+			effects.push(CoreEffect::RenderFrame {
+				time: model.preview.time,
+				width: model.preview.width,
+				height: model.preview.height,
+			});
+		}
+		Msg::TogglePlay => {
+			model.preview.is_playing = !model.preview.is_playing;
+		}
+		Msg::Shutdown => {}
+		Msg::FrameRendered(frame) => {
+			model.preview.frame = Some(frame);
+		}
+		Msg::UpdateTransform(transform) => {
+			model.preview.selection = Some(transform);
+		}
+	}
+
+	(model, effects)
+}
+
+// =============================================================================
 // トランスフォーム
 // =============================================================================
 
@@ -190,5 +231,41 @@ impl Default for Transform {
 			scale: [1.0, 1.0, 1.0],
 			opacity: 1.0,
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn set_time_requests_render() {
+		let (model, effects) = update(Model::default(), Msg::SetTime(1.5));
+		assert!((model.preview.time - 1.5).abs() < f32::EPSILON);
+		assert_eq!(effects.len(), 1);
+		assert!(matches!(
+			effects[0],
+			CoreEffect::RenderFrame {
+				time,
+				width: 640,
+				height: 360
+			} if (time - 1.5).abs() < f32::EPSILON
+		));
+	}
+
+	#[test]
+	fn tick_while_playing_advances_time_and_renders() {
+		let mut model = Model::default();
+		model.preview.is_playing = true;
+		let (model, effects) = update(model, Msg::Tick);
+		assert!((model.preview.time - 1.0 / 60.0).abs() < f32::EPSILON);
+		assert_eq!(effects.len(), 1);
+	}
+
+	#[test]
+	fn tick_while_paused_is_noop() {
+		let (model, effects) = update(Model::default(), Msg::Tick);
+		assert_eq!(model.preview.time, 0.0);
+		assert!(effects.is_empty());
 	}
 }
