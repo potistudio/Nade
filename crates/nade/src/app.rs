@@ -17,8 +17,11 @@ use std::thread;
 use std::time::Instant;
 use timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
 
-use core::{AssetId, CompositionId, CoreEffect, FrameData, InstanceId, Model, Msg, Transform, update};
-use domain::{AssetType, Project};
+use core::{
+	AssetId, CompositionId, CoreEffect, FrameData, InstanceId, Model, Msg, SceneObjectData, SceneObjectId, TextObject,
+	update,
+};
+use domain::{AssetType, Instance, InstanceContent, Project};
 
 use crate::message::{AppPanelMessage, Message, PreviewMessage};
 use crate::panel_content::PanelContent;
@@ -165,10 +168,12 @@ impl NadeApp {
 			let title = comp.add_instance_named(node_title, "Title");
 			title.transform.position = [0.0, -60.0, 0.0];
 			title.transform.scale = [1.2, 1.2, 1.0];
+			title.set_content(InstanceContent::text("Title"));
 
 			let badge = comp.add_instance_named(node_badge, "Badge");
 			badge.transform.position = [160.0, 80.0, 0.0];
 			badge.transform.opacity = 0.85;
+			badge.set_content(InstanceContent::text("Badge"));
 		}
 
 		let node_bg = project.create_node();
@@ -237,9 +242,19 @@ impl NadeApp {
 		let is_rendering = Arc::clone(&self.is_rendering);
 		let render_tx = self.render_tx.clone();
 
+		let objects: Vec<TextObject> = self
+			.target_composition()
+			.and_then(|id| self.project.composition(&id))
+			.map(|comp| comp.all_objects().filter_map(instance_to_text_object).collect())
+			.unwrap_or_default();
+
 		thread::spawn(move || {
-			let frame_num = (time * 60.0).max(0.0) as u32;
-			let img_buffer = renderer::render_frame(frame_num, width, height);
+			let img_buffer = renderer::render_objects(
+				objects.iter().map(|obj| obj as &dyn SceneObjectData),
+				time,
+				width,
+				height,
+			);
 			let frame_data = FrameData {
 				width,
 				height,
@@ -438,6 +453,7 @@ impl NadeApp {
 				return;
 			};
 			let instance = comp.add_instance_named(node_id, name.clone());
+			instance.set_content(InstanceContent::text_default());
 			(instance.id(), instance.start_time(), instance.duration())
 		};
 
@@ -447,6 +463,7 @@ impl NadeApp {
 			composition: composition_id,
 			instance: instance_id,
 		});
+		self.request_preview_refresh();
 	}
 
 	fn rebuild_timeline_for_composition(&mut self, composition_id: CompositionId) {
@@ -560,15 +577,21 @@ impl NadeApp {
 		}
 	}
 
-	fn selected_instance_transform(&self) -> Option<&Transform> {
+	fn selected_instance_selection(&self) -> Option<panels::inspector::InspectorSelection<'_>> {
 		let ObjectId::Instance { composition, instance } = self.project_pane.selected_id? else {
 			return None;
 		};
 
-		self.project
-			.composition(&composition)?
-			.get(instance)
-			.map(|obj| obj.transform())
+		let obj = self.project.composition(&composition)?.get(instance)?;
+		Some(panels::inspector::InspectorSelection {
+			transform: obj.transform(),
+			content: obj.content(),
+		})
+	}
+
+	fn request_preview_refresh(&mut self) {
+		let time = self.current_model.preview.time;
+		self.apply_core_msg(Msg::SetTime(time));
 	}
 
 	fn apply_preview_message(&mut self, msg: PreviewMessage) {
@@ -609,7 +632,26 @@ impl NadeApp {
 			InspectorMessage::SetOpacity(opacity) => {
 				obj.transform_mut().opacity = opacity.clamp(0.0, 1.0);
 			}
+			InspectorMessage::SetText(text) => {
+				if let Some(slot) = obj.content_mut().text_mut() {
+					*slot = text;
+				}
+			}
+			InspectorMessage::SetFontSize(size) => {
+				if let Some(slot) = obj.content_mut().font_size_mut() {
+					*slot = size.max(1.0);
+				}
+			}
+			InspectorMessage::SetFillColor { index, value } => {
+				if let Some(color) = obj.content_mut().fill_color_mut()
+					&& let Some(slot) = color.get_mut(index)
+				{
+					*slot = value.clamp(0.0, 1.0);
+				}
+			}
 		}
+
+		self.request_preview_refresh();
 	}
 
 	fn apply_assets_message(&mut self, msg: AssetBrowserMessage) -> Task<Message> {
@@ -755,7 +797,7 @@ impl NadeApp {
 				self.current_model.preview.time,
 			),
 			PanelContent::MainPreview => panels::preview::view(&self.current_model.preview),
-			PanelContent::Inspector => panels::inspector::view(self.selected_instance_transform()),
+			PanelContent::Inspector => panels::inspector::view(self.selected_instance_selection()),
 			PanelContent::Project => panels::browser::view(&self.project, &self.project_pane),
 			PanelContent::Assets => panels::assets::view(&self.project, &self.asset_browser),
 		}
@@ -792,6 +834,22 @@ impl NadeApp {
 	}
 }
 
+fn instance_to_text_object(instance: &Instance) -> Option<TextObject> {
+	let (text, font_path, font_size, spacing, fill_color) = instance.content().as_text()?;
+	Some(TextObject {
+		id: SceneObjectId(instance.id().value() as u64),
+		name: instance.name().to_string(),
+		transform: *instance.transform(),
+		start_time: instance.start_time(),
+		duration: instance.duration(),
+		text: text.to_string(),
+		font_path: font_path.to_string(),
+		font_size,
+		spacing,
+		fill_color,
+	})
+}
+
 fn unique_composition_name(project: &Project) -> String {
 	let existing: Vec<String> = project
 		.compositions()
@@ -808,7 +866,7 @@ fn unique_object_name(project: &Project, composition_id: CompositionId) -> Strin
 		.map(|comp| comp.all_objects().map(|obj| obj.name().to_string()).collect())
 		.unwrap_or_default();
 
-	unique_numbered_name("Object", &existing)
+	unique_numbered_name("Text", &existing)
 }
 
 fn unique_asset_folder_name(project: &Project, parent: Option<AssetId>) -> String {

@@ -6,5 +6,5 @@ mod project;
 
 pub use asset::{Asset, AssetType};
 pub use composition::Composition;
-pub use instance::Instance;
+pub use instance::{Instance, InstanceContent};
 pub use project::Project;

@@ -101,7 +101,23 @@ fn view_instance<'a>(
 	};
 	let is_selected = state.selected_id == Some(object_id);
 
-	view_row(1, "OBJ", instance.name(), false, false, is_selected, None, object_id)
+	view_row(
+		1,
+		kind_tag(instance),
+		instance.name(),
+		false,
+		false,
+		is_selected,
+		None,
+		object_id,
+	)
+}
+
+fn kind_tag(instance: &Instance) -> &'static str {
+	match instance.content() {
+		domain::InstanceContent::Text { .. } => "TXT",
+		domain::InstanceContent::Empty => "OBJ",
+	}
 }
 
 fn view_row<'a>(
