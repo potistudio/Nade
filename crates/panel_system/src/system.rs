@@ -5,8 +5,7 @@
 use std::time::Instant;
 
 use iced::{
-	Color, Element, Length, Point, Rectangle, Size, Vector,
-	mouse,
+	Color, Element, Length, Point, Rectangle, Size, Vector, mouse,
 	widget::{Space, button, column, container, float, mouse_area, row, rule, stack, svg, text},
 };
 
@@ -713,15 +712,11 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		// Editor menu is drawn at the window root so short panels (timeline) cannot
 		// clip it — Float still inherits the leaf viewport when nested inside an area.
-		let base: Element<'_, PanelSystemMessage<C, M>> =
-			if let Some(menu_layer) = self.view_editor_menu_layer() {
-				stack![base, menu_layer]
-					.width(Length::Fill)
-					.height(Length::Fill)
-					.into()
-			} else {
-				base.into()
-			};
+		let base: Element<'_, PanelSystemMessage<C, M>> = if let Some(menu_layer) = self.view_editor_menu_layer() {
+			stack![base, menu_layer].width(Length::Fill).height(Length::Fill).into()
+		} else {
+			base.into()
+		};
 
 		// ドラッグ中は全面オーバーレイで他パネル上でも追従できるようにする
 		if matches!(
@@ -800,12 +795,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		)
 	}
 
-	fn view_editor_menu<'a, M>(
-		&'a self,
-		area_id: usize,
-		content: C,
-		anim: f32,
-	) -> Element<'a, PanelSystemMessage<C, M>>
+	fn view_editor_menu<'a, M>(&'a self, area_id: usize, content: C, anim: f32) -> Element<'a, PanelSystemMessage<C, M>>
 	where
 		M: Clone + std::fmt::Debug + 'static,
 	{
@@ -1410,14 +1400,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		self.next_area_id += 1;
 		let new_area = Area::new(new_id, content);
 
-		Self::split_area_recursive(
-			&mut self.root,
-			target_id,
-			new_area,
-			direction,
-			first_size,
-			new_is_first,
-		);
+		Self::split_area_recursive(&mut self.root, target_id, new_area, direction, first_size, new_is_first);
 		self.join_area(source_id);
 	}
 
