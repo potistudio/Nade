@@ -116,6 +116,10 @@ pub struct PreviewModel {
 	pub frame: Option<FrameData>,
 	/// 現在選択されているオブジェクトのトランスフォーム (テスト用)
 	pub selection: Option<Transform>,
+	/// プレビュービューポートのズーム（1.0 = フィット）
+	pub view_zoom: f32,
+	/// プレビュービューポートのパンオフセット（ピクセル）
+	pub view_offset: [f32; 2],
 }
 
 impl Default for PreviewModel {
@@ -128,6 +132,8 @@ impl Default for PreviewModel {
 			is_playing: false,
 			frame: None,
 			selection: Some(Transform::default()),
+			view_zoom: 1.0,
+			view_offset: [0.0, 0.0],
 		}
 	}
 }

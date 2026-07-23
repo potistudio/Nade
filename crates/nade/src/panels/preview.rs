@@ -1,4 +1,4 @@
-use crate::message::AppPanelMessage;
+use crate::message::{AppPanelMessage, PreviewMessage};
 use crate::panel_content::PanelContent;
 use crate::widgets::video_view::VideoView;
 use constants::style::{FONT_UI, SPACE_1, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
@@ -9,11 +9,15 @@ use panel_system::PanelSystemMessage;
 
 /// プレビューパネルのビュー
 pub fn view<'a>(preview: &PreviewModel) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
-	let content: Element<'_, PanelSystemMessage<PanelContent, AppPanelMessage>> = if let Some(frame) = &preview.frame {
-		shader(VideoView::new(Some(frame.clone())))
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.into()
+	let content: Element<'_, PreviewMessage> = if let Some(frame) = &preview.frame {
+		shader(VideoView::new(
+			Some(frame.clone()),
+			preview.view_zoom,
+			preview.view_offset,
+		))
+		.width(Length::Fill)
+		.height(Length::Fill)
+		.into()
 	} else {
 		container(text("No Signal").size(FONT_UI).color(TEXT_MUTED_COLOR))
 			.width(Length::Fill)
@@ -33,7 +37,7 @@ pub fn view<'a>(preview: &PreviewModel) -> Element<'a, PanelSystemMessage<PanelC
 
 	column![
 		row![fps_text, text(" | ").size(FONT_UI).color(TEXT_MUTED_COLOR), time_text].spacing(SPACE_1),
-		content,
+		content.map(|msg| PanelSystemMessage::AppMessage(AppPanelMessage::Preview(msg))),
 	]
 	.spacing(SPACE_1)
 	.padding(SPACE_1)

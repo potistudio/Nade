@@ -12,6 +12,13 @@ use core::FrameData;
 pub use asset_browser::AssetBrowserMessage;
 pub use browser_panel::ProjectPaneMessage;
 
+/// プレビューパネルメッセージ
+#[derive(Debug, Clone)]
+pub enum PreviewMessage {
+	/// ビューポートのパン／ズームが変わった
+	ViewChanged { zoom: f32, offset: [f32; 2] },
+}
+
 /// アプリケーションパネルメッセージ（ラッパー）
 #[derive(Debug, Clone)]
 pub enum AppPanelMessage {
@@ -19,6 +26,7 @@ pub enum AppPanelMessage {
 	Project(ProjectPaneMessage),
 	Assets(AssetBrowserMessage),
 	Inspector(inspector_panel::InspectorMessage),
+	Preview(PreviewMessage),
 }
 
 /// アプリケーションメッセージ

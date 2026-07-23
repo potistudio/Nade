@@ -20,7 +20,7 @@ use timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, Timelin
 use core::{AssetId, CompositionId, CoreEffect, FrameData, InstanceId, Model, Msg, Transform, update};
 use domain::{AssetType, Project};
 
-use crate::message::{AppPanelMessage, Message};
+use crate::message::{AppPanelMessage, Message, PreviewMessage};
 use crate::panel_content::PanelContent;
 use crate::panels;
 use crate::services::render_service::{RenderConnection, build_render_stream};
@@ -311,6 +311,9 @@ impl NadeApp {
 					PanelSystemMessage::AppMessage(AppPanelMessage::Inspector(inspector_msg)) => {
 						self.apply_inspector_message(inspector_msg.clone());
 					}
+					PanelSystemMessage::AppMessage(AppPanelMessage::Preview(preview_msg)) => {
+						self.apply_preview_message(preview_msg.clone());
+					}
 					_ => {}
 				}
 				self.panel_system.update(msg);
@@ -566,6 +569,15 @@ impl NadeApp {
 			.composition(&composition)?
 			.get(instance)
 			.map(|obj| obj.transform())
+	}
+
+	fn apply_preview_message(&mut self, msg: PreviewMessage) {
+		match msg {
+			PreviewMessage::ViewChanged { zoom, offset } => {
+				self.current_model.preview.view_zoom = zoom;
+				self.current_model.preview.view_offset = offset;
+			}
+		}
 	}
 
 	fn apply_inspector_message(&mut self, msg: InspectorMessage) {
