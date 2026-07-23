@@ -3,13 +3,18 @@
 //! エフェクトベースのレンダリングシステムを提供します。
 
 use anyhow::Result;
-use core::{FrameBuffer, RectangleObject, RenderContext, RgbColor};
+use core::{FrameBuffer, RectangleObject, RenderContext, RgbColor, SceneObjectData, TextObject};
 use domain::Composition;
 use effects::Effect;
 use effects::WaveEffect;
 use encoder::Encoder;
 use image::{ImageBuffer, Rgba};
 use rayon::prelude::*;
+use swash::{
+	FontRef, GlyphId,
+	scale::{Render, ScaleContext, Source},
+	zeno::Format,
+};
 
 /// 指定されたフレーム番号に対応する画像を生成
 ///
@@ -93,21 +98,36 @@ pub fn render_frame_with_effect(
 ///
 /// RGBA フォーマットの `ImageBuffer`
 pub fn render_frame_with_composition(
-	composition: &Composition,
+	_composition: &Composition,
+	_time: f32,
+	width: u32,
+	height: u32,
+) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+	// Composition は現状 Instance のみ保持するため、シーンオブジェクト描画は
+	// `render_objects` 経由で行う。
+	ImageBuffer::from_pixel(width, height, Rgba([30, 30, 30, 255]))
+}
+
+/// シーンオブジェクト群からフレームを生成
+///
+/// 指定時間で可視なオブジェクトだけを描画します。
+pub fn render_objects<'a>(
+	objects: impl IntoIterator<Item = &'a dyn SceneObjectData>,
 	time: f32,
 	width: u32,
 	height: u32,
 ) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
-	// 暗いグレーの背景
 	let mut img = ImageBuffer::from_pixel(width, height, Rgba([30, 30, 30, 255]));
-
-	// // 可視オブジェクトを取得して描画
-	// for obj in composition.visible_objects_at(time) {
-	// 	if let Some(rect) = obj.as_rectangle() {
-	// 		draw_rectangle(&mut img, rect, width, height);
-	// 	}
-	// }
-
+	for obj in objects {
+		if !obj.is_visible_at(time) {
+			continue;
+		}
+		if let Some(rect) = obj.as_rectangle() {
+			draw_rectangle(&mut img, rect, width, height);
+		} else if let Some(text) = obj.as_text() {
+			draw_text(&mut img, text, width, height);
+		}
+	}
 	img
 }
 
@@ -210,6 +230,131 @@ fn draw_rectangle(
 	}
 }
 
+/// テキストを描画（トランスフォーム適用）
+fn draw_text(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, text: &TextObject, canvas_width: u32, canvas_height: u32) {
+	if text.text.is_empty() || text.font_size <= 0.0 {
+		return;
+	}
+
+	let Ok(font_data) = std::fs::read(&text.font_path) else {
+		log::warn!("Failed to load font: {}", text.font_path);
+		return;
+	};
+	let Some(font) = FontRef::from_index(&font_data, 0) else {
+		log::warn!("Invalid font file: {}", text.font_path);
+		return;
+	};
+
+	let transform = text.transform;
+	let center_x = canvas_width as f32 / 2.0 + transform.position[0];
+	let center_y = canvas_height as f32 / 2.0 + transform.position[1];
+	let scale_x = transform.scale[0];
+	let scale_y = transform.scale[1];
+	let rotation_z = transform.rotation[2].to_radians();
+	let cos_r = rotation_z.cos();
+	let sin_r = rotation_z.sin();
+
+	let fill_r = text.fill_color[0].clamp(0.0, 1.0);
+	let fill_g = text.fill_color[1].clamp(0.0, 1.0);
+	let fill_b = text.fill_color[2].clamp(0.0, 1.0);
+	let fill_a = (text.fill_color[3] * transform.opacity).clamp(0.0, 1.0);
+	if fill_a <= 0.0 {
+		return;
+	}
+
+	let metrics = font.metrics(&[]).scale(text.font_size);
+	let glyph_metrics = font.glyph_metrics(&[]).scale(text.font_size);
+	let charmap = font.charmap();
+	let line_height = metrics.ascent + metrics.descent + metrics.leading;
+
+	struct LaidOutGlyph {
+		id: GlyphId,
+		x: f32,
+		baseline_y: f32,
+	}
+
+	let mut glyphs = Vec::new();
+	let mut pen_x = 0.0_f32;
+	let mut line_y = 0.0_f32;
+	let mut line_width = 0.0_f32;
+	let mut max_line_width = 0.0_f32;
+	let mut line_count = 1_u32;
+
+	for ch in text.text.chars() {
+		if ch == '\n' {
+			max_line_width = max_line_width.max(line_width);
+			pen_x = 0.0;
+			line_width = 0.0;
+			line_y += line_height;
+			line_count += 1;
+			continue;
+		}
+
+		let glyph_id = charmap.map(ch);
+		glyphs.push(LaidOutGlyph {
+			id: glyph_id,
+			x: pen_x,
+			baseline_y: line_y,
+		});
+		let advance = glyph_metrics.advance_width(glyph_id) + text.spacing;
+		pen_x += advance;
+		line_width = pen_x;
+	}
+	max_line_width = max_line_width.max(line_width);
+
+	if glyphs.is_empty() {
+		return;
+	}
+
+	let total_height = line_height * line_count as f32 - metrics.leading;
+	let origin_x = -max_line_width / 2.0;
+	let origin_y = -total_height / 2.0 + metrics.ascent;
+
+	let mut context = ScaleContext::new();
+	let mut scaler = context.builder(font).size(text.font_size).hint(true).build();
+
+	for glyph in glyphs {
+		let Some(image) = Render::new(&[Source::Outline])
+			.format(Format::Alpha)
+			.render(&mut scaler, glyph.id)
+		else {
+			continue;
+		};
+
+		let placement = image.placement;
+		for gy in 0..placement.height {
+			for gx in 0..placement.width {
+				let alpha = image.data[(gy * placement.width + gx) as usize] as f32 / 255.0;
+				if alpha <= 0.0 {
+					continue;
+				}
+
+				// フォント座標（y上向き）→ ローカル画面座標（y下向き、テキスト中心原点）
+				let local_x = (origin_x + glyph.x + placement.left as f32 + gx as f32) * scale_x;
+				let local_y = (origin_y + glyph.baseline_y - placement.top as f32 + gy as f32) * scale_y;
+
+				let world_x = local_x * cos_r - local_y * sin_r + center_x;
+				let world_y = local_x * sin_r + local_y * cos_r + center_y;
+
+				let px = world_x.round() as i32;
+				let py = world_y.round() as i32;
+				if px < 0 || py < 0 || px as u32 >= canvas_width || py as u32 >= canvas_height {
+					continue;
+				}
+
+				let coverage = (alpha * fill_a).clamp(0.0, 1.0);
+				let bg = img.get_pixel(px as u32, py as u32);
+				let blend = |fg: f32, bg: u8| (fg * 255.0 * coverage + bg as f32 * (1.0 - coverage)) as u8;
+				img.put_pixel(
+					px as u32,
+					py as u32,
+					Rgba([blend(fill_r, bg[0]), blend(fill_g, bg[1]), blend(fill_b, bg[2]), 255]),
+				);
+			}
+		}
+	}
+}
+
 /// レンダラー構造体
 ///
 /// エンコーダーと連携してフレームをレンダリング・エンコードします。
@@ -246,5 +391,44 @@ impl<E: Encoder> Renderer<E> {
 
 		self.encoder.finish()?;
 		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use core::TextObject;
+
+	fn rubik_path() -> String {
+		format!(
+			"{}/../../assets/fonts/Rubik/Rubik_regular.ttf",
+			env!("CARGO_MANIFEST_DIR")
+		)
+	}
+
+	#[test]
+	fn draws_text_object() {
+		let text = TextObject::new("Label")
+			.with_text("A")
+			.with_font_path(rubik_path())
+			.with_font_size(64.0)
+			.with_fill_color(1.0, 1.0, 1.0, 1.0);
+
+		let img = render_objects([&text as &dyn SceneObjectData], 0.0, 200, 200);
+		let lit = img.pixels().any(|p| p[0] > 40 || p[1] > 40 || p[2] > 40);
+		assert!(lit, "expected text pixels brighter than background");
+	}
+
+	#[test]
+	fn hidden_text_object_is_not_drawn() {
+		let text = TextObject::new("Hidden")
+			.with_text("A")
+			.with_font_path(rubik_path())
+			.with_font_size(64.0)
+			.with_start_time(1.0)
+			.with_duration(1.0);
+
+		let img = render_objects([&text as &dyn SceneObjectData], 0.0, 64, 64);
+		assert!(img.pixels().all(|p| *p == Rgba([30, 30, 30, 255])));
 	}
 }

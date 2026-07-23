@@ -1,7 +1,9 @@
 pub mod rectangle;
+pub mod text;
 
 use crate::Transform;
 pub use rectangle::RectangleObject;
+pub use text::TextObject;
 
 // =============================================================================
 // シーンオブジェクトID
@@ -68,6 +70,16 @@ pub trait SceneObjectData: SceneObject + std::fmt::Debug {
 
 	/// 矩形オブジェクトとしてダウンキャスト（可変参照）
 	fn as_rectangle_mut(&mut self) -> Option<&mut RectangleObject> {
+		None
+	}
+
+	/// テキストオブジェクトとしてダウンキャスト（参照）
+	fn as_text(&self) -> Option<&TextObject> {
+		None
+	}
+
+	/// テキストオブジェクトとしてダウンキャスト（可変参照）
+	fn as_text_mut(&mut self) -> Option<&mut TextObject> {
 		None
 	}
 }

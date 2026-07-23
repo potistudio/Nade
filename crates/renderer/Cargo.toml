@@ -19,3 +19,4 @@ env_logger = { workspace = true }
 log = { workspace = true }
 image = "0.25.9"
 rayon = "1.11.0"
+swash = "0.2.6"

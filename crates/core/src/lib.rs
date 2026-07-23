@@ -84,7 +84,7 @@ pub mod ops;
 pub mod timeline;
 
 pub use core::*;
-pub use object::{RectangleObject, SceneObject, SceneObjectData, SceneObjectId};
+pub use object::{RectangleObject, SceneObject, SceneObjectData, SceneObjectId, TextObject};
 pub use ops::{EvalAccess, Operator, ParamDescriptor, ParamKind, ParamValue, ResolvedHashes, ResolvedOp, ValueParamUi};
 pub use timeline::{TimelineClip, TimelineModel, TimelineTrack};
 

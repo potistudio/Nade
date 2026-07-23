@@ -4147,6 +4147,7 @@ dependencies = [
  "image",
  "log",
  "rayon",
+ "swash",
 ]
 
 [[package]]
