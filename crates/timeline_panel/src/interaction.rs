@@ -470,17 +470,25 @@ impl TimelineInteraction {
 				playhead_time: Some(time),
 				clip_modified: false,
 				track_reordered: None,
+				mute_toggled: false,
 			},
 			TimelineMessage::ClipModified => TimelineUpdate {
 				playhead_time: None,
 				clip_modified: true,
 				track_reordered: None,
+				mute_toggled: false,
 			},
 			TimelineMessage::CanvasEvent(event) => self.handle_canvas_event(model, event, current_time),
 			TimelineMessage::ReorderTrack { .. } => {
 				// Handled via pending_reorder in handle_mouse_release
 				TimelineUpdate::default()
 			}
+			TimelineMessage::ToggleMute(track_index) => TimelineUpdate {
+				playhead_time: None,
+				clip_modified: false,
+				track_reordered: None,
+				mute_toggled: model.toggle_mute(track_index),
+			},
 		}
 	}
 
@@ -500,11 +508,12 @@ impl TimelineInteraction {
 				self.ctrl_pressed = modifiers.command();
 				self.shift_pressed = modifiers.shift();
 				self.alt_pressed = modifiers.alt();
-				let (_handled, playhead_time) = self.handle_mouse_press(model, position, bounds);
+				let (_handled, playhead_time, mute_toggled) = self.handle_mouse_press(model, position, bounds);
 				TimelineUpdate {
 					playhead_time,
 					clip_modified: false,
 					track_reordered: None,
+					mute_toggled,
 				}
 			}
 			TimelineCanvasEvent::MouseReleased => {
@@ -515,6 +524,7 @@ impl TimelineInteraction {
 					playhead_time,
 					clip_modified: was_dragging_clip || was_duplicating,
 					track_reordered: None,
+					mute_toggled: false,
 				}
 			}
 			TimelineCanvasEvent::MouseMoved { position, bounds } => {
@@ -525,6 +535,7 @@ impl TimelineInteraction {
 					playhead_time,
 					clip_modified: handled && self.is_dragging_clip(),
 					track_reordered: None,
+					mute_toggled: false,
 				}
 			}
 			TimelineCanvasEvent::MouseWheelScrolled { delta, bounds } => {
@@ -575,13 +586,13 @@ impl TimelineInteraction {
 	/// マウスプレス時の処理
 	///
 	/// プレイヘッドドラッグ開始時は開始時間を返す
-	/// Returns (handled, playhead_time)
+	/// Returns (handled, playhead_time, mute_toggled)
 	pub(crate) fn handle_mouse_press(
 		&mut self,
-		model: &TimelineModel,
+		model: &mut TimelineModel,
 		pos: Point,
 		bounds: Rectangle,
-	) -> (bool, Option<f32>) {
+	) -> (bool, Option<f32>, bool) {
 		let layout = TimelineLayout::from_bounds_absolute(bounds);
 
 		// Check if clicking on the range slider strip
@@ -623,10 +634,10 @@ impl TimelineInteraction {
 					slider_width: track_width,
 				}
 			};
-			return (true, None);
+			return (true, None, false);
 		}
 
-		// Check if clicking on track label area for reordering
+		// Check if clicking on track label area for reordering / mute
 		if layout.track_labels.contains(pos) {
 			let track_labels_top = layout.track_labels.y;
 			let track_index = ((pos.y - track_labels_top - self.scroll_offset.y) / TRACK_HEIGHT).floor() as usize;
@@ -644,19 +655,23 @@ impl TimelineInteraction {
 						from_index: track_index,
 						current_index: track_index,
 					};
-					return (true, None);
+					return (true, None, false);
 				}
+
+				// ラベル本体クリックでミュート切替
+				self.selected_track_index = Some(track_index);
+				let muted = model.toggle_mute(track_index);
+				return (true, None, muted);
 			}
 
-			// Otherwise just select the track
 			self.selected_track_index = Some(track_index);
-			return (true, None);
+			return (true, None, false);
 		}
 
 		if layout.ruler.contains(pos) {
 			let time = self.x_to_time(pos.x, layout.timeline_left()).max(0.0);
 			self.drag_state = DragState::Playhead;
-			return (true, Some(time));
+			return (true, Some(time), false);
 		}
 
 		if layout.content.contains(pos) {
@@ -674,7 +689,7 @@ impl TimelineInteraction {
 					} else {
 						self.selected_clips.push(pair);
 					}
-					return (true, None);
+					return (true, None, false);
 				}
 
 				// 複数選択に含まれていないクリップをクリック → 単一選択に切り替え
@@ -683,7 +698,7 @@ impl TimelineInteraction {
 					self.selected_clips.clear();
 				}
 				self.start_clip_drag(model, pos, track_id, clip_id, layout.timeline_left());
-				return (true, None);
+				return (true, None, false);
 			}
 
 			if !self.ctrl_pressed {
@@ -692,10 +707,10 @@ impl TimelineInteraction {
 			}
 			self.canvas_origin = bounds.position();
 			self.drag_state = DragState::RangeSelect { start: pos };
-			return (true, None);
+			return (true, None, false);
 		}
 
-		(false, None)
+		(false, None, false)
 	}
 
 	fn start_clip_drag(
@@ -831,6 +846,7 @@ impl TimelineInteraction {
 					return (true, None);
 				}
 
+				let mut track_id = track_id;
 				let cursor_time = self.x_to_time(pos.x, timeline_left);
 				let proposed = (cursor_time + offset).max(0.0);
 
@@ -841,6 +857,50 @@ impl TimelineInteraction {
 					.and_then(|t| t.clips.iter().find(|c| c.id == clip_id))
 					.map(|c| c.duration)
 					.unwrap_or(1.0);
+
+				// 縦方向ドラッグでトラック（レイヤー）を変更
+				if !model.tracks.is_empty() {
+					let timeline_top = bounds.y + RANGE_SLIDER_HEIGHT + RULER_HEIGHT;
+					let target_track = ((pos.y - timeline_top - self.scroll_offset.y) / TRACK_HEIGHT)
+						.floor()
+						.clamp(0.0, (model.tracks.len() - 1) as f32) as usize;
+
+					if target_track != track_id {
+						let can_move = model
+							.tracks
+							.get(target_track)
+							.is_some_and(|track| !track.overlaps(proposed, clip_duration, None));
+						if can_move {
+							let moved = model.tracks.get_mut(track_id).and_then(|track| {
+								track
+									.clips
+									.iter()
+									.position(|c| c.id == clip_id)
+									.map(|index| track.clips.remove(index))
+							});
+							if let Some(mut clip) = moved {
+								clip.start_time = proposed;
+								if let Some(dest) = model.tracks.get_mut(target_track) {
+									dest.add_clip(clip);
+								}
+								if self.selected_clip == Some((track_id, clip_id)) {
+									self.selected_clip = Some((target_track, clip_id));
+								}
+								for pair in &mut self.selected_clips {
+									if *pair == (track_id, clip_id) {
+										*pair = (target_track, clip_id);
+									}
+								}
+								self.drag_state = DragState::Clip {
+									track_id: target_track,
+									clip_id,
+									offset,
+								};
+								track_id = target_track;
+							}
+						}
+					}
+				}
 
 				// Get current start to determine drag direction
 				let current_start = model

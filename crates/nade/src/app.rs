@@ -242,10 +242,22 @@ impl NadeApp {
 		let is_rendering = Arc::clone(&self.is_rendering);
 		let render_tx = self.render_tx.clone();
 
+		let muted_tracks: Vec<bool> = self.timeline.model.tracks.iter().map(|track| track.muted).collect();
+
 		let objects: Vec<TextObject> = self
 			.target_composition()
 			.and_then(|id| self.project.composition(&id))
-			.map(|comp| comp.all_objects().filter_map(instance_to_text_object).collect())
+			.map(|comp| {
+				comp.objects_in_draw_order()
+					.filter(|instance| {
+						muted_tracks
+							.get(instance.track_index())
+							.map(|muted| !*muted)
+							.unwrap_or(true)
+					})
+					.filter_map(instance_to_text_object)
+					.collect()
+			})
 			.unwrap_or_default();
 
 		thread::spawn(move || {
@@ -372,6 +384,17 @@ impl NadeApp {
 		{
 			let track = self.timeline.model.tracks.remove(from_index);
 			self.timeline.model.tracks.insert(to_index, track);
+			self.sync_instance_tracks_from_timeline();
+			self.request_preview_refresh();
+		}
+
+		if timeline_update.clip_modified {
+			self.sync_instances_from_timeline();
+			self.request_preview_refresh();
+		}
+
+		if timeline_update.mute_toggled {
+			self.request_preview_refresh();
 		}
 
 		if self.timeline.state.primary_selection() != previous_selection {
@@ -448,16 +471,21 @@ impl NadeApp {
 
 		let name = unique_object_name(&self.project, composition_id);
 		let node_id = self.project.create_node();
-		let (instance_id, start_time, duration) = {
+		let (instance_id, start_time, duration, track_index) = {
 			let Some(comp) = self.project.composition_mut(&composition_id) else {
 				return;
 			};
 			let instance = comp.add_instance_named(node_id, name.clone());
 			instance.set_content(InstanceContent::text_default());
-			(instance.id(), instance.start_time(), instance.duration())
+			(
+				instance.id(),
+				instance.start_time(),
+				instance.duration(),
+				instance.track_index(),
+			)
 		};
 
-		self.add_instance_clip(composition_id, instance_id, &name, start_time, duration);
+		self.add_instance_clip(composition_id, instance_id, &name, start_time, duration, track_index);
 		self.project_pane.expanded_ids.insert(composition_id);
 		self.select_object(ObjectId::Instance {
 			composition: composition_id,
@@ -468,25 +496,37 @@ impl NadeApp {
 
 	fn rebuild_timeline_for_composition(&mut self, composition_id: CompositionId) {
 		self.timeline.state.clear_selection();
-		if self.timeline.model.tracks.is_empty() {
-			self.timeline.model.add_track(TimelineTrack::new("Video 1"));
-		}
-		if let Some(track) = self.timeline.model.tracks.first_mut() {
-			track.clips.clear();
-		}
 
 		let clips: Vec<_> = self
 			.project
 			.composition(&composition_id)
 			.map(|comp| {
 				comp.all_objects()
-					.map(|obj| (obj.id(), obj.name().to_string(), obj.start_time(), obj.duration()))
+					.map(|obj| {
+						(
+							obj.id(),
+							obj.name().to_string(),
+							obj.start_time(),
+							obj.duration(),
+							obj.track_index(),
+						)
+					})
 					.collect()
 			})
 			.unwrap_or_default();
 
-		for (instance_id, name, start_time, duration) in clips {
-			self.add_instance_clip(composition_id, instance_id, &name, start_time, duration);
+		let track_count = clips
+			.iter()
+			.map(|(_, _, _, _, track_index)| *track_index + 1)
+			.max()
+			.unwrap_or(1)
+			.max(1);
+
+		self.timeline.model.tracks.clear();
+		self.timeline.model.ensure_track_count(track_count);
+
+		for (instance_id, name, start_time, duration, track_index) in clips {
+			self.add_instance_clip(composition_id, instance_id, &name, start_time, duration, track_index);
 		}
 	}
 
@@ -497,13 +537,12 @@ impl NadeApp {
 		name: &str,
 		start_time: f32,
 		duration: f32,
+		track_index: usize,
 	) {
-		if self.timeline.model.tracks.is_empty() {
-			self.timeline.model.add_track(TimelineTrack::new("Video 1"));
-		}
+		self.timeline.model.ensure_track_count(track_index + 1);
 
-		let clip_id = next_clip_id(&self.timeline.model);
-		if let Some(track) = self.timeline.model.tracks.first_mut() {
+		let clip_id = self.timeline.model.alloc_clip_id();
+		if let Some(track) = self.timeline.model.tracks.get_mut(track_index) {
 			track.add_clip(TimelineClip::from_instance(
 				clip_id,
 				name,
@@ -512,6 +551,43 @@ impl NadeApp {
 				composition_id,
 				instance_id,
 			));
+		}
+	}
+
+	fn sync_instances_from_timeline(&mut self) {
+		for (track_index, track) in self.timeline.model.tracks.iter().enumerate() {
+			for clip in &track.clips {
+				let (Some(composition_id), Some(instance_id)) = (clip.composition_id, clip.instance_id) else {
+					continue;
+				};
+				let Some(instance) = self
+					.project
+					.composition_mut(&composition_id)
+					.and_then(|comp| comp.get_mut(instance_id))
+				else {
+					continue;
+				};
+				instance.set_start_time(clip.start_time);
+				instance.set_duration(clip.duration);
+				instance.set_track_index(track_index);
+			}
+		}
+	}
+
+	fn sync_instance_tracks_from_timeline(&mut self) {
+		for (track_index, track) in self.timeline.model.tracks.iter().enumerate() {
+			for clip in &track.clips {
+				let (Some(composition_id), Some(instance_id)) = (clip.composition_id, clip.instance_id) else {
+					continue;
+				};
+				if let Some(instance) = self
+					.project
+					.composition_mut(&composition_id)
+					.and_then(|comp| comp.get_mut(instance_id))
+				{
+					instance.set_track_index(track_index);
+				}
+			}
 		}
 	}
 
@@ -764,8 +840,9 @@ impl NadeApp {
 		let name = asset.name.clone();
 		let start_time = self.current_model.preview.time;
 		let duration = 5.0;
-		let clip_id = next_clip_id(&self.timeline.model);
 		let track_index = if asset.kind() == AssetType::Audio { 1 } else { 0 };
+		self.timeline.model.ensure_track_count(track_index + 1);
+		let clip_id = self.timeline.model.alloc_clip_id();
 
 		if let Some(track) = self.timeline.model.tracks.get_mut(track_index) {
 			track.add_clip(TimelineClip::new(clip_id, &name, start_time, duration));
@@ -879,16 +956,6 @@ fn unique_asset_folder_name(project: &Project, parent: Option<AssetId>) -> Strin
 		.collect();
 
 	unique_numbered_name("New Folder", &existing)
-}
-
-fn next_clip_id(model: &TimelineModel) -> usize {
-	model
-		.tracks
-		.iter()
-		.flat_map(|track| track.clips.iter().map(|clip| clip.id))
-		.max()
-		.map(|id| id + 1)
-		.unwrap_or(0)
 }
 
 fn unique_numbered_name(base: &str, existing: &[String]) -> String {

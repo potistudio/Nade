@@ -79,9 +79,7 @@ impl InstanceContent {
 	}
 }
 
-/// タイムラインクリップ
-///
-/// シーンオブジェクトをタイムライン上で視覚的に表現するためのクリップです。
+/// コンポジション上のインスタンス（タイムラインクリップのソース）
 #[derive(Debug)]
 pub struct Instance {
 	/// ID of the instance
@@ -97,6 +95,9 @@ pub struct Instance {
 
 	/// Duration of the instance (sec)
 	pub duration: f32,
+
+	/// タイムライン上のトラック（レイヤー）インデックス。0 が最前面。
+	pub track_index: usize,
 
 	/// Transform of the instance
 	pub transform: Transform,
@@ -114,6 +115,7 @@ impl Instance {
 			name: name.to_string(),
 			start_time,
 			duration,
+			track_index: 0,
 			transform: Transform::default(),
 			content: InstanceContent::default(),
 		}
@@ -169,6 +171,14 @@ impl Instance {
 
 	pub fn set_duration(&mut self, duration: f32) {
 		self.duration = duration;
+	}
+
+	pub fn track_index(&self) -> usize {
+		self.track_index
+	}
+
+	pub fn set_track_index(&mut self, track_index: usize) {
+		self.track_index = track_index;
 	}
 
 	/// Get the end time of the instance

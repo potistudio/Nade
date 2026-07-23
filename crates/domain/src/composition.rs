@@ -70,16 +70,44 @@ impl Composition {
 	pub fn add_instance_named(&mut self, node_id: NodeId, name: impl Into<String>) -> &mut Instance {
 		let next_id = InstanceId::new(self.instances.len());
 		let name = name.into();
-		// 既存オブジェクトの後ろに並べて、タイムライン上で重ならないようにする
-		let start_time = self
-			.instances
-			.iter()
-			.map(|instance| instance.end_time())
-			.fold(0.0_f32, f32::max);
-		let instance = Instance::new(next_id, node_id, &name, start_time, 5.0);
+		// 先頭から重ね、空いているトラック（レイヤー）に配置する
+		let start_time = 0.0;
+		let duration = 5.0;
+		let track_index = self.find_free_track(start_time, duration);
+		let mut instance = Instance::new(next_id, node_id, &name, start_time, duration);
+		instance.set_track_index(track_index);
 
 		self.instances.push(instance);
 		self.instances.last_mut().unwrap() // safe because we just pushed an element
+	}
+
+	/// `[start, start+duration)` と重ならない最初のトラックを返す
+	fn find_free_track(&self, start_time: f32, duration: f32) -> usize {
+		let end = start_time + duration;
+		let max_track = self
+			.instances
+			.iter()
+			.map(|instance| instance.track_index())
+			.max()
+			.unwrap_or(0);
+
+		for track_index in 0..=max_track {
+			let occupied = self.instances.iter().any(|instance| {
+				instance.track_index() == track_index && instance.start_time() < end && instance.end_time() > start_time
+			});
+			if !occupied {
+				return track_index;
+			}
+		}
+
+		max_track + 1
+	}
+
+	/// 描画順（背面 → 前面）。トラック番号が大きいほど背面。
+	pub fn objects_in_draw_order(&self) -> impl Iterator<Item = &Instance> {
+		let mut ordered: Vec<&Instance> = self.instances.iter().collect();
+		ordered.sort_by(|a, b| b.track_index().cmp(&a.track_index()).then_with(|| a.id().cmp(&b.id())));
+		ordered.into_iter()
 	}
 
 	/// タイムライン同期用: 全インスタンスを走査
@@ -112,5 +140,38 @@ impl Composition {
 	/// オブジェクトが空かどうか
 	pub fn is_empty(&self) -> bool {
 		self.instances.is_empty()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use core::NodeId;
+
+	#[test]
+	fn new_instances_stack_on_free_tracks() {
+		let mut composition = Composition::new(CompositionId::new(0), "Test", 1920, 1080, 60.0);
+		let a = composition.add_instance_named(NodeId::new(0), "A").track_index();
+		let b = composition.add_instance_named(NodeId::new(1), "B").track_index();
+		let c = composition.add_instance_named(NodeId::new(2), "C").track_index();
+
+		assert_eq!(a, 0);
+		assert_eq!(b, 1);
+		assert_eq!(c, 2);
+		assert!(composition.all_objects().all(|instance| instance.start_time() == 0.0));
+	}
+
+	#[test]
+	fn draw_order_puts_lower_track_on_top() {
+		let mut composition = Composition::new(CompositionId::new(0), "Test", 1920, 1080, 60.0);
+		composition.add_instance_named(NodeId::new(0), "Top");
+		composition.add_instance_named(NodeId::new(1), "Bottom");
+
+		let names: Vec<_> = composition
+			.objects_in_draw_order()
+			.map(|instance| instance.name().to_string())
+			.collect();
+		// 背面から前面へ: 大きい track_index が先、0 が最後（最前面）
+		assert_eq!(names, vec!["Bottom".to_string(), "Top".to_string()]);
 	}
 }

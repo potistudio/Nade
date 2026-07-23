@@ -89,6 +89,7 @@ pub enum TimelineMessage {
 	ClipModified,
 	CanvasEvent(TimelineCanvasEvent),
 	ReorderTrack { from_index: usize, to_index: usize },
+	ToggleMute(usize),
 }
 
 /// Canvasから通知されるタイムライン入力イベント
@@ -124,6 +125,7 @@ pub struct TimelineUpdate {
 	pub playhead_time: Option<f32>,
 	pub clip_modified: bool,
 	pub track_reordered: Option<(usize, usize)>,
+	pub mute_toggled: bool,
 }
 
 /// Iced Widget for the timeline pane
