@@ -52,10 +52,25 @@ impl Composition {
 		self.id
 	}
 
+	/// Returns the name of the composition
+	pub fn name(&self) -> &str {
+		&self.name
+	}
+
+	/// Returns whether this composition has any objects
+	pub fn has_objects(&self) -> bool {
+		!self.instances.is_empty()
+	}
+
 	//==== Add Method ==========================================================
 	pub fn add_instance(&mut self, node_id: NodeId) -> &mut Instance {
+		self.add_instance_named(node_id, "Instance")
+	}
+
+	pub fn add_instance_named(&mut self, node_id: NodeId, name: impl Into<String>) -> &mut Instance {
 		let next_id = InstanceId::new(self.instances.len());
-		let instance = Instance::new(next_id, node_id, "Instance", 0.0, 5.0);
+		let name = name.into();
+		let instance = Instance::new(next_id, node_id, &name, 0.0, 5.0);
 
 		self.instances.push(instance);
 		self.instances.last_mut().unwrap() // safe because we just pushed an element

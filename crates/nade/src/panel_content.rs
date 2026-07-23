@@ -14,13 +14,21 @@ pub enum PanelContent {
 	Timeline,
 	/// インスペクター（Transform/Graph）
 	Inspector,
-	/// プロジェクト（アセットブラウザ）
+	/// オブジェクトブラウザ（Composition → Object アウトライン）
 	Project,
+	/// アセットブラウザ（メディア / フォルダビン）
+	Assets,
 }
 
 impl AreaKind for PanelContent {
 	fn all() -> Vec<Self> {
-		vec![Self::MainPreview, Self::Timeline, Self::Inspector, Self::Project]
+		vec![
+			Self::MainPreview,
+			Self::Timeline,
+			Self::Inspector,
+			Self::Project,
+			Self::Assets,
+		]
 	}
 
 	fn icon(&self) -> svg::Handle {
@@ -29,6 +37,7 @@ impl AreaKind for PanelContent {
 			Self::Timeline => include_bytes!("../../../assets/icons/panels/timeline.svg"),
 			Self::Inspector => include_bytes!("../../../assets/icons/panels/inspector.svg"),
 			Self::Project => include_bytes!("../../../assets/icons/panels/project.svg"),
+			Self::Assets => include_bytes!("../../../assets/icons/panels/project.svg"),
 		};
 		svg::Handle::from_memory(bytes)
 	}
@@ -38,7 +47,8 @@ impl AreaKind for PanelContent {
 			Self::MainPreview => "Preview",
 			Self::Timeline => "Timeline",
 			Self::Inspector => "Inspector",
-			Self::Project => "Project",
+			Self::Project => "Objects",
+			Self::Assets => "Assets",
 		}
 	}
 
@@ -46,7 +56,7 @@ impl AreaKind for PanelContent {
 		vec![
 			("General", vec![Self::MainPreview]),
 			("Animation", vec![Self::Timeline]),
-			("Data", vec![Self::Project, Self::Inspector]),
+			("Data", vec![Self::Project, Self::Assets, Self::Inspector]),
 		]
 	}
 }

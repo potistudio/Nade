@@ -9,6 +9,7 @@ use timeline_panel::TimelineMessage;
 use crate::panel_content::PanelContent;
 use core::FrameData;
 
+pub use asset_browser::AssetBrowserMessage;
 pub use browser_panel::ProjectPaneMessage;
 
 /// アプリケーションパネルメッセージ（ラッパー）
@@ -16,6 +17,7 @@ pub use browser_panel::ProjectPaneMessage;
 pub enum AppPanelMessage {
 	Timeline { panel_id: usize, message: TimelineMessage },
 	Project(ProjectPaneMessage),
+	Assets(AssetBrowserMessage),
 	Inspector(inspector_panel::InspectorMessage),
 }
 

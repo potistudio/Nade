@@ -1,3 +1,4 @@
+pub mod assets;
 pub mod browser;
 pub mod inspector;
 pub mod preview;

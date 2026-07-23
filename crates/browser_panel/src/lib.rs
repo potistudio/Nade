@@ -1,11 +1,11 @@
-//! # Project Pane
+//! # Object Browser
 //!
-//! Icedアプリケーション用のプロジェクトパネル。
+//! Composition → object (instance) outline for Iced.
 
 mod message;
 mod state;
 mod widget;
 
-pub use message::ProjectPaneMessage;
+pub use message::{ObjectId, ProjectPaneMessage};
 pub use state::ProjectPaneState;
 pub use widget::ProjectPaneWidget;

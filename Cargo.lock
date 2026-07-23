@@ -349,6 +349,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "asset_browser"
+version = "0.0.1"
+dependencies = [
+ "constants",
+ "core",
+ "domain",
+ "iced",
+]
+
+[[package]]
 name = "async-broadcast"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2987,6 +2997,7 @@ name = "nade"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "asset_browser",
  "browser_panel",
  "bytemuck",
  "bytes",

@@ -41,6 +41,7 @@ iced = { version = "0.14", features = [
 	"advanced",
 ] }
 browser_panel = { path = "../browser_panel" }
+asset_browser = { path = "../asset_browser" }
 constants = { workspace = true }
 core = { workspace = true }
 domain.workspace = true

@@ -1,16 +1,24 @@
-use core::AssetId;
+use core::{CompositionId, InstanceId};
 
-/// Messages that the project pane can send.
+/// Tree identity for the object browser (composition outline).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ObjectId {
+	Composition(CompositionId),
+	Instance {
+		composition: CompositionId,
+		instance: InstanceId,
+	},
+}
+
+/// Messages from the object browser panel.
 #[derive(Debug, Clone)]
 pub enum ProjectPaneMessage {
-	ToggleExpand(AssetId),
-	Select(AssetId),
+	ToggleExpand(CompositionId),
+	Select(ObjectId),
 	ClearSelection,
-	OpenItem(AssetId),
-	/// Open a file dialog and import the chosen media file.
-	ImportMedia,
-	/// Create a new folder under the selected folder (or at root).
-	NewFolder,
-	/// Add the selected media asset to the first timeline track.
-	AddToTimeline,
+	OpenItem(ObjectId),
+	/// Create a new root composition.
+	NewComposition,
+	/// Add an object (instance) under the selected composition.
+	AddObject,
 }

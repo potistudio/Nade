@@ -2,21 +2,22 @@
 //!
 //! NadeのメインUIアプリケーション実装です。
 
-use browser_panel::{ProjectPaneMessage, ProjectPaneState};
+use asset_browser::{AssetBrowserMessage, AssetBrowserState};
+use browser_panel::{ObjectId, ProjectPaneMessage, ProjectPaneState};
 use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use iced::keyboard;
 use iced::widget::container;
 use iced::{Element, Length, Size, Subscription, Task, Theme};
 use panel_system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Instant;
 use timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
 
-use core::{AssetId, CoreEffect, FrameData, Model, Msg, update};
+use core::{AssetId, CompositionId, CoreEffect, FrameData, Model, Msg, update};
 use domain::{AssetType, Project};
-use std::path::PathBuf;
 
 use crate::message::{AppPanelMessage, Message};
 use crate::panel_content::PanelContent;
@@ -94,8 +95,11 @@ pub(super) struct NadeApp {
 	/// タイムラインパネル
 	timeline: TimelinePanelState,
 
-	/// プロジェクトパネル
+	/// オブジェクトブラウザ
 	project_pane: ProjectPaneState,
+
+	/// アセットブラウザ
+	asset_browser: AssetBrowserState,
 
 	/// パネルシステム（レイアウト・リサイズ管理）
 	panel_system: PanelSystem<PanelContent>,
@@ -120,9 +124,13 @@ pub(super) struct NadeApp {
 //==== Iced API ================================================================
 impl NadeApp {
 	pub(super) fn new() -> (Self, Task<Message>) {
-		let (project, assets_folder) = Self::create_sample_project();
+		let (project, main_comp, assets_folder) = Self::create_sample_project();
 		let mut project_pane = ProjectPaneState::default();
-		project_pane.expanded_ids.insert(assets_folder);
+		project_pane.expanded_ids.insert(main_comp);
+		project_pane.selected_id = Some(ObjectId::Composition(main_comp));
+
+		let mut asset_browser = AssetBrowserState::default();
+		asset_browser.expanded_ids.insert(assets_folder);
 
 		let panel_system = Self::create_panel_layout();
 		let (render_tx, render_rx) = unbounded::<FrameData>();
@@ -133,6 +141,7 @@ impl NadeApp {
 			current_model: Model::default(),
 			timeline: TimelinePanelState::default(),
 			project_pane,
+			asset_browser,
 			panel_system,
 			render_tx,
 			render_rx: Arc::new(std::sync::Mutex::new(render_rx)),
@@ -149,40 +158,53 @@ impl NadeApp {
 		(app, Task::none())
 	}
 
-	fn create_sample_project() -> (Project, AssetId) {
+	fn create_sample_project() -> (Project, CompositionId, AssetId) {
 		let mut project = Project::default();
+
 		let assets = project.create_folder("Assets", None);
 		project.create_asset_in(Some(assets), "Background.png", AssetType::Image);
 		project.create_asset_in(Some(assets), "0001-0004.mov", AssetType::Video);
 		project.create_asset_in(Some(assets), "BGM.mp3", AssetType::Audio);
 
-		let scenes = project.create_folder("Scenes", None);
-		project.create_composition("Scene 1", 1920, 1080, 60.0);
-		project.create_asset_in(Some(scenes), "Scene 1", AssetType::Composition);
-		project.create_asset("Main Composition", AssetType::Composition);
+		let main = project.create_composition("Main Composition", 1920, 1080, 60.0);
+		let scene = project.create_composition("Scene 1", 1280, 720, 30.0);
 
-		(project, assets)
+		let node_a = project.create_node();
+		let node_b = project.create_node();
+		if let Some(comp) = project.composition_mut(&main) {
+			comp.add_instance_named(node_a, "Rectangle");
+			comp.add_instance_named(node_b, "Title");
+		}
+
+		let node_c = project.create_node();
+		if let Some(comp) = project.composition_mut(&scene) {
+			comp.add_instance_named(node_c, "Background");
+		}
+
+		(project, main, assets)
 	}
 
 	/// 初期パネルレイアウトを構築
 	///
 	/// ```text
 	/// ┌─────────┬──────────────────┬───────────┐
-	/// │ Project │     Preview      │ Inspector │
-	/// │         ├──────────────────┤           │
-	/// │         │    Timeline      │           │
+	/// │ Objects │     Preview      │ Inspector │
+	/// ├─────────┼──────────────────┤           │
+	/// │ Assets  │    Timeline      │           │
 	/// └─────────┴──────────────────┴───────────┘
 	/// ```
 	fn create_panel_layout() -> PanelSystem<PanelContent> {
 		let mut builder = LayoutBuilder::new();
-		let project = builder.area(PanelContent::Project);
+		let objects = builder.area(PanelContent::Project);
+		let assets = builder.area(PanelContent::Assets);
 		let preview = builder.area(PanelContent::MainPreview);
 		let timeline = builder.area(PanelContent::Timeline);
 		let inspector = builder.area(PanelContent::Inspector);
 
+		let left = LayoutBuilder::vsplit(objects, assets, 0.55);
 		let center = LayoutBuilder::vsplit(preview, timeline, 0.65);
 		let main = LayoutBuilder::hsplit(center, inspector, 0.78);
-		let layout = LayoutBuilder::hsplit(project, main, 0.18);
+		let layout = LayoutBuilder::hsplit(left, main, 0.18);
 
 		let mut system = PanelSystem::new().with_layout(layout).with_ids(builder.next_area_id());
 		// 初期ウィンドウサイズを設定（main.rsのwindow_settingsと合わせる）
@@ -286,7 +308,10 @@ impl NadeApp {
 						self.apply_timeline_message(message.clone());
 					}
 					PanelSystemMessage::AppMessage(AppPanelMessage::Project(project_msg)) => {
-						task = self.apply_project_message(project_msg.clone());
+						self.apply_project_message(project_msg.clone());
+					}
+					PanelSystemMessage::AppMessage(AppPanelMessage::Assets(assets_msg)) => {
+						task = self.apply_assets_message(assets_msg.clone());
 					}
 					_ => {}
 				}
@@ -333,37 +358,30 @@ impl NadeApp {
 		}
 	}
 
-	fn apply_project_message(&mut self, msg: ProjectPaneMessage) -> Task<Message> {
+	fn apply_project_message(&mut self, msg: ProjectPaneMessage) {
 		match msg {
 			ProjectPaneMessage::ToggleExpand(id) => {
 				self.toggle_expand(id);
-				Task::none()
 			}
 			ProjectPaneMessage::Select(id) => {
 				self.project_pane.selected_id = Some(id);
-				Task::none()
 			}
 			ProjectPaneMessage::ClearSelection => {
 				self.project_pane.selected_id = None;
-				Task::none()
 			}
 			ProjectPaneMessage::OpenItem(id) => {
 				self.open_item(id);
-				Task::none()
 			}
-			ProjectPaneMessage::ImportMedia => Self::pick_media_file(),
-			ProjectPaneMessage::NewFolder => {
-				self.create_folder_under_selection();
-				Task::none()
+			ProjectPaneMessage::NewComposition => {
+				self.create_composition();
 			}
-			ProjectPaneMessage::AddToTimeline => {
-				self.add_selected_asset_to_timeline();
-				Task::none()
+			ProjectPaneMessage::AddObject => {
+				self.add_object_under_selection();
 			}
 		}
 	}
 
-	fn toggle_expand(&mut self, id: AssetId) {
+	fn toggle_expand(&mut self, id: CompositionId) {
 		if self.project_pane.expanded_ids.contains(&id) {
 			self.project_pane.expanded_ids.remove(&id);
 		} else {
@@ -371,12 +389,86 @@ impl NadeApp {
 		}
 	}
 
-	fn open_item(&mut self, id: AssetId) {
+	fn open_item(&mut self, id: ObjectId) {
 		self.project_pane.selected_id = Some(id);
-		if let Some(asset) = self.project.asset(id)
-			&& asset.kind() == AssetType::Folder
-		{
-			self.project_pane.expanded_ids.insert(id);
+		if let ObjectId::Composition(composition_id) = id {
+			self.project_pane.expanded_ids.insert(composition_id);
+		}
+	}
+
+	fn create_composition(&mut self) {
+		let name = unique_composition_name(&self.project);
+		let id = self.project.create_composition(name, 1920, 1080, 60.0);
+		self.project_pane.expanded_ids.insert(id);
+		self.project_pane.selected_id = Some(ObjectId::Composition(id));
+	}
+
+	fn add_object_under_selection(&mut self) {
+		let Some(composition_id) = self.target_composition() else {
+			log::debug!("Add object ignored: no composition selected");
+			return;
+		};
+
+		let name = unique_object_name(&self.project, composition_id);
+		let node_id = self.project.create_node();
+		let instance_id = {
+			let Some(comp) = self.project.composition_mut(&composition_id) else {
+				return;
+			};
+			let instance = comp.add_instance_named(node_id, name);
+			instance.id()
+		};
+
+		self.project_pane.expanded_ids.insert(composition_id);
+		self.project_pane.selected_id = Some(ObjectId::Instance {
+			composition: composition_id,
+			instance: instance_id,
+		});
+	}
+
+	fn target_composition(&self) -> Option<CompositionId> {
+		match self.project_pane.selected_id? {
+			ObjectId::Composition(id) => Some(id),
+			ObjectId::Instance { composition, .. } => Some(composition),
+		}
+	}
+
+	fn apply_assets_message(&mut self, msg: AssetBrowserMessage) -> Task<Message> {
+		match msg {
+			AssetBrowserMessage::ToggleExpand(id) => {
+				if self.asset_browser.expanded_ids.contains(&id) {
+					self.asset_browser.expanded_ids.remove(&id);
+				} else {
+					self.asset_browser.expanded_ids.insert(id);
+				}
+				Task::none()
+			}
+			AssetBrowserMessage::Select(id) => {
+				self.asset_browser.selected_id = Some(id);
+				Task::none()
+			}
+			AssetBrowserMessage::ClearSelection => {
+				self.asset_browser.selected_id = None;
+				Task::none()
+			}
+			AssetBrowserMessage::OpenItem(id) => {
+				self.asset_browser.selected_id = Some(id);
+				if let Some(asset) = self.project.asset(id)
+					&& asset.kind() == AssetType::Folder
+				{
+					self.asset_browser.expanded_ids.insert(id);
+				}
+				Task::none()
+			}
+			AssetBrowserMessage::ImportMedia => Self::pick_media_file(),
+			AssetBrowserMessage::NewFolder => {
+				self.create_asset_folder();
+				Task::none()
+			}
+			AssetBrowserMessage::AddToTimeline => {
+				self.add_selected_asset_to_timeline();
+				Task::none()
+			}
 		}
 	}
 
@@ -401,13 +493,13 @@ impl NadeApp {
 	}
 
 	fn import_media_path(&mut self, path: PathBuf) {
-		let parent = self.import_parent();
+		let parent = self.asset_import_parent();
 		match self.project.import_media(&path, parent) {
 			Some(id) => {
 				if let Some(parent_id) = parent {
-					self.project_pane.expanded_ids.insert(parent_id);
+					self.asset_browser.expanded_ids.insert(parent_id);
 				}
-				self.project_pane.selected_id = Some(id);
+				self.asset_browser.selected_id = Some(id);
 				log::info!("Imported media: {}", path.display());
 			}
 			None => {
@@ -416,8 +508,8 @@ impl NadeApp {
 		}
 	}
 
-	fn import_parent(&self) -> Option<AssetId> {
-		let selected = self.project_pane.selected_id?;
+	fn asset_import_parent(&self) -> Option<AssetId> {
+		let selected = self.asset_browser.selected_id?;
 		let asset = self.project.asset(selected)?;
 		match asset.kind() {
 			AssetType::Folder => Some(selected),
@@ -425,19 +517,19 @@ impl NadeApp {
 		}
 	}
 
-	fn create_folder_under_selection(&mut self) {
-		let parent = self.import_parent();
-		let name = unique_folder_name(&self.project, parent);
+	fn create_asset_folder(&mut self) {
+		let parent = self.asset_import_parent();
+		let name = unique_asset_folder_name(&self.project, parent);
 		let id = self.project.create_folder(name, parent);
 		if let Some(parent_id) = parent {
-			self.project_pane.expanded_ids.insert(parent_id);
+			self.asset_browser.expanded_ids.insert(parent_id);
 		}
-		self.project_pane.selected_id = Some(id);
-		self.project_pane.expanded_ids.insert(id);
+		self.asset_browser.selected_id = Some(id);
+		self.asset_browser.expanded_ids.insert(id);
 	}
 
 	fn add_selected_asset_to_timeline(&mut self) {
-		let Some(id) = self.project_pane.selected_id else {
+		let Some(id) = self.asset_browser.selected_id else {
 			return;
 		};
 		let Some(asset) = self.project.asset(id) else {
@@ -486,6 +578,7 @@ impl NadeApp {
 			PanelContent::MainPreview => panels::preview::view(&self.current_model.preview),
 			PanelContent::Inspector => panels::inspector::view(self.current_model.preview.selection.as_ref()),
 			PanelContent::Project => panels::browser::view(&self.project, &self.project_pane),
+			PanelContent::Assets => panels::assets::view(&self.project, &self.asset_browser),
 		}
 	}
 
@@ -520,6 +613,37 @@ impl NadeApp {
 	}
 }
 
+fn unique_composition_name(project: &Project) -> String {
+	let existing: Vec<String> = project
+		.compositions()
+		.iter()
+		.filter_map(|id| project.composition(id).map(|comp| comp.name().to_string()))
+		.collect();
+
+	unique_numbered_name("Composition", &existing)
+}
+
+fn unique_object_name(project: &Project, composition_id: CompositionId) -> String {
+	let existing: Vec<String> = project
+		.composition(&composition_id)
+		.map(|comp| comp.all_objects().map(|obj| obj.name().to_string()).collect())
+		.unwrap_or_default();
+
+	unique_numbered_name("Object", &existing)
+}
+
+fn unique_asset_folder_name(project: &Project, parent: Option<AssetId>) -> String {
+	let existing: Vec<String> = project
+		.assets()
+		.iter()
+		.filter_map(|id| project.asset(*id))
+		.filter(|asset| asset.parent == parent && asset.kind() == AssetType::Folder)
+		.map(|asset| asset.name.clone())
+		.collect();
+
+	unique_numbered_name("New Folder", &existing)
+}
+
 fn next_clip_id(model: &TimelineModel) -> usize {
 	model
 		.tracks
@@ -530,22 +654,14 @@ fn next_clip_id(model: &TimelineModel) -> usize {
 		.unwrap_or(0)
 }
 
-fn unique_folder_name(project: &Project, parent: Option<AssetId>) -> String {
-	let existing: Vec<&str> = project
-		.assets()
-		.iter()
-		.filter_map(|id| project.asset(*id))
-		.filter(|asset| asset.parent == parent && asset.kind() == AssetType::Folder)
-		.map(|asset| asset.name.as_str())
-		.collect();
-
-	if !existing.iter().any(|name| *name == "New Folder") {
-		return "New Folder".to_string();
+fn unique_numbered_name(base: &str, existing: &[String]) -> String {
+	if !existing.iter().any(|name| name == base) {
+		return base.to_string();
 	}
 
 	for index in 2.. {
-		let candidate = format!("New Folder {index}");
-		if !existing.iter().any(|name| *name == candidate) {
+		let candidate = format!("{base} {index}");
+		if !existing.iter().any(|name| name == &candidate) {
 			return candidate;
 		}
 	}
