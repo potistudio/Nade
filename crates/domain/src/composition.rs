@@ -70,7 +70,13 @@ impl Composition {
 	pub fn add_instance_named(&mut self, node_id: NodeId, name: impl Into<String>) -> &mut Instance {
 		let next_id = InstanceId::new(self.instances.len());
 		let name = name.into();
-		let instance = Instance::new(next_id, node_id, &name, 0.0, 5.0);
+		// 既存オブジェクトの後ろに並べて、タイムライン上で重ならないようにする
+		let start_time = self
+			.instances
+			.iter()
+			.map(|instance| instance.end_time())
+			.fold(0.0_f32, f32::max);
+		let instance = Instance::new(next_id, node_id, &name, start_time, 5.0);
 
 		self.instances.push(instance);
 		self.instances.last_mut().unwrap() // safe because we just pushed an element

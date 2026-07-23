@@ -8,6 +8,7 @@ use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use iced::keyboard;
 use iced::widget::container;
 use iced::{Element, Length, Size, Subscription, Task, Theme};
+use inspector_panel::InspectorMessage;
 use panel_system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -16,7 +17,7 @@ use std::thread;
 use std::time::Instant;
 use timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
 
-use core::{AssetId, CompositionId, CoreEffect, FrameData, Model, Msg, update};
+use core::{AssetId, CompositionId, CoreEffect, FrameData, InstanceId, Model, Msg, Transform, update};
 use domain::{AssetType, Project};
 
 use crate::message::{AppPanelMessage, Message};
@@ -58,24 +59,7 @@ struct TimelinePanelState {
 impl Default for TimelinePanelState {
 	fn default() -> Self {
 		let mut model = TimelineModel::new();
-		let track1 = TimelineTrack::new("Video 1");
-		let track2 = TimelineTrack::new("Audio 1");
-		let track3 = TimelineTrack::new("Video 2");
-		model.add_track(track1);
-		model.add_track(track2);
-		model.add_track(track3);
-
-		if let Some(track) = model.tracks.get_mut(0) {
-			track.add_clip(TimelineClip::new(0, "Clip A", 0.0, 3.0));
-			track.add_clip(TimelineClip::new(1, "Clip B", 4.0, 2.5));
-			track.add_clip(TimelineClip::new(2, "Clip D", 7.0, 1.0));
-		}
-		if let Some(track) = model.tracks.get_mut(1) {
-			track.add_clip(TimelineClip::new(2, "Audio Clip 1", 0.5, 4.0));
-		}
-		if let Some(track) = model.tracks.get_mut(2) {
-			track.add_clip(TimelineClip::new(3, "Clip C", 2.0, 5.0));
-		}
+		model.add_track(TimelineTrack::new("Video 1"));
 
 		Self {
 			state: TimelineInteraction::new(),
@@ -152,6 +136,8 @@ impl NadeApp {
 			fps_update_time: Instant::now(),
 		};
 
+		app.rebuild_timeline_for_composition(main_comp);
+
 		// 初期フレームを描画
 		app.apply_core_msg(Msg::SetTime(0.0));
 
@@ -169,16 +155,25 @@ impl NadeApp {
 		let main = project.create_composition("Main Composition", 1920, 1080, 60.0);
 		let scene = project.create_composition("Scene 1", 1280, 720, 30.0);
 
-		let node_a = project.create_node();
-		let node_b = project.create_node();
+		let node_rect = project.create_node();
+		let node_title = project.create_node();
+		let node_badge = project.create_node();
 		if let Some(comp) = project.composition_mut(&main) {
-			comp.add_instance_named(node_a, "Rectangle");
-			comp.add_instance_named(node_b, "Title");
+			let rect = comp.add_instance_named(node_rect, "Rectangle");
+			rect.transform.position = [-120.0, 40.0, 0.0];
+
+			let title = comp.add_instance_named(node_title, "Title");
+			title.transform.position = [0.0, -60.0, 0.0];
+			title.transform.scale = [1.2, 1.2, 1.0];
+
+			let badge = comp.add_instance_named(node_badge, "Badge");
+			badge.transform.position = [160.0, 80.0, 0.0];
+			badge.transform.opacity = 0.85;
 		}
 
-		let node_c = project.create_node();
+		let node_bg = project.create_node();
 		if let Some(comp) = project.composition_mut(&scene) {
-			comp.add_instance_named(node_c, "Background");
+			comp.add_instance_named(node_bg, "Background");
 		}
 
 		(project, main, assets)
@@ -313,6 +308,9 @@ impl NadeApp {
 					PanelSystemMessage::AppMessage(AppPanelMessage::Assets(assets_msg)) => {
 						task = self.apply_assets_message(assets_msg.clone());
 					}
+					PanelSystemMessage::AppMessage(AppPanelMessage::Inspector(inspector_msg)) => {
+						self.apply_inspector_message(inspector_msg.clone());
+					}
 					_ => {}
 				}
 				self.panel_system.update(msg);
@@ -338,6 +336,7 @@ impl NadeApp {
 	}
 
 	fn apply_timeline_message(&mut self, msg: TimelineMessage) {
+		let previous_selection = self.timeline.state.primary_selection();
 		let current_time = self.current_model.preview.time;
 		let timeline_update = self
 			.timeline
@@ -356,6 +355,10 @@ impl NadeApp {
 			let track = self.timeline.model.tracks.remove(from_index);
 			self.timeline.model.tracks.insert(to_index, track);
 		}
+
+		if self.timeline.state.primary_selection() != previous_selection {
+			self.sync_object_selection_from_timeline();
+		}
 	}
 
 	fn apply_project_message(&mut self, msg: ProjectPaneMessage) {
@@ -364,10 +367,11 @@ impl NadeApp {
 				self.toggle_expand(id);
 			}
 			ProjectPaneMessage::Select(id) => {
-				self.project_pane.selected_id = Some(id);
+				self.select_object(id);
 			}
 			ProjectPaneMessage::ClearSelection => {
 				self.project_pane.selected_id = None;
+				self.timeline.state.clear_selection();
 			}
 			ProjectPaneMessage::OpenItem(id) => {
 				self.open_item(id);
@@ -390,9 +394,24 @@ impl NadeApp {
 	}
 
 	fn open_item(&mut self, id: ObjectId) {
-		self.project_pane.selected_id = Some(id);
+		self.select_object(id);
 		if let ObjectId::Composition(composition_id) = id {
 			self.project_pane.expanded_ids.insert(composition_id);
+		}
+	}
+
+	fn select_object(&mut self, id: ObjectId) {
+		self.project_pane.selected_id.replace(id);
+		match id {
+			ObjectId::Composition(composition_id) => {
+				self.rebuild_timeline_for_composition(composition_id);
+			}
+			ObjectId::Instance { composition, instance } => {
+				if !self.timeline_has_instance(composition, instance) {
+					self.rebuild_timeline_for_composition(composition);
+				}
+				self.sync_timeline_selection_from_object(id);
+			}
 		}
 	}
 
@@ -400,7 +419,7 @@ impl NadeApp {
 		let name = unique_composition_name(&self.project);
 		let id = self.project.create_composition(name, 1920, 1080, 60.0);
 		self.project_pane.expanded_ids.insert(id);
-		self.project_pane.selected_id = Some(ObjectId::Composition(id));
+		self.select_object(ObjectId::Composition(id));
 	}
 
 	fn add_object_under_selection(&mut self) {
@@ -411,25 +430,173 @@ impl NadeApp {
 
 		let name = unique_object_name(&self.project, composition_id);
 		let node_id = self.project.create_node();
-		let instance_id = {
+		let (instance_id, start_time, duration) = {
 			let Some(comp) = self.project.composition_mut(&composition_id) else {
 				return;
 			};
-			let instance = comp.add_instance_named(node_id, name);
-			instance.id()
+			let instance = comp.add_instance_named(node_id, name.clone());
+			(instance.id(), instance.start_time(), instance.duration())
 		};
 
+		self.add_instance_clip(composition_id, instance_id, &name, start_time, duration);
 		self.project_pane.expanded_ids.insert(composition_id);
-		self.project_pane.selected_id = Some(ObjectId::Instance {
+		self.select_object(ObjectId::Instance {
 			composition: composition_id,
 			instance: instance_id,
 		});
+	}
+
+	fn rebuild_timeline_for_composition(&mut self, composition_id: CompositionId) {
+		self.timeline.state.clear_selection();
+		if self.timeline.model.tracks.is_empty() {
+			self.timeline.model.add_track(TimelineTrack::new("Video 1"));
+		}
+		if let Some(track) = self.timeline.model.tracks.first_mut() {
+			track.clips.clear();
+		}
+
+		let clips: Vec<_> = self
+			.project
+			.composition(&composition_id)
+			.map(|comp| {
+				comp.all_objects()
+					.map(|obj| (obj.id(), obj.name().to_string(), obj.start_time(), obj.duration()))
+					.collect()
+			})
+			.unwrap_or_default();
+
+		for (instance_id, name, start_time, duration) in clips {
+			self.add_instance_clip(composition_id, instance_id, &name, start_time, duration);
+		}
+	}
+
+	fn add_instance_clip(
+		&mut self,
+		composition_id: CompositionId,
+		instance_id: InstanceId,
+		name: &str,
+		start_time: f32,
+		duration: f32,
+	) {
+		if self.timeline.model.tracks.is_empty() {
+			self.timeline.model.add_track(TimelineTrack::new("Video 1"));
+		}
+
+		let clip_id = next_clip_id(&self.timeline.model);
+		if let Some(track) = self.timeline.model.tracks.first_mut() {
+			track.add_clip(TimelineClip::from_instance(
+				clip_id,
+				name,
+				start_time,
+				duration,
+				composition_id,
+				instance_id,
+			));
+		}
+	}
+
+	fn sync_object_selection_from_timeline(&mut self) {
+		let Some((track_index, clip_id)) = self.timeline.state.primary_selection() else {
+			if matches!(self.project_pane.selected_id, Some(ObjectId::Instance { .. })) {
+				self.project_pane.selected_id = None;
+			}
+			return;
+		};
+
+		let Some(clip) = self
+			.timeline
+			.model
+			.tracks
+			.get(track_index)
+			.and_then(|track| track.clips.iter().find(|clip| clip.id == clip_id))
+		else {
+			return;
+		};
+
+		let (Some(composition), Some(instance)) = (clip.composition_id, clip.instance_id) else {
+			return;
+		};
+
+		self.project_pane.expanded_ids.insert(composition);
+		self.project_pane.selected_id = Some(ObjectId::Instance { composition, instance });
+	}
+
+	fn sync_timeline_selection_from_object(&mut self, id: ObjectId) {
+		let ObjectId::Instance { composition, instance } = id else {
+			self.timeline.state.clear_selection();
+			return;
+		};
+
+		for (track_index, track) in self.timeline.model.tracks.iter().enumerate() {
+			if let Some(clip) = track
+				.clips
+				.iter()
+				.find(|clip| clip.composition_id == Some(composition) && clip.instance_id == Some(instance))
+			{
+				self.timeline.state.select_clip(track_index, clip.id);
+				return;
+			}
+		}
+
+		self.timeline.state.clear_selection();
+	}
+
+	fn timeline_has_instance(&self, composition: CompositionId, instance: InstanceId) -> bool {
+		self.timeline.model.tracks.iter().any(|track| {
+			track
+				.clips
+				.iter()
+				.any(|clip| clip.composition_id == Some(composition) && clip.instance_id == Some(instance))
+		})
 	}
 
 	fn target_composition(&self) -> Option<CompositionId> {
 		match self.project_pane.selected_id? {
 			ObjectId::Composition(id) => Some(id),
 			ObjectId::Instance { composition, .. } => Some(composition),
+		}
+	}
+
+	fn selected_instance_transform(&self) -> Option<&Transform> {
+		let ObjectId::Instance { composition, instance } = self.project_pane.selected_id? else {
+			return None;
+		};
+
+		self.project
+			.composition(&composition)?
+			.get(instance)
+			.map(|obj| obj.transform())
+	}
+
+	fn apply_inspector_message(&mut self, msg: InspectorMessage) {
+		let Some(ObjectId::Instance { composition, instance }) = self.project_pane.selected_id else {
+			return;
+		};
+
+		let Some(obj) = self
+			.project
+			.composition_mut(&composition)
+			.and_then(|comp| comp.get_mut(instance))
+		else {
+			return;
+		};
+
+		match msg {
+			InspectorMessage::UpdateTransform { field, index, value } => {
+				let transform = obj.transform_mut();
+				let target = match field.as_str() {
+					"position" => &mut transform.position,
+					"rotation" => &mut transform.rotation,
+					"scale" => &mut transform.scale,
+					_ => return,
+				};
+				if let Some(slot) = target.get_mut(index) {
+					*slot = value;
+				}
+			}
+			InspectorMessage::SetOpacity(opacity) => {
+				obj.transform_mut().opacity = opacity.clamp(0.0, 1.0);
+			}
 		}
 	}
 
@@ -576,7 +743,7 @@ impl NadeApp {
 				self.current_model.preview.time,
 			),
 			PanelContent::MainPreview => panels::preview::view(&self.current_model.preview),
-			PanelContent::Inspector => panels::inspector::view(self.current_model.preview.selection.as_ref()),
+			PanelContent::Inspector => panels::inspector::view(self.selected_instance_transform()),
 			PanelContent::Project => panels::browser::view(&self.project, &self.project_pane),
 			PanelContent::Assets => panels::assets::view(&self.project, &self.asset_browser),
 		}

@@ -1,4 +1,4 @@
-use core::{NodeId, id::InstanceId};
+use core::{NodeId, Transform, id::InstanceId};
 
 /// タイムラインクリップ
 ///
@@ -19,6 +19,9 @@ pub struct Instance {
 
 	/// Duration of the instance (sec)
 	pub duration: f32,
+
+	/// Transform of the instance
+	pub transform: Transform,
 }
 
 impl Instance {
@@ -30,6 +33,7 @@ impl Instance {
 			name: name.to_string(),
 			start_time,
 			duration,
+			transform: Transform::default(),
 		}
 	}
 
@@ -51,6 +55,18 @@ impl Instance {
 
 	pub fn duration(&self) -> f32 {
 		self.duration
+	}
+
+	pub fn transform(&self) -> &Transform {
+		&self.transform
+	}
+
+	pub fn transform_mut(&mut self) -> &mut Transform {
+		&mut self.transform
+	}
+
+	pub fn set_transform(&mut self, transform: Transform) {
+		self.transform = transform;
 	}
 
 	pub fn set_start_time(&mut self, time: f32) {

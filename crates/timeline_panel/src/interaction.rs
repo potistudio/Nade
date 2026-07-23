@@ -218,7 +218,18 @@ impl TimelineInteraction {
 	/// 外部モデル更新後の選択状態をリセット
 	pub fn clear_selection(&mut self) {
 		self.selected_clip = None;
+		self.selected_clips.clear();
 		self.drag_state = DragState::None;
+	}
+
+	/// 単一選択、または複数選択の先頭クリップ
+	pub fn primary_selection(&self) -> Option<(usize, usize)> {
+		self.selected_clip.or_else(|| self.selected_clips.first().copied())
+	}
+
+	pub fn select_clip(&mut self, track_index: usize, clip_id: usize) {
+		self.selected_clip = Some((track_index, clip_id));
+		self.selected_clips.clear();
 	}
 
 	/// Convert a time value to an x coordinate.
