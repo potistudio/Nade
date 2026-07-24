@@ -10,11 +10,26 @@ use effects::WaveEffect;
 use encoder::Encoder;
 use image::{ImageBuffer, Rgba};
 use rayon::prelude::*;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 use swash::{
 	FontRef, GlyphId,
 	scale::{Render, ScaleContext, Source},
 	zeno::Format,
 };
+
+/// フォントファイルをプロセス内でキャッシュ（毎フレームのディスク読みを避ける）
+fn font_bytes(path: &str) -> Option<Arc<Vec<u8>>> {
+	static CACHE: OnceLock<Mutex<HashMap<String, Arc<Vec<u8>>>>> = OnceLock::new();
+	let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+	let mut guard = cache.lock().ok()?;
+	if let Some(bytes) = guard.get(path) {
+		return Some(Arc::clone(bytes));
+	}
+	let bytes = Arc::new(std::fs::read(path).ok()?);
+	guard.insert(path.to_string(), Arc::clone(&bytes));
+	Some(bytes)
+}
 
 /// 指定されたフレーム番号に対応する画像を生成
 ///
@@ -236,11 +251,11 @@ fn draw_text(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, text: &TextObject, canvas
 		return;
 	}
 
-	let Ok(font_data) = std::fs::read(&text.font_path) else {
+	let Some(font_data) = font_bytes(&text.font_path) else {
 		log::warn!("Failed to load font: {}", text.font_path);
 		return;
 	};
-	let Some(font) = FontRef::from_index(&font_data, 0) else {
+	let Some(font) = FontRef::from_index(font_data.as_ref(), 0) else {
 		log::warn!("Invalid font file: {}", text.font_path);
 		return;
 	};

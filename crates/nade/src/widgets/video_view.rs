@@ -335,10 +335,21 @@ impl Primitive for VideoPrimitive {
 		pipeline: &mut Self::Pipeline,
 		device: &wgpu::Device,
 		queue: &wgpu::Queue,
-		_bounds: &Rectangle,
-		_storage: &Viewport,
+		bounds: &Rectangle,
+		viewport: &Viewport,
 	) {
-		queue.write_buffer(&pipeline.uniform_buffer, 0, bytemuck::bytes_of(&self.uniforms));
+		// iced は render 時に bounds * scale_factor を viewport にする。
+		// uniforms も物理ピクセルに揃えないと Retina でサンプリングがずれる。
+		let scale = viewport.scale_factor();
+		let uniforms = ViewUniforms {
+			viewport_size: [bounds.width * scale, bounds.height * scale],
+			frame_size: self.uniforms.frame_size,
+			offset: [self.uniforms.offset[0] * scale, self.uniforms.offset[1] * scale],
+			zoom: self.uniforms.zoom,
+			_pad: 0.0,
+			background: self.uniforms.background,
+		};
+		queue.write_buffer(&pipeline.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
 
 		let Some(frame) = &self.frame else {
 			pipeline.bind_group = None;
@@ -421,46 +432,14 @@ impl Primitive for VideoPrimitive {
 		}
 	}
 
-	fn render(
-		&self,
-		pipeline: &Self::Pipeline,
-		encoder: &mut wgpu::CommandEncoder,
-		view: &wgpu::TextureView,
-		viewport: &Rectangle<u32>,
-	) {
-		if pipeline.bind_group.is_none() {
-			return;
-		}
+	fn draw(&self, pipeline: &Self::Pipeline, render_pass: &mut wgpu::RenderPass<'_>) -> bool {
+		let Some(bind_group) = &pipeline.bind_group else {
+			return true;
+		};
 
-		let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			label: Some("Video Render Pass"),
-			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view,
-				resolve_target: None,
-				ops: wgpu::Operations {
-					load: wgpu::LoadOp::Load,
-					store: wgpu::StoreOp::Store,
-				},
-				depth_slice: None,
-			})],
-			depth_stencil_attachment: None,
-			timestamp_writes: None,
-			occlusion_query_set: None,
-		});
-
-		pass.set_viewport(
-			viewport.x as f32,
-			viewport.y as f32,
-			viewport.width as f32,
-			viewport.height as f32,
-			0.0,
-			1.0,
-		);
-
-		pass.set_pipeline(&pipeline.pipeline);
-		if let Some(bg) = &pipeline.bind_group {
-			pass.set_bind_group(0, bg, &[]);
-			pass.draw(0..6, 0..1);
-		}
+		render_pass.set_pipeline(&pipeline.pipeline);
+		render_pass.set_bind_group(0, bind_group, &[]);
+		render_pass.draw(0..6, 0..1);
+		true
 	}
 }

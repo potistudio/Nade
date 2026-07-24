@@ -57,6 +57,21 @@ impl Composition {
 		&self.name
 	}
 
+	/// Returns the width of the composition in pixels
+	pub fn width(&self) -> u32 {
+		self.width
+	}
+
+	/// Returns the height of the composition in pixels
+	pub fn height(&self) -> u32 {
+		self.height
+	}
+
+	/// Returns the frame rate of the composition
+	pub fn fps(&self) -> f32 {
+		self.fps
+	}
+
 	/// Returns whether this composition has any objects
 	pub fn has_objects(&self) -> bool {
 		!self.instances.is_empty()

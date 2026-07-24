@@ -145,6 +145,7 @@ impl NadeApp {
 		};
 
 		app.rebuild_timeline_for_composition(main_comp);
+		app.sync_preview_size_from_composition(main_comp);
 
 		// 初期フレームを描画
 		app.apply_core_msg(Msg::SetTime(0.0));
@@ -456,11 +457,14 @@ impl NadeApp {
 		match id {
 			ObjectId::Composition(composition_id) => {
 				self.rebuild_timeline_for_composition(composition_id);
+				self.sync_preview_size_from_composition(composition_id);
+				self.request_preview_refresh();
 			}
 			ObjectId::Instance { composition, instance } => {
 				if !self.timeline_has_instance(composition, instance) {
 					self.rebuild_timeline_for_composition(composition);
 				}
+				self.sync_preview_size_from_composition(composition);
 				self.sync_timeline_selection_from_object(id);
 			}
 		}
@@ -502,6 +506,16 @@ impl NadeApp {
 			instance: instance_id,
 		});
 		self.request_preview_refresh();
+	}
+
+	/// プレビュー解像度をコンポジションに合わせる（低解像度アップスケールの格子を防ぐ）
+	fn sync_preview_size_from_composition(&mut self, composition_id: CompositionId) {
+		let Some(comp) = self.project.composition(&composition_id) else {
+			return;
+		};
+		self.current_model.preview.width = comp.width();
+		self.current_model.preview.height = comp.height();
+		self.current_model.preview.fps = comp.fps();
 	}
 
 	fn rebuild_timeline_for_composition(&mut self, composition_id: CompositionId) {

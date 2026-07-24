@@ -59,7 +59,10 @@ pub fn main() -> iced::Result {
 			std::env::set_var("RUST_LOG", "nade=info");
 		}
 
-		std::env::set_var("ICED_PRESENT_MODE", "immediate");
+		// fifo = vsync。immediate はティアリングで描画が不安定に見える。
+		if std::env::var("ICED_PRESENT_MODE").is_err() {
+			std::env::set_var("ICED_PRESENT_MODE", "fifo");
+		}
 	}
 
 	env_logger::init();
