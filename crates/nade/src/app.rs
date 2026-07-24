@@ -356,13 +356,13 @@ impl NadeApp {
 				Task::none()
 			}
 
-			Message::WindowClosed(id) => {
+			Message::CloseRequested(_id) => {
 				if let Some(tx) = self.render_shutdown_tx.take()
 					&& let Err(e) = tx.send(())
 				{
 					log::error!("App: Failed to send render shutdown: {:?}", e);
 				}
-				iced::window::close(id)
+				iced::exit()
 			}
 		}
 	}
@@ -908,8 +908,9 @@ impl NadeApp {
 		};
 		let tick = iced::time::every(std::time::Duration::from_millis(tick_ms)).map(|_| Message::Tick);
 		let resize = iced::event::listen_with(on_window_resize);
+		let close = iced::window::close_requests().map(Message::CloseRequested);
 
-		Subscription::batch([render_subscription, keyboard_subscription, tick, resize])
+		Subscription::batch([render_subscription, keyboard_subscription, tick, resize, close])
 	}
 }
 

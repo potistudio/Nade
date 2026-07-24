@@ -40,8 +40,8 @@ pub enum Message {
 	PanelSystem(PanelSystemMessage<PanelContent, AppPanelMessage>),
 	/// バックグラウンドレンダリング完了
 	RenderCompleted(FrameData),
-	/// ウィンドウが閉じられた
-	WindowClosed(iced::window::Id),
+	/// ウィンドウの閉じる操作が要求された（アプリケーション終了）
+	CloseRequested(iced::window::Id),
 	/// タイムラインパネルメッセージ
 	Timeline(TimelineMessage),
 	/// ファイルダイアログで選ばれたメディア（キャンセル時は None）

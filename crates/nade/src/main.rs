@@ -39,7 +39,9 @@ pub fn run_app() -> iced::Result {
 		.default_font(iced::Font::with_name("Inter"))
 		.title("Nade")
 		.window(window_settings)
-		.exit_on_close_request(true)
+		// CloseRequested をアプリ側で受け取り、バックグラウンドスレッドを
+		// 止めてから iced::exit() する（true だと購読より先に閉じられハングする）
+		.exit_on_close_request(false)
 		.run()
 }
 
