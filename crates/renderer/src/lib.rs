@@ -265,6 +265,12 @@ fn draw_text(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, text: &TextObject, canvas
 	let center_y = canvas_height as f32 / 2.0 + transform.position[1];
 	let scale_x = transform.scale[0];
 	let scale_y = transform.scale[1];
+	// scale>1 のままグリフ画素を拡大して round すると隙間（縞模様）が空く。
+	// 大きい軸のスケールをフォントサイズに焼き込み、残差スケールは |post|<=1 にする。
+	let bake = scale_x.abs().max(scale_y.abs()).max(1e-6);
+	let render_size = (text.font_size * bake).max(1.0);
+	let post_sx = scale_x / bake;
+	let post_sy = scale_y / bake;
 	let rotation_z = transform.rotation[2].to_radians();
 	let cos_r = rotation_z.cos();
 	let sin_r = rotation_z.sin();
@@ -277,8 +283,8 @@ fn draw_text(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, text: &TextObject, canvas
 		return;
 	}
 
-	let metrics = font.metrics(&[]).scale(text.font_size);
-	let glyph_metrics = font.glyph_metrics(&[]).scale(text.font_size);
+	let metrics = font.metrics(&[]).scale(render_size);
+	let glyph_metrics = font.glyph_metrics(&[]).scale(render_size);
 	let charmap = font.charmap();
 	let line_height = metrics.ascent + metrics.descent + metrics.leading;
 
@@ -311,7 +317,7 @@ fn draw_text(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, text: &TextObject, canvas
 			x: pen_x,
 			baseline_y: line_y,
 		});
-		let advance = glyph_metrics.advance_width(glyph_id) + text.spacing;
+		let advance = glyph_metrics.advance_width(glyph_id) + text.spacing * bake;
 		pen_x += advance;
 		line_width = pen_x;
 	}
@@ -326,7 +332,7 @@ fn draw_text(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, text: &TextObject, canvas
 	let origin_y = -total_height / 2.0 + metrics.ascent;
 
 	let mut context = ScaleContext::new();
-	let mut scaler = context.builder(font).size(text.font_size).hint(true).build();
+	let mut scaler = context.builder(font).size(render_size).hint(true).build();
 
 	for glyph in glyphs {
 		let Some(image) = Render::new(&[Source::Outline])
@@ -345,8 +351,8 @@ fn draw_text(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, text: &TextObject, canvas
 				}
 
 				// フォント座標（y上向き）→ ローカル画面座標（y下向き、テキスト中心原点）
-				let local_x = (origin_x + glyph.x + placement.left as f32 + gx as f32) * scale_x;
-				let local_y = (origin_y + glyph.baseline_y - placement.top as f32 + gy as f32) * scale_y;
+				let local_x = (origin_x + glyph.x + placement.left as f32 + gx as f32) * post_sx;
+				let local_y = (origin_y + glyph.baseline_y - placement.top as f32 + gy as f32) * post_sy;
 
 				let world_x = local_x * cos_r - local_y * sin_r + center_x;
 				let world_y = local_x * sin_r + local_y * cos_r + center_y;
@@ -432,6 +438,46 @@ mod tests {
 		let img = render_objects([&text as &dyn SceneObjectData], 0.0, 200, 200);
 		let lit = img.pixels().any(|p| p[0] > 40 || p[1] > 40 || p[2] > 40);
 		assert!(lit, "expected text pixels brighter than background");
+	}
+
+	#[test]
+	fn scaled_text_has_no_screen_door_holes() {
+		let mut text = TextObject::new("Title")
+			.with_text("Title")
+			.with_font_path(rubik_path())
+			.with_font_size(48.0)
+			.with_fill_color(1.0, 1.0, 1.0, 1.0);
+		text.transform.scale = [1.2, 1.2, 1.0];
+
+		let img = render_objects([&text as &dyn SceneObjectData], 0.0, 400, 200);
+
+		let mut lit = 0_u32;
+		let mut touches_background = 0_u32;
+		for y in 1..img.height() - 1 {
+			for x in 1..img.width() - 1 {
+				let pixel = img.get_pixel(x, y);
+				if pixel[0] < 200 {
+					continue;
+				}
+				lit += 1;
+				let neighbors = [
+					img.get_pixel(x, y - 1),
+					img.get_pixel(x, y + 1),
+					img.get_pixel(x - 1, y),
+					img.get_pixel(x + 1, y),
+				];
+				if neighbors.iter().any(|n| n[0] < 50) {
+					touches_background += 1;
+				}
+			}
+		}
+
+		assert!(lit > 100, "expected scaled text coverage, got {lit} lit pixels");
+		let edge_ratio = touches_background as f32 / lit as f32;
+		assert!(
+			edge_ratio < 0.4,
+			"screen-door holes inside strokes: edge_ratio={edge_ratio} ({touches_background}/{lit})"
+		);
 	}
 
 	#[test]
