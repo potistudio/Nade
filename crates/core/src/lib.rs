@@ -77,12 +77,14 @@ pub struct RenderContext {
 // エフェクト
 // =============================================================================
 
+pub mod animation;
 pub mod core;
 mod hash;
 pub mod object;
 pub mod ops;
 pub mod timeline;
 
+pub use animation::{AnimationCurve, HandleSide, Interpolation, Keyframe};
 pub use core::*;
 pub use object::{RectangleObject, SceneObject, SceneObjectData, SceneObjectId, TextObject};
 pub use ops::{EvalAccess, Operator, ParamDescriptor, ParamKind, ParamValue, ResolvedHashes, ResolvedOp, ValueParamUi};

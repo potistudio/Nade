@@ -44,6 +44,7 @@ browser_panel = { path = "../browser_panel" }
 asset_browser = { path = "../asset_browser" }
 constants = { workspace = true }
 core = { workspace = true }
+curve_editor_panel = { workspace = true }
 domain.workspace = true
 panel_system = { path = "../panel_system" }
 timeline_panel = { path = "../timeline_panel" }

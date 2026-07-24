@@ -21,6 +21,7 @@ all = "warn"
 anyhow = "1.0.104"
 constants = { path = "crates/constants" }
 core = { path = "crates/core" }
+curve_editor_panel = { path = "crates/curve_editor_panel" }
 domain = { path = "crates/domain" }
 env_logger = "0.11.11"
 effects = { path = "crates/effects" }

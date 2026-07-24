@@ -12,6 +12,8 @@ pub enum PanelContent {
 	MainPreview,
 	/// タイムライン
 	Timeline,
+	/// アニメーションカーブエディター
+	CurveEditor,
 	/// インスペクター（Transform/Graph）
 	Inspector,
 	/// オブジェクトブラウザ（Composition → Object アウトライン）
@@ -25,6 +27,7 @@ impl AreaKind for PanelContent {
 		vec![
 			Self::MainPreview,
 			Self::Timeline,
+			Self::CurveEditor,
 			Self::Inspector,
 			Self::Project,
 			Self::Assets,
@@ -35,6 +38,7 @@ impl AreaKind for PanelContent {
 		let bytes: &'static [u8] = match self {
 			Self::MainPreview => include_bytes!("../../../assets/icons/panels/preview.svg"),
 			Self::Timeline => include_bytes!("../../../assets/icons/panels/timeline.svg"),
+			Self::CurveEditor => include_bytes!("../../../assets/icons/panels/timeline.svg"),
 			Self::Inspector => include_bytes!("../../../assets/icons/panels/inspector.svg"),
 			Self::Project => include_bytes!("../../../assets/icons/panels/project.svg"),
 			Self::Assets => include_bytes!("../../../assets/icons/panels/project.svg"),
@@ -46,6 +50,7 @@ impl AreaKind for PanelContent {
 		match self {
 			Self::MainPreview => "Preview",
 			Self::Timeline => "Timeline",
+			Self::CurveEditor => "Curve Editor",
 			Self::Inspector => "Inspector",
 			Self::Project => "Objects",
 			Self::Assets => "Assets",
@@ -55,7 +60,7 @@ impl AreaKind for PanelContent {
 	fn menu_columns() -> Vec<(&'static str, Vec<Self>)> {
 		vec![
 			("General", vec![Self::MainPreview]),
-			("Animation", vec![Self::Timeline]),
+			("Animation", vec![Self::Timeline, Self::CurveEditor]),
 			("Data", vec![Self::Project, Self::Assets, Self::Inspector]),
 		]
 	}

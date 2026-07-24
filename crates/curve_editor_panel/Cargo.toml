@@ -1,0 +1,17 @@
+[package]
+name = "curve_editor_panel"
+description = "Animation curve editor panel"
+authors.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+constants = { workspace = true }
+core = { workspace = true }
+domain = { workspace = true }
+iced = { workspace = true }

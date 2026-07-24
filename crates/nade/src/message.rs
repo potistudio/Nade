@@ -2,6 +2,7 @@
 //!
 //! アプリケーション全体で使用されるメッセージ型を定義します。
 
+use curve_editor_panel::CurveEditorMessage;
 use panel_system::PanelSystemMessage;
 use std::path::PathBuf;
 use timeline_panel::TimelineMessage;
@@ -22,7 +23,14 @@ pub enum PreviewMessage {
 /// アプリケーションパネルメッセージ（ラッパー）
 #[derive(Debug, Clone)]
 pub enum AppPanelMessage {
-	Timeline { panel_id: usize, message: TimelineMessage },
+	Timeline {
+		panel_id: usize,
+		message: TimelineMessage,
+	},
+	CurveEditor {
+		panel_id: usize,
+		message: CurveEditorMessage,
+	},
 	Project(ProjectPaneMessage),
 	Assets(AssetBrowserMessage),
 	Inspector(inspector_panel::InspectorMessage),

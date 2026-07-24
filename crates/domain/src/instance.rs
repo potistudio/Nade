@@ -1,4 +1,105 @@
-use core::{NodeId, Transform, id::InstanceId};
+use core::{AnimationCurve, NodeId, Transform, id::InstanceId};
+
+/// A scalar channel of an instance transform.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(usize)]
+pub enum TransformProperty {
+	PositionX,
+	PositionY,
+	PositionZ,
+	RotationX,
+	RotationY,
+	RotationZ,
+	ScaleX,
+	ScaleY,
+	ScaleZ,
+	Opacity,
+}
+
+impl TransformProperty {
+	pub const ALL: [Self; 10] = [
+		Self::PositionX,
+		Self::PositionY,
+		Self::PositionZ,
+		Self::RotationX,
+		Self::RotationY,
+		Self::RotationZ,
+		Self::ScaleX,
+		Self::ScaleY,
+		Self::ScaleZ,
+		Self::Opacity,
+	];
+
+	pub fn label(self) -> &'static str {
+		match self {
+			Self::PositionX => "Position X",
+			Self::PositionY => "Position Y",
+			Self::PositionZ => "Position Z",
+			Self::RotationX => "Rotation X",
+			Self::RotationY => "Rotation Y",
+			Self::RotationZ => "Rotation Z",
+			Self::ScaleX => "Scale X",
+			Self::ScaleY => "Scale Y",
+			Self::ScaleZ => "Scale Z",
+			Self::Opacity => "Opacity",
+		}
+	}
+
+	pub fn value(self, transform: &Transform) -> f32 {
+		match self {
+			Self::PositionX => transform.position[0],
+			Self::PositionY => transform.position[1],
+			Self::PositionZ => transform.position[2],
+			Self::RotationX => transform.rotation[0],
+			Self::RotationY => transform.rotation[1],
+			Self::RotationZ => transform.rotation[2],
+			Self::ScaleX => transform.scale[0],
+			Self::ScaleY => transform.scale[1],
+			Self::ScaleZ => transform.scale[2],
+			Self::Opacity => transform.opacity,
+		}
+	}
+
+	fn set_value(self, transform: &mut Transform, value: f32) {
+		match self {
+			Self::PositionX => transform.position[0] = value,
+			Self::PositionY => transform.position[1] = value,
+			Self::PositionZ => transform.position[2] = value,
+			Self::RotationX => transform.rotation[0] = value,
+			Self::RotationY => transform.rotation[1] = value,
+			Self::RotationZ => transform.rotation[2] = value,
+			Self::ScaleX => transform.scale[0] = value,
+			Self::ScaleY => transform.scale[1] = value,
+			Self::ScaleZ => transform.scale[2] = value,
+			Self::Opacity => transform.opacity = value.clamp(0.0, 1.0),
+		}
+	}
+}
+
+/// Keyframe curves for every scalar transform channel.
+#[derive(Debug, Clone, Default)]
+pub struct TransformAnimation {
+	curves: [AnimationCurve; 10],
+}
+
+impl TransformAnimation {
+	pub fn curve(&self, property: TransformProperty) -> &AnimationCurve {
+		&self.curves[property as usize]
+	}
+
+	pub fn curve_mut(&mut self, property: TransformProperty) -> &mut AnimationCurve {
+		&mut self.curves[property as usize]
+	}
+
+	pub fn evaluate(&self, base: Transform, time: f32) -> Transform {
+		let mut result = base;
+		for property in TransformProperty::ALL {
+			let value = self.curve(property).evaluate(property.value(&base), time);
+			property.set_value(&mut result, value);
+		}
+		result
+	}
+}
 
 /// インスタンスが持つ描画コンテンツ
 #[derive(Debug, Clone)]
@@ -102,6 +203,9 @@ pub struct Instance {
 	/// Transform of the instance
 	pub transform: Transform,
 
+	/// Time-varying transform channels
+	pub animation: TransformAnimation,
+
 	/// Drawable content
 	pub content: InstanceContent,
 }
@@ -117,6 +221,7 @@ impl Instance {
 			duration,
 			track_index: 0,
 			transform: Transform::default(),
+			animation: TransformAnimation::default(),
 			content: InstanceContent::default(),
 		}
 	}
@@ -151,6 +256,10 @@ impl Instance {
 
 	pub fn set_transform(&mut self, transform: Transform) {
 		self.transform = transform;
+	}
+
+	pub fn transform_at(&self, time: f32) -> Transform {
+		self.animation.evaluate(self.transform, time)
 	}
 
 	pub fn content(&self) -> &InstanceContent {
@@ -204,5 +313,26 @@ mod tests {
 	fn new_instance_starts_empty() {
 		let instance = Instance::new(InstanceId::new(0), NodeId::new(0), "A", 0.0, 5.0);
 		assert!(matches!(instance.content(), InstanceContent::Empty));
+	}
+
+	#[test]
+	fn transform_at_evaluates_animated_channels_only() {
+		let mut instance = Instance::new(InstanceId::new(0), NodeId::new(0), "A", 0.0, 5.0);
+		instance.transform.position = [10.0, 20.0, 30.0];
+		let curve = instance.animation.curve_mut(TransformProperty::PositionX);
+		let first = curve.add_key(0.0, 0.0);
+		curve.add_key(2.0, 100.0);
+		curve.set_interpolation(first, core::Interpolation::Linear);
+
+		let transform = instance.transform_at(1.0);
+		assert!((transform.position[0] - 50.0).abs() < 0.001);
+		assert_eq!(transform.position[1], 20.0);
+	}
+
+	#[test]
+	fn animated_opacity_is_clamped() {
+		let mut animation = TransformAnimation::default();
+		animation.curve_mut(TransformProperty::Opacity).add_key(0.0, 2.0);
+		assert_eq!(animation.evaluate(Transform::default(), 0.0).opacity, 1.0);
 	}
 }

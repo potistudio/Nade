@@ -5,6 +5,7 @@
 use asset_browser::{AssetBrowserMessage, AssetBrowserState};
 use browser_panel::{ObjectId, ProjectPaneMessage, ProjectPaneState};
 use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
+use curve_editor_panel::{CurveEditorMessage, CurveEditorState};
 use iced::keyboard;
 use iced::widget::container;
 use iced::{Element, Length, Size, Subscription, Task, Theme};
@@ -21,7 +22,7 @@ use core::{
 	AssetId, CompositionId, CoreEffect, FrameData, InstanceId, Model, Msg, SceneObjectData, SceneObjectId, TextObject,
 	update,
 };
-use domain::{AssetType, Instance, InstanceContent, Project};
+use domain::{AssetType, Instance, InstanceContent, Project, TransformAnimation};
 
 use crate::message::{AppPanelMessage, Message, PreviewMessage};
 use crate::panel_content::PanelContent;
@@ -82,6 +83,9 @@ pub(super) struct NadeApp {
 	/// タイムラインパネル
 	timeline: TimelinePanelState,
 
+	/// アニメーションカーブエディター
+	curve_editor: CurveEditorState,
+
 	/// オブジェクトブラウザ
 	project_pane: ProjectPaneState,
 
@@ -127,6 +131,7 @@ impl NadeApp {
 			project,
 			current_model: Model::default(),
 			timeline: TimelinePanelState::default(),
+			curve_editor: CurveEditorState::default(),
 			project_pane,
 			asset_browser,
 			panel_system,
@@ -257,7 +262,7 @@ impl NadeApp {
 							.map(|hidden| !*hidden)
 							.unwrap_or(true)
 					})
-					.filter_map(instance_to_text_object)
+					.filter_map(|instance| instance_to_text_object(instance, time))
 					.collect()
 			})
 			.unwrap_or_default();
@@ -330,6 +335,9 @@ impl NadeApp {
 				match &msg {
 					PanelSystemMessage::AppMessage(AppPanelMessage::Timeline { message, .. }) => {
 						self.apply_timeline_message(message.clone());
+					}
+					PanelSystemMessage::AppMessage(AppPanelMessage::CurveEditor { message, .. }) => {
+						self.apply_curve_editor_message(message.clone());
 					}
 					PanelSystemMessage::AppMessage(AppPanelMessage::Project(project_msg)) => {
 						self.apply_project_message(project_msg.clone());
@@ -667,9 +675,43 @@ impl NadeApp {
 		})
 	}
 
+	fn selected_transform_animation(&self) -> Option<&TransformAnimation> {
+		let ObjectId::Instance { composition, instance } = self.project_pane.selected_id? else {
+			return None;
+		};
+		self.project
+			.composition(&composition)?
+			.get(instance)
+			.map(|obj| &obj.animation)
+	}
+
 	fn request_preview_refresh(&mut self) {
 		let time = self.current_model.preview.time;
 		self.apply_core_msg(Msg::SetTime(time));
+	}
+
+	fn apply_curve_editor_message(&mut self, msg: CurveEditorMessage) {
+		let Some(ObjectId::Instance { composition, instance }) = self.project_pane.selected_id else {
+			return;
+		};
+		let current_time = self.current_model.preview.time;
+		let Some(obj) = self
+			.project
+			.composition_mut(&composition)
+			.and_then(|composition| composition.get_mut(instance))
+		else {
+			return;
+		};
+		let base = *obj.transform();
+		let update = self
+			.curve_editor
+			.apply_message(&mut obj.animation, &base, msg, current_time);
+
+		if let Some(time) = update.playhead_time {
+			self.apply_core_msg(Msg::SetTime(time));
+		} else if update.curve_changed {
+			self.request_preview_refresh();
+		}
 	}
 
 	fn apply_preview_message(&mut self, msg: PreviewMessage) {
@@ -875,6 +917,12 @@ impl NadeApp {
 				&self.timeline.model,
 				self.current_model.preview.time,
 			),
+			PanelContent::CurveEditor => panels::curve_editor::view(
+				panel_id,
+				&self.curve_editor,
+				self.selected_transform_animation(),
+				self.current_model.preview.time,
+			),
 			PanelContent::MainPreview => panels::preview::view(&self.current_model.preview),
 			PanelContent::Inspector => panels::inspector::view(self.selected_instance_selection()),
 			PanelContent::Project => panels::browser::view(&self.project, &self.project_pane),
@@ -914,12 +962,12 @@ impl NadeApp {
 	}
 }
 
-fn instance_to_text_object(instance: &Instance) -> Option<TextObject> {
+fn instance_to_text_object(instance: &Instance, time: f32) -> Option<TextObject> {
 	let (text, font_path, font_size, spacing, fill_color) = instance.content().as_text()?;
 	Some(TextObject {
 		id: SceneObjectId(instance.id().value() as u64),
 		name: instance.name().to_string(),
-		transform: *instance.transform(),
+		transform: instance.transform_at(time),
 		start_time: instance.start_time(),
 		duration: instance.duration(),
 		text: text.to_string(),

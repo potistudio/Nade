@@ -1143,6 +1143,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
+name = "curve_editor_panel"
+version = "0.0.1"
+dependencies = [
+ "constants",
+ "core",
+ "domain",
+ "iced",
+]
+
+[[package]]
 name = "data-url"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3005,6 +3015,7 @@ dependencies = [
  "constants",
  "core",
  "crossbeam-channel",
+ "curve_editor_panel",
  "domain",
  "env_logger",
  "iced",
