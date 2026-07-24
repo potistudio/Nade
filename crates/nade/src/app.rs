@@ -242,7 +242,9 @@ impl NadeApp {
 		let is_rendering = Arc::clone(&self.is_rendering);
 		let render_tx = self.render_tx.clone();
 
-		let muted_tracks: Vec<bool> = self.timeline.model.tracks.iter().map(|track| track.muted).collect();
+		let track_hidden: Vec<bool> = (0..self.timeline.model.tracks.len())
+			.map(|index| !self.timeline.model.is_track_rendered(index))
+			.collect();
 
 		let objects: Vec<TextObject> = self
 			.target_composition()
@@ -250,9 +252,9 @@ impl NadeApp {
 			.map(|comp| {
 				comp.objects_in_draw_order()
 					.filter(|instance| {
-						muted_tracks
+						track_hidden
 							.get(instance.track_index())
-							.map(|muted| !*muted)
+							.map(|hidden| !*hidden)
 							.unwrap_or(true)
 					})
 					.filter_map(instance_to_text_object)
@@ -393,7 +395,7 @@ impl NadeApp {
 			self.request_preview_refresh();
 		}
 
-		if timeline_update.mute_toggled {
+		if timeline_update.visibility_changed {
 			self.request_preview_refresh();
 		}
 

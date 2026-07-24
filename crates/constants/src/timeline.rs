@@ -10,9 +10,37 @@ use crate::style;
 pub const TRACK_HEIGHT: f32 = 18.0;
 pub const TRACK_PADDING: f32 = 1.0;
 pub const TRACK_LABEL_WIDTH: f32 = 120.0;
+pub const TRACK_HANDLE_WIDTH: f32 = 8.0;
+pub const TRACK_CTRL_BTN_SIZE: f32 = 14.0;
+pub const TRACK_CTRL_BTN_GAP: f32 = 1.0;
 pub const RULER_HEIGHT: f32 = 24.0;
 pub const RANGE_SLIDER_HEIGHT: f32 = 16.0;
 pub const PIXELS_PER_SECOND: f32 = 100.0;
+
+/// トラックラベル内の可視ボタン矩形
+pub fn track_visible_btn_rect(track_left: f32, track_y: f32) -> iced::Rectangle {
+	let x = track_left + TRACK_HANDLE_WIDTH + TRACK_CTRL_BTN_GAP;
+	let y = track_y + (TRACK_HEIGHT - TRACK_CTRL_BTN_SIZE) * 0.5;
+	iced::Rectangle::new(
+		iced::Point::new(x, y),
+		iced::Size::new(TRACK_CTRL_BTN_SIZE, TRACK_CTRL_BTN_SIZE),
+	)
+}
+
+/// トラックラベル内のソロボタン矩形
+pub fn track_solo_btn_rect(track_left: f32, track_y: f32) -> iced::Rectangle {
+	let x = track_left + TRACK_HANDLE_WIDTH + TRACK_CTRL_BTN_GAP * 2.0 + TRACK_CTRL_BTN_SIZE;
+	let y = track_y + (TRACK_HEIGHT - TRACK_CTRL_BTN_SIZE) * 0.5;
+	iced::Rectangle::new(
+		iced::Point::new(x, y),
+		iced::Size::new(TRACK_CTRL_BTN_SIZE, TRACK_CTRL_BTN_SIZE),
+	)
+}
+
+/// トラック名テキスト開始 X
+pub fn track_name_x(track_left: f32) -> f32 {
+	track_left + TRACK_HANDLE_WIDTH + TRACK_CTRL_BTN_GAP * 3.0 + TRACK_CTRL_BTN_SIZE * 2.0 + 2.0
+}
 
 // Zooming limits
 pub const MIN_SCALE: f32 = 0.1;

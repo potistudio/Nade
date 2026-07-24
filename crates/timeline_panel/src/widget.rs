@@ -89,7 +89,8 @@ pub enum TimelineMessage {
 	ClipModified,
 	CanvasEvent(TimelineCanvasEvent),
 	ReorderTrack { from_index: usize, to_index: usize },
-	ToggleMute(usize),
+	ToggleVisible(usize),
+	ToggleSolo(usize),
 }
 
 /// Canvasから通知されるタイムライン入力イベント
@@ -125,7 +126,7 @@ pub struct TimelineUpdate {
 	pub playhead_time: Option<f32>,
 	pub clip_modified: bool,
 	pub track_reordered: Option<(usize, usize)>,
-	pub mute_toggled: bool,
+	pub visibility_changed: bool,
 }
 
 /// Iced Widget for the timeline pane
@@ -428,7 +429,7 @@ impl TimelineWidget<'_> {
 			frame.fill_rectangle(Point::new(rect.x, y), Size::new(rect.width, TRACK_HEIGHT), bg_color);
 
 			// Draw track reorder handle on the left side (vertical grip)
-			let handle_width = 8.0;
+			let handle_width = TRACK_HANDLE_WIDTH;
 			let handle_rect = Rectangle {
 				x: rect.x,
 				y,
@@ -451,16 +452,27 @@ impl TimelineWidget<'_> {
 				);
 			}
 
-			let text_color = if track.muted {
-				colors::TEXT_MUTED
-			} else {
+			let rendered = model.is_track_rendered(i);
+			// V / S は実状態そのものを表示（見た目だけオフにしない）
+			self.draw_track_ctrl_btn(frame, track_visible_btn_rect(rect.x, y), "V", track.visible, true);
+			self.draw_track_ctrl_btn(
+				frame,
+				track_solo_btn_rect(rect.x, y),
+				"S",
+				track.solo,
+				track.visible || track.solo,
+			);
+
+			let text_color = if rendered {
 				colors::TEXT_PRIMARY
+			} else {
+				colors::TEXT_MUTED
 			};
 			frame.fill_text(Text {
 				content: track.name.clone(),
-				position: Point::new(rect.x + 14.0, y + TRACK_HEIGHT / 2.0 - 6.0),
+				position: Point::new(track_name_x(rect.x), y + TRACK_HEIGHT / 2.0 - 6.0),
 				color: text_color,
-				size: 12.0.into(),
+				size: 11.0.into(),
 				..Text::default()
 			});
 
@@ -545,7 +557,15 @@ impl TimelineWidget<'_> {
 			frame.fill_rectangle(Point::new(rect.x, y), Size::new(rect.width, TRACK_HEIGHT), bg_color);
 
 			for clip in &track.clips {
-				self.draw_clip(frame, state, rect, clip, y, track_index);
+				self.draw_clip(
+					frame,
+					state,
+					rect,
+					clip,
+					y,
+					track_index,
+					model.is_track_rendered(track_index),
+				);
 			}
 
 			self.draw_horizontal_line(
@@ -592,6 +612,7 @@ impl TimelineWidget<'_> {
 		clip: &TimelineClip,
 		track_y: f32,
 		track_index: usize,
+		track_rendered: bool,
 	) {
 		let x_start = state.time_to_x(clip.start_time, timeline_rect.x);
 		let x_end = state.time_to_x(clip.end_time(), timeline_rect.x);
@@ -613,11 +634,14 @@ impl TimelineWidget<'_> {
 		// Duplicate clips (id >= 10000) are shown semi-transparent during drag
 		let is_duplicate = clip.id >= 10000;
 		let base_color = Self::clip_base_color(track_index, clip.id);
-		let clip_color = if is_selected {
+		let mut clip_color = if is_selected {
 			lighten_color(base_color, 0.2)
 		} else {
 			base_color
 		};
+		if !track_rendered {
+			clip_color.a *= 0.35;
+		}
 
 		let clip_path = squircle_path(
 			Point::new(
@@ -738,6 +762,55 @@ impl TimelineWidget<'_> {
 	// -------------------------------------------------------------------------
 	// 描画ヘルパー
 	// -------------------------------------------------------------------------
+
+	fn draw_track_ctrl_btn(
+		&self,
+		frame: &mut canvas::Frame,
+		rect: Rectangle,
+		label: &str,
+		active: bool,
+		enabled: bool,
+	) {
+		let bg = if !enabled {
+			Color::from_rgba(1.0, 1.0, 1.0, 0.03)
+		} else if active {
+			Color {
+				a: 0.35,
+				..colors::SELECTION
+			}
+		} else {
+			Color::from_rgba(1.0, 1.0, 1.0, 0.06)
+		};
+		frame.fill_rectangle(rect.position(), rect.size(), bg);
+
+		let border = if !enabled {
+			Color::from_rgba(1.0, 1.0, 1.0, 0.06)
+		} else if active {
+			Color {
+				a: 0.85,
+				..colors::SELECTION
+			}
+		} else {
+			colors::BORDER_SUBTLE
+		};
+		let path = Path::rectangle(rect.position(), rect.size());
+		frame.stroke(&path, Stroke::default().with_color(border).with_width(1.0));
+
+		let text_color = if !enabled {
+			Color::from_rgba(colors::TEXT_MUTED.r, colors::TEXT_MUTED.g, colors::TEXT_MUTED.b, 0.35)
+		} else if active {
+			colors::TEXT_PRIMARY
+		} else {
+			colors::TEXT_MUTED
+		};
+		frame.fill_text(Text {
+			content: label.to_string(),
+			position: Point::new(rect.x + rect.width * 0.5 - 3.5, rect.y + 1.0),
+			color: text_color,
+			size: 10.0.into(),
+			..Text::default()
+		});
+	}
 
 	fn draw_horizontal_line(&self, frame: &mut canvas::Frame, x1: f32, x2: f32, y: f32, color: Color) {
 		let line = Path::line(Point::new(x1, y), Point::new(x2, y));

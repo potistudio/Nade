@@ -5,7 +5,10 @@ use super::TimelineClip;
 pub struct TimelineTrack {
 	pub name: String,
 	pub clips: Vec<TimelineClip>,
-	pub muted: bool,
+	/// プレビューに描画するか
+	pub visible: bool,
+	/// ソロ時はソロ中トラックのみ描画
+	pub solo: bool,
 }
 
 impl TimelineTrack {
@@ -13,7 +16,8 @@ impl TimelineTrack {
 		Self {
 			name: name.to_string(),
 			clips: Vec::new(),
-			muted: false,
+			visible: true,
+			solo: false,
 		}
 	}
 

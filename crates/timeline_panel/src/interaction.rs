@@ -470,24 +470,30 @@ impl TimelineInteraction {
 				playhead_time: Some(time),
 				clip_modified: false,
 				track_reordered: None,
-				mute_toggled: false,
+				visibility_changed: false,
 			},
 			TimelineMessage::ClipModified => TimelineUpdate {
 				playhead_time: None,
 				clip_modified: true,
 				track_reordered: None,
-				mute_toggled: false,
+				visibility_changed: false,
 			},
 			TimelineMessage::CanvasEvent(event) => self.handle_canvas_event(model, event, current_time),
 			TimelineMessage::ReorderTrack { .. } => {
 				// Handled via pending_reorder in handle_mouse_release
 				TimelineUpdate::default()
 			}
-			TimelineMessage::ToggleMute(track_index) => TimelineUpdate {
+			TimelineMessage::ToggleVisible(track_index) => TimelineUpdate {
 				playhead_time: None,
 				clip_modified: false,
 				track_reordered: None,
-				mute_toggled: model.toggle_mute(track_index),
+				visibility_changed: model.toggle_visible(track_index),
+			},
+			TimelineMessage::ToggleSolo(track_index) => TimelineUpdate {
+				playhead_time: None,
+				clip_modified: false,
+				track_reordered: None,
+				visibility_changed: model.toggle_solo(track_index),
 			},
 		}
 	}
@@ -508,12 +514,12 @@ impl TimelineInteraction {
 				self.ctrl_pressed = modifiers.command();
 				self.shift_pressed = modifiers.shift();
 				self.alt_pressed = modifiers.alt();
-				let (_handled, playhead_time, mute_toggled) = self.handle_mouse_press(model, position, bounds);
+				let (_handled, playhead_time, visibility_changed) = self.handle_mouse_press(model, position, bounds);
 				TimelineUpdate {
 					playhead_time,
 					clip_modified: false,
 					track_reordered: None,
-					mute_toggled,
+					visibility_changed,
 				}
 			}
 			TimelineCanvasEvent::MouseReleased => {
@@ -524,7 +530,7 @@ impl TimelineInteraction {
 					playhead_time,
 					clip_modified: was_dragging_clip || was_duplicating,
 					track_reordered: None,
-					mute_toggled: false,
+					visibility_changed: false,
 				}
 			}
 			TimelineCanvasEvent::MouseMoved { position, bounds } => {
@@ -535,7 +541,7 @@ impl TimelineInteraction {
 					playhead_time,
 					clip_modified: handled && self.is_dragging_clip(),
 					track_reordered: None,
-					mute_toggled: false,
+					visibility_changed: false,
 				}
 			}
 			TimelineCanvasEvent::MouseWheelScrolled { delta, bounds } => {
@@ -586,7 +592,7 @@ impl TimelineInteraction {
 	/// マウスプレス時の処理
 	///
 	/// プレイヘッドドラッグ開始時は開始時間を返す
-	/// Returns (handled, playhead_time, mute_toggled)
+	/// Returns (handled, playhead_time, visibility_changed)
 	pub(crate) fn handle_mouse_press(
 		&mut self,
 		model: &mut TimelineModel,
@@ -637,20 +643,20 @@ impl TimelineInteraction {
 			return (true, None, false);
 		}
 
-		// Check if clicking on track label area for reordering / mute
+		// Check if clicking on track label area for reordering / visibility / solo
 		if layout.track_labels.contains(pos) {
 			let track_labels_top = layout.track_labels.y;
 			let track_index = ((pos.y - track_labels_top - self.scroll_offset.y) / TRACK_HEIGHT).floor() as usize;
 
 			if track_index < model.tracks.len() {
 				let track_left = bounds.x;
-				let handle_right = track_left + 8.0; // Handle width is 8px
+				let track_y = track_labels_top + (track_index as f32 * TRACK_HEIGHT) + self.scroll_offset.y;
+				let handle_right = track_left + TRACK_HANDLE_WIDTH;
 
 				// Check if click is in the reorder handle area (left side)
 				if pos.x >= track_left && pos.x <= handle_right {
 					log::info!("Track reorder started: track_index={}", track_index);
 					self.selected_track_index = Some(track_index);
-					// from_index is the gap position (same as track index when not moved yet)
 					self.drag_state = DragState::ReorderTrack {
 						from_index: track_index,
 						current_index: track_index,
@@ -658,10 +664,20 @@ impl TimelineInteraction {
 					return (true, None, false);
 				}
 
-				// ラベル本体クリックでミュート切替
+				let visible_btn = track_visible_btn_rect(track_left, track_y);
+				if visible_btn.contains(pos) {
+					self.selected_track_index.replace(track_index);
+					return (true, None, model.toggle_visible(track_index));
+				}
+
+				let solo_btn = track_solo_btn_rect(track_left, track_y);
+				if solo_btn.contains(pos) {
+					self.selected_track_index.replace(track_index);
+					return (true, None, model.toggle_solo(track_index));
+				}
+
 				self.selected_track_index = Some(track_index);
-				let muted = model.toggle_mute(track_index);
-				return (true, None, muted);
+				return (true, None, false);
 			}
 
 			self.selected_track_index = Some(track_index);
