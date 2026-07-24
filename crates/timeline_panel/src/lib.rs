@@ -7,6 +7,6 @@ mod interaction;
 mod utils;
 mod widget;
 
-pub use core::{TimelineClip, TimelineModel, TimelineTrack};
+pub use core::{TimelineClip, TimelineModel, TimelineTrack, TrackVisibilityDisplay};
 pub use interaction::TimelineInteraction;
 pub use widget::{TimelineCanvasEvent, TimelineMessage, TimelineUpdate, TimelineWidget};

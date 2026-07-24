@@ -1,12 +1,21 @@
 use super::TimelineTrack;
 
+/// トラックの可視 UI 状態
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrackVisibilityDisplay {
+	/// 非表示
+	Hidden,
+	/// 表示中
+	Shown,
+	/// 可視フラグは ON だがソロ除外で描画されない
+	SoloExcluded,
+}
+
 /// タイムラインのドメインモデル
 #[derive(Debug, Default, Clone)]
 pub struct TimelineModel {
 	pub tracks: Vec<TimelineTrack>,
 	next_clip_id: usize,
-	/// ソロ開始前の可視状態。全ソロ解除時に復元する。
-	solo_visibility_backup: Option<Vec<bool>>,
 }
 
 impl TimelineModel {
@@ -33,68 +42,31 @@ impl TimelineModel {
 		}
 	}
 
-	/// 可視フラグを切り替える。
-	///
-	/// - 非表示にする場合はソロも解除する
-	/// - ソロ中に非ソロの不可視トラックを可視にすると、そのトラックもソロに入る
+	/// 可視フラグを切り替える。非表示にする場合はソロも解除する。
 	pub fn toggle_visible(&mut self, track_index: usize) -> bool {
-		if track_index >= self.tracks.len() {
+		let Some(track) = self.tracks.get_mut(track_index) else {
 			return false;
-		}
-
-		let currently_visible = self.tracks[track_index].visible;
-		if currently_visible {
-			let ending_solo_session =
-				self.tracks[track_index].solo && self.tracks.iter().filter(|track| track.solo).count() == 1;
-			self.tracks[track_index].visible = false;
-			self.tracks[track_index].solo = false;
-			if self.any_solo() {
-				self.sync_visibility_to_solo();
-			} else if ending_solo_session || self.solo_visibility_backup.is_some() {
-				self.restore_solo_visibility();
-				// ユーザーが明示的に隠したトラックは復元後も非表示のまま
-				self.tracks[track_index].visible = false;
-				self.tracks[track_index].solo = false;
-			}
-		} else if self.any_solo() {
-			// ソロ除外中に「見せる」→ ソロ群に参加（状態と表示を一致させる）
-			self.tracks[track_index].visible = true;
-			self.tracks[track_index].solo = true;
-			self.sync_visibility_to_solo();
-		} else {
-			self.tracks[track_index].visible = true;
+		};
+		track.visible = !track.visible;
+		if !track.visible {
+			track.solo = false;
 		}
 		true
 	}
 
 	/// ソロフラグを切り替える。不可視トラックはソロにできない。
-	///
-	/// ソロ中は非ソロ・トラックの `visible` を false にし、
-	/// 全ソロ解除時にソロ開始前の可視状態へ戻す。
 	pub fn toggle_solo(&mut self, track_index: usize) -> bool {
-		if track_index >= self.tracks.len() {
+		let Some(track) = self.tracks.get_mut(track_index) else {
 			return false;
-		}
-
-		if self.tracks[track_index].solo {
-			self.tracks[track_index].solo = false;
-			if self.any_solo() {
-				self.sync_visibility_to_solo();
-			} else {
-				self.restore_solo_visibility();
-			}
+		};
+		if track.solo {
+			track.solo = false;
 			return true;
 		}
-
-		if !self.tracks[track_index].visible {
+		if !track.visible {
 			return false;
 		}
-
-		if self.solo_visibility_backup.is_none() {
-			self.solo_visibility_backup = Some(self.tracks.iter().map(|track| track.visible).collect());
-		}
-		self.tracks[track_index].solo = true;
-		self.sync_visibility_to_solo();
+		track.solo = true;
 		true
 	}
 
@@ -103,28 +75,32 @@ impl TimelineModel {
 		self.tracks.iter().any(|track| track.solo)
 	}
 
-	/// プレビューに描画すべきトラックか（`visible` と一致）
+	/// プレビューに描画すべきトラックか
 	pub fn is_track_rendered(&self, track_index: usize) -> bool {
-		self.tracks.get(track_index).is_some_and(|track| track.visible)
+		let Some(track) = self.tracks.get(track_index) else {
+			return false;
+		};
+		if !track.visible {
+			return false;
+		}
+		if self.any_solo() {
+			return track.solo;
+		}
+		true
 	}
 
-	fn sync_visibility_to_solo(&mut self) {
-		for track in &mut self.tracks {
-			track.visible = track.solo;
+	/// V ボタン用の表示状態（実フラグを壊さず第3状態を返す）
+	pub fn visibility_display(&self, track_index: usize) -> TrackVisibilityDisplay {
+		let Some(track) = self.tracks.get(track_index) else {
+			return TrackVisibilityDisplay::Hidden;
+		};
+		if !track.visible {
+			return TrackVisibilityDisplay::Hidden;
 		}
-	}
-
-	fn restore_solo_visibility(&mut self) {
-		if let Some(backup) = self.solo_visibility_backup.take() {
-			for (track, visible) in self.tracks.iter_mut().zip(backup) {
-				track.visible = visible;
-				track.solo = false;
-			}
-		} else {
-			for track in &mut self.tracks {
-				track.solo = false;
-			}
+		if self.any_solo() && !track.solo {
+			return TrackVisibilityDisplay::SoloExcluded;
 		}
+		TrackVisibilityDisplay::Shown
 	}
 }
 
@@ -159,36 +135,29 @@ mod tests {
 	}
 
 	#[test]
-	fn solo_turns_off_other_visibility_state() {
+	fn solo_excludes_without_changing_visible_flag() {
 		let mut model = TimelineModel::new();
 		model.ensure_track_count(2);
-		assert!(model.tracks[0].visible);
-		assert!(model.tracks[1].visible);
-
 		assert!(model.toggle_solo(1));
-		assert!(!model.tracks[0].visible);
+
+		assert!(model.tracks[0].visible);
 		assert!(!model.tracks[0].solo);
-		assert!(model.tracks[1].visible);
-		assert!(model.tracks[1].solo);
 		assert!(!model.is_track_rendered(0));
-		assert!(model.is_track_rendered(1));
+		assert_eq!(model.visibility_display(0), TrackVisibilityDisplay::SoloExcluded);
+		assert_eq!(model.visibility_display(1), TrackVisibilityDisplay::Shown);
 	}
 
 	#[test]
-	fn ending_solo_restores_visibility() {
+	fn ending_solo_keeps_visibility_flags() {
 		let mut model = TimelineModel::new();
 		model.ensure_track_count(2);
-		assert!(model.toggle_visible(0)); // hide track 0 first
-		assert!(!model.tracks[0].visible);
-
+		assert!(model.toggle_visible(0));
 		assert!(model.toggle_solo(1));
+		assert!(model.toggle_solo(1));
+
 		assert!(!model.tracks[0].visible);
 		assert!(model.tracks[1].visible);
-
-		assert!(model.toggle_solo(1)); // end solo
-		assert!(!model.tracks[0].visible); // restored hidden
-		assert!(model.tracks[1].visible);
-		assert!(!model.tracks[1].solo);
+		assert!(!model.any_solo());
 	}
 
 	#[test]
@@ -201,27 +170,12 @@ mod tests {
 	}
 
 	#[test]
-	fn hiding_solo_track_ends_solo_and_restores() {
+	fn hiding_clears_solo() {
 		let mut model = TimelineModel::new();
-		model.ensure_track_count(2);
-		assert!(model.toggle_solo(1));
-		assert!(!model.tracks[0].visible);
-
-		assert!(model.toggle_visible(1)); // hide the solo track
-		assert!(!model.tracks[1].solo);
-		assert!(model.tracks[0].visible); // restored
-	}
-
-	#[test]
-	fn showing_during_solo_joins_solo_group() {
-		let mut model = TimelineModel::new();
-		model.ensure_track_count(2);
-		assert!(model.toggle_solo(1));
-		assert!(!model.tracks[0].visible);
-
+		model.ensure_track_count(1);
+		assert!(model.toggle_solo(0));
 		assert!(model.toggle_visible(0));
-		assert!(model.tracks[0].visible);
-		assert!(model.tracks[0].solo);
-		assert!(model.tracks[1].solo);
+		assert!(!model.tracks[0].visible);
+		assert!(!model.tracks[0].solo);
 	}
 }

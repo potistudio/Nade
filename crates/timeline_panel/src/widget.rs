@@ -20,6 +20,7 @@ use constants::timeline::{
 	colors::{CLIP_HOVERED_OUTLINE, CLIP_RESIZE_HANDLE, CLIP_SELECTED_OUTLINE, CLIP_SHRINKING_OUTLINE},
 	*,
 };
+use core::TrackVisibilityDisplay;
 
 fn squircle_path(center: Point, width: f32, height: f32, corner_radius: f32) -> Path {
 	// コーナー半径は短辺の半分を超えられない
@@ -453,15 +454,8 @@ impl TimelineWidget<'_> {
 			}
 
 			let rendered = model.is_track_rendered(i);
-			// V / S は実状態そのものを表示（見た目だけオフにしない）
-			self.draw_track_ctrl_btn(frame, track_visible_btn_rect(rect.x, y), "V", track.visible, true);
-			self.draw_track_ctrl_btn(
-				frame,
-				track_solo_btn_rect(rect.x, y),
-				"S",
-				track.solo,
-				track.visible || track.solo,
-			);
+			self.draw_visibility_btn(frame, track_visible_btn_rect(rect.x, y), model.visibility_display(i));
+			self.draw_track_ctrl_btn(frame, track_solo_btn_rect(rect.x, y), "S", track.solo, track.visible);
 
 			let text_color = if rendered {
 				colors::TEXT_PRIMARY
@@ -762,6 +756,70 @@ impl TimelineWidget<'_> {
 	// -------------------------------------------------------------------------
 	// 描画ヘルパー
 	// -------------------------------------------------------------------------
+
+	fn draw_visibility_btn(&self, frame: &mut canvas::Frame, rect: Rectangle, display: TrackVisibilityDisplay) {
+		let (bg, border, text_color, draw_slash) = match display {
+			TrackVisibilityDisplay::Shown => (
+				Color {
+					a: 0.35,
+					..colors::SELECTION
+				},
+				Color {
+					a: 0.85,
+					..colors::SELECTION
+				},
+				colors::TEXT_PRIMARY,
+				false,
+			),
+			TrackVisibilityDisplay::Hidden => (
+				Color::from_rgba(1.0, 1.0, 1.0, 0.06),
+				colors::BORDER_SUBTLE,
+				colors::TEXT_MUTED,
+				false,
+			),
+			// 可視だがソロ除外: ON とは別色＋斜線で第3状態を明示
+			TrackVisibilityDisplay::SoloExcluded => (
+				Color {
+					a: 0.22,
+					..colors::PLAYHEAD
+				},
+				Color {
+					a: 0.90,
+					..colors::PLAYHEAD
+				},
+				colors::TEXT_PRIMARY,
+				true,
+			),
+		};
+
+		frame.fill_rectangle(rect.position(), rect.size(), bg);
+		let path = Path::rectangle(rect.position(), rect.size());
+		frame.stroke(&path, Stroke::default().with_color(border).with_width(1.0));
+
+		frame.fill_text(Text {
+			content: "V".to_string(),
+			position: Point::new(rect.x + rect.width * 0.5 - 3.5, rect.y + 1.0),
+			color: text_color,
+			size: 10.0.into(),
+			..Text::default()
+		});
+
+		if draw_slash {
+			let slash = Path::line(
+				Point::new(rect.x + 2.0, rect.y + rect.height - 2.0),
+				Point::new(rect.x + rect.width - 2.0, rect.y + 2.0),
+			);
+			frame.stroke(
+				&slash,
+				Stroke::default()
+					.with_color(Color {
+						a: 0.95,
+						..colors::PLAYHEAD
+					})
+					.with_width(1.5),
+			);
+		}
+	}
 
 	fn draw_track_ctrl_btn(
 		&self,
