@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use swash::{
 	FontRef, GlyphId,
-	scale::{Render, ScaleContext, Source},
-	zeno::Format,
+	scale::{Render, ScaleContext, Source, image::Image as GlyphMask},
+	zeno::{Format, Transform as ZenoTransform},
 };
 
 /// フォントファイルをプロセス内でキャッシュ（毎フレームのディスク読みを避ける）
@@ -292,16 +292,18 @@ fn draw_text(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, text: &TextObject, canvas
 	let post_sx = scale_x / bake;
 	let post_sy = scale_y / bake;
 	let rotation_z = transform.rotation[2].to_radians();
-	let cos_r = rotation_z.cos();
-	let sin_r = rotation_z.sin();
+	let (sin_r, cos_r) = rotation_z.sin_cos();
 
-	let fill_r = text.fill_color[0].clamp(0.0, 1.0);
-	let fill_g = text.fill_color[1].clamp(0.0, 1.0);
-	let fill_b = text.fill_color[2].clamp(0.0, 1.0);
 	let fill_a = (text.fill_color[3] * transform.opacity).clamp(0.0, 1.0);
 	if fill_a <= 0.0 {
 		return;
 	}
+	let fill_rgb = [
+		(text.fill_color[0].clamp(0.0, 1.0) * 255.0) as u32,
+		(text.fill_color[1].clamp(0.0, 1.0) * 255.0) as u32,
+		(text.fill_color[2].clamp(0.0, 1.0) * 255.0) as u32,
+	];
+	let fill_alpha = (fill_a * 255.0) as u32;
 
 	let metrics = font.metrics(&[]).scale(render_size);
 	let glyph_metrics = font.glyph_metrics(&[]).scale(render_size);
@@ -351,46 +353,82 @@ fn draw_text(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, text: &TextObject, canvas
 	let origin_x = -max_line_width / 2.0;
 	let origin_y = -total_height / 2.0 + metrics.ascent;
 
+	// 残差スケールと回転はグリフのアウトラインに焼き込む。ラスタライズ後の画素を
+	// 変形すると、縮小時は同じ画素へ何度も書き込むだけの無駄な計算になり（非等倍
+	// スケールでは軸比に比例して悪化する）、拡大時は round で隙間が空く。
+	// zeno は out.x = p.x*xx + p.y*yx, out.y = p.x*xy + p.y*yy で、y は上向き。
+	// 画面の y は下向きなので、回転の符号を反転して渡す。
+	let outline_transform = ZenoTransform {
+		xx: post_sx * cos_r,
+		xy: -post_sx * sin_r,
+		yx: post_sy * sin_r,
+		yy: post_sy * cos_r,
+		x: 0.0,
+		y: 0.0,
+	};
+	let needs_transform =
+		(post_sx - 1.0).abs() > f32::EPSILON || (post_sy - 1.0).abs() > f32::EPSILON || rotation_z != 0.0;
+
 	let mut context = ScaleContext::new();
 	let mut scaler = context.builder(font).size(render_size).hint(true).build();
 
+	let sources = [Source::Outline];
+	let mut render = Render::new(&sources);
+	render.format(Format::Alpha);
+	if needs_transform {
+		render.transform(Some(outline_transform));
+	}
+
+	let stride = canvas_width as usize * 4;
+	let pixels: &mut [u8] = img;
+	// グリフ間でマスクバッファを使い回す。`render_into` は resize で伸ばした分しか
+	// ゼロ埋めしないため、前のグリフの残りが混ざらないよう毎回空にする。
+	let mut mask = GlyphMask::new();
+
 	for glyph in glyphs {
-		let Some(image) = Render::new(&[Source::Outline])
-			.format(Format::Alpha)
-			.render(&mut scaler, glyph.id)
-		else {
+		mask.data.clear();
+		if !render.render_into(&mut scaler, glyph.id, &mut mask) {
 			continue;
-		};
+		}
 
-		let placement = image.placement;
-		for gy in 0..placement.height {
-			for gx in 0..placement.width {
-				let alpha = image.data[(gy * placement.width + gx) as usize] as f32 / 255.0;
-				if alpha <= 0.0 {
+		let placement = mask.placement;
+		if placement.width == 0 || placement.height == 0 {
+			continue;
+		}
+
+		// グリフ原点（ベースライン）をキャンバス座標へ。マスクは既に最終的な
+		// 画面サイズなので、あとは整数オフセットでブリットするだけ。
+		let pen_x = origin_x + glyph.x;
+		let pen_y = origin_y + glyph.baseline_y;
+		let dest_x = (pen_x * post_sx * cos_r - pen_y * post_sy * sin_r + center_x).round() as i32 + placement.left;
+		let dest_y = (pen_x * post_sx * sin_r + pen_y * post_sy * cos_r + center_y).round() as i32 - placement.top;
+
+		let gx_start = (-dest_x).clamp(0, placement.width as i32) as u32;
+		let gy_start = (-dest_y).clamp(0, placement.height as i32) as u32;
+		let gx_end = placement
+			.width
+			.min((canvas_width as i32 - dest_x).clamp(0, placement.width as i32) as u32);
+		let gy_end = placement
+			.height
+			.min((canvas_height as i32 - dest_y).clamp(0, placement.height as i32) as u32);
+
+		for gy in gy_start..gy_end {
+			let mask_row = (gy * placement.width) as usize;
+			let dest_row = (dest_y + gy as i32) as usize * stride;
+			for gx in gx_start..gx_end {
+				let alpha = mask.data[mask_row + gx as usize] as u32;
+				if alpha == 0 {
 					continue;
 				}
 
-				// フォント座標（y上向き）→ ローカル画面座標（y下向き、テキスト中心原点）
-				let local_x = (origin_x + glyph.x + placement.left as f32 + gx as f32) * post_sx;
-				let local_y = (origin_y + glyph.baseline_y - placement.top as f32 + gy as f32) * post_sy;
-
-				let world_x = local_x * cos_r - local_y * sin_r + center_x;
-				let world_y = local_x * sin_r + local_y * cos_r + center_y;
-
-				let px = world_x.round() as i32;
-				let py = world_y.round() as i32;
-				if px < 0 || py < 0 || px as u32 >= canvas_width || py as u32 >= canvas_height {
-					continue;
+				let coverage = alpha * fill_alpha / 255;
+				let inverse = 255 - coverage;
+				let offset = dest_row + (dest_x + gx as i32) as usize * 4;
+				for channel in 0..3 {
+					let bg = pixels[offset + channel] as u32;
+					pixels[offset + channel] = ((fill_rgb[channel] * coverage + bg * inverse) / 255) as u8;
 				}
-
-				let coverage = (alpha * fill_a).clamp(0.0, 1.0);
-				let bg = img.get_pixel(px as u32, py as u32);
-				let blend = |fg: f32, bg: u8| (fg * 255.0 * coverage + bg as f32 * (1.0 - coverage)) as u8;
-				img.put_pixel(
-					px as u32,
-					py as u32,
-					Rgba([blend(fill_r, bg[0]), blend(fill_g, bg[1]), blend(fill_b, bg[2]), 255]),
-				);
+				pixels[offset + 3] = 255;
 			}
 		}
 	}
@@ -460,16 +498,18 @@ mod tests {
 		assert!(lit, "expected text pixels brighter than background");
 	}
 
-	#[test]
-	fn scaled_text_has_no_screen_door_holes() {
+	/// 塗りの内側に背景が覗く画素の割合を返す。グリフ画素を個別に変形して丸めると
+	/// 隙間（縞模様）が空くため、その検出に使う。
+	fn screen_door_ratio(scale: [f32; 3], rotation_z: f32) -> f32 {
 		let mut text = TextObject::new("Title")
 			.with_text("Title")
 			.with_font_path(rubik_path())
 			.with_font_size(48.0)
 			.with_fill_color(1.0, 1.0, 1.0, 1.0);
-		text.transform.scale = [1.2, 1.2, 1.0];
+		text.transform.scale = scale;
+		text.transform.rotation = [0.0, 0.0, rotation_z];
 
-		let img = render_objects([&text as &dyn SceneObjectData], 0.0, 400, 200);
+		let img = render_objects([&text as &dyn SceneObjectData], 0.0, 800, 400);
 
 		let mut lit = 0_u32;
 		let mut touches_background = 0_u32;
@@ -492,12 +532,26 @@ mod tests {
 			}
 		}
 
-		assert!(lit > 100, "expected scaled text coverage, got {lit} lit pixels");
-		let edge_ratio = touches_background as f32 / lit as f32;
-		assert!(
-			edge_ratio < 0.4,
-			"screen-door holes inside strokes: edge_ratio={edge_ratio} ({touches_background}/{lit})"
-		);
+		assert!(lit > 100, "expected text coverage, got {lit} lit pixels");
+		touches_background as f32 / lit as f32
+	}
+
+	#[test]
+	fn scaled_text_has_no_screen_door_holes() {
+		let ratio = screen_door_ratio([1.2, 1.2, 1.0], 0.0);
+		assert!(ratio < 0.4, "screen-door holes inside strokes: edge_ratio={ratio}");
+	}
+
+	#[test]
+	fn anisotropically_scaled_text_has_no_screen_door_holes() {
+		let ratio = screen_door_ratio([1.0, 3.0, 1.0], 0.0);
+		assert!(ratio < 0.4, "screen-door holes inside strokes: edge_ratio={ratio}");
+	}
+
+	#[test]
+	fn rotated_text_has_no_screen_door_holes() {
+		let ratio = screen_door_ratio([1.5, 1.5, 1.0], 30.0);
+		assert!(ratio < 0.4, "screen-door holes inside strokes: edge_ratio={ratio}");
 	}
 
 	#[test]
