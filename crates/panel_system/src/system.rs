@@ -1002,7 +1002,7 @@ impl<C: AreaKind> PanelSystem<C> {
 				constants::widgets::icon_slot(panel_icon_svg(area.content.icon(), ICON_SIZE), ICON_SIZE),
 				constants::widgets::icon_slot(panel_icon_svg(chevron_down_handle(), CHEVRON_SIZE), CHEVRON_SIZE),
 			]
-			.spacing(3)
+			.spacing(2)
 			.align_y(iced::Alignment::Center),
 		))
 		.padding(iced::Padding {
@@ -1040,7 +1040,7 @@ impl<C: AreaKind> PanelSystem<C> {
 					top: 0.0,
 					right: constants::style::SPACE_2,
 					bottom: 0.0,
-					left: constants::style::SPACE_2,
+					left: 2.0,
 				}),
 		)
 		.width(Length::Fill)

@@ -8,7 +8,7 @@ use iced::Color;
 pub use constants::style::HEADER_HEIGHT;
 
 /// Visible gutter between tiled panels (window chrome shows through).
-pub const PANEL_GAP: f32 = 4.0;
+pub const PANEL_GAP: f32 = 2.0;
 /// Total resize hit target across the gutter (extends over panel edges; does not widen the gap).
 pub const RESIZE_HIT_SIZE: f32 = 12.0;
 /// Minimum pane size along a split axis (px).

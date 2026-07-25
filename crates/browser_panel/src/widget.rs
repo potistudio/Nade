@@ -159,10 +159,14 @@ fn view_row<'a>(
 	let row_content = row![
 		container(text("")).width((depth as f32 * TREE_INDENT) + SPACE_2),
 		expander_element,
+		//
+		// Kind tag
 		container(constants::widgets::ui_label(kind_tag, FONT_TINY).color(meta_color))
 			.width(36.0)
 			.height(ROW_HEIGHT)
 			.align_y(iced::Alignment::Center),
+		//
+		// Name
 		container(constants::widgets::ui_label(name, FONT_LABEL).color(text_color))
 			.width(Length::Fill)
 			.height(ROW_HEIGHT)

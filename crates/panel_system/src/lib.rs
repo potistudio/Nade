@@ -14,8 +14,10 @@ pub use drag::{CornerAction, DragState};
 pub use node::{DockNode, SplitDirection};
 pub use system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
 
+use std::fmt::Debug;
+
 /// エリアに表示できるエディタ種別
-pub trait AreaKind: Clone + std::fmt::Debug + PartialEq + Eq + 'static {
+pub trait AreaKind: Clone + Debug + PartialEq + Eq + 'static {
 	/// 選択可能な全種別
 	fn all() -> Vec<Self>;
 

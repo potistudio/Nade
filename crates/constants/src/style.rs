@@ -78,12 +78,12 @@ pub const SPACE_2: f32 = 4.0;
 pub const SPACE_3: f32 = 6.0;
 pub const SPACE_4: f32 = 8.0;
 
-pub const FONT_TINY: f32 = 10.0;
-pub const FONT_UI: f32 = 11.0;
-pub const FONT_LABEL: f32 = 12.0;
-pub const FONT_TITLE: f32 = 12.0;
+pub const FONT_TINY: f32 = 8.0;
+pub const FONT_UI: f32 = 10.0;
+pub const FONT_LABEL: f32 = 10.0;
+pub const FONT_TITLE: f32 = 10.0;
 
-pub const ROW_HEIGHT: f32 = 20.0;
+pub const ROW_HEIGHT: f32 = 14.0;
 pub const INPUT_HEIGHT: f32 = 18.0;
 pub const HEADER_HEIGHT: f32 = 24.0;
 pub const TOOLBAR_HEIGHT: f32 = 22.0;
