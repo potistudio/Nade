@@ -120,7 +120,27 @@ pub fn render_frame_with_composition(
 ) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
 	// Composition は現状 Instance のみ保持するため、シーンオブジェクト描画は
 	// `render_objects` 経由で行う。
-	ImageBuffer::from_pixel(width, height, Rgba([30, 30, 30, 255]))
+	filled_buffer(width, height, Rgba([30, 30, 30, 255]))
+}
+
+/// 単色で塗りつぶした RGBA バッファを生成
+///
+/// `ImageBuffer::from_pixel` はピクセル単位のループで塗るため、1920x1080 では
+/// デバッグビルドで 50ms 近くかかる。4バイトのパターンを倍々にコピーすることで
+/// 塗りつぶしを O(log n) 回の memcpy に落とす。
+fn filled_buffer(width: u32, height: u32, color: Rgba<u8>) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+	let len = width as usize * height as usize * 4;
+	let mut data = vec![0u8; len];
+	if len >= 4 {
+		data[..4].copy_from_slice(&color.0);
+		let mut filled = 4;
+		while filled < len {
+			let take = filled.min(len - filled);
+			data.copy_within(..take, filled);
+			filled += take;
+		}
+	}
+	ImageBuffer::from_raw(width, height, data).expect("buffer length matches dimensions")
 }
 
 /// シーンオブジェクト群からフレームを生成
@@ -132,7 +152,7 @@ pub fn render_objects<'a>(
 	width: u32,
 	height: u32,
 ) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
-	let mut img = ImageBuffer::from_pixel(width, height, Rgba([30, 30, 30, 255]));
+	let mut img = filled_buffer(width, height, Rgba([30, 30, 30, 255]));
 	for obj in objects {
 		if !obj.is_visible_at(time) {
 			continue;
