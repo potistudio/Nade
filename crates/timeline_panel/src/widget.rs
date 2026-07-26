@@ -13,6 +13,7 @@ use iced::{
 
 use crate::{
 	TimelineClip, TimelineModel,
+	icons::{draw_eye_icon, draw_solo_icon},
 	interaction::{TimelineInteraction, TimelineLayout},
 	utils::{format_time, lighten_color},
 };
@@ -455,7 +456,7 @@ impl TimelineWidget<'_> {
 
 			let rendered = model.is_track_rendered(i);
 			self.draw_visibility_btn(frame, track_visible_btn_rect(rect.x, y), model.visibility_display(i));
-			self.draw_track_ctrl_btn(frame, track_solo_btn_rect(rect.x, y), "S", track.solo, track.visible);
+			self.draw_solo_btn(frame, track_solo_btn_rect(rect.x, y), track.solo, track.visible);
 
 			let text_color = if rendered {
 				colors::TEXT_PRIMARY
@@ -758,7 +759,7 @@ impl TimelineWidget<'_> {
 	// -------------------------------------------------------------------------
 
 	fn draw_visibility_btn(&self, frame: &mut canvas::Frame, rect: Rectangle, display: TrackVisibilityDisplay) {
-		let (bg, border, text_color, draw_slash) = match display {
+		let (bg, border, icon_color, draw_slash) = match display {
 			TrackVisibilityDisplay::Shown => (
 				Color {
 					a: 0.35,
@@ -796,13 +797,7 @@ impl TimelineWidget<'_> {
 		let path = Path::rectangle(rect.position(), rect.size());
 		frame.stroke(&path, Stroke::default().with_color(border).with_width(1.0));
 
-		frame.fill_text(Text {
-			content: "V".to_string(),
-			position: Point::new(rect.x + rect.width * 0.5 - 3.5, rect.y + 1.0),
-			color: text_color,
-			size: 10.0.into(),
-			..Text::default()
-		});
+		draw_eye_icon(frame, rect, icon_color);
 
 		if draw_slash {
 			let slash = Path::line(
@@ -821,14 +816,7 @@ impl TimelineWidget<'_> {
 		}
 	}
 
-	fn draw_track_ctrl_btn(
-		&self,
-		frame: &mut canvas::Frame,
-		rect: Rectangle,
-		label: &str,
-		active: bool,
-		enabled: bool,
-	) {
+	fn draw_solo_btn(&self, frame: &mut canvas::Frame, rect: Rectangle, active: bool, enabled: bool) {
 		let bg = if !enabled {
 			Color::from_rgba(1.0, 1.0, 1.0, 0.03)
 		} else if active {
@@ -854,20 +842,14 @@ impl TimelineWidget<'_> {
 		let path = Path::rectangle(rect.position(), rect.size());
 		frame.stroke(&path, Stroke::default().with_color(border).with_width(1.0));
 
-		let text_color = if !enabled {
+		let icon_color = if !enabled {
 			Color::from_rgba(colors::TEXT_MUTED.r, colors::TEXT_MUTED.g, colors::TEXT_MUTED.b, 0.35)
 		} else if active {
 			colors::TEXT_PRIMARY
 		} else {
 			colors::TEXT_MUTED
 		};
-		frame.fill_text(Text {
-			content: label.to_string(),
-			position: Point::new(rect.x + rect.width * 0.5 - 3.5, rect.y + 1.0),
-			color: text_color,
-			size: 10.0.into(),
-			..Text::default()
-		});
+		draw_solo_icon(frame, rect, icon_color, active && enabled);
 	}
 
 	fn draw_horizontal_line(&self, frame: &mut canvas::Frame, x1: f32, x2: f32, y: f32, color: Color) {

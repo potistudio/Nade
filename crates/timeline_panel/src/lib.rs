@@ -3,6 +3,7 @@
 //! Icedアプリケーション用のタイムラインウィジェット。
 //! トラック、クリップ、再生ヘッドの管理と表示を提供します。
 
+mod icons;
 mod interaction;
 mod utils;
 mod widget;
