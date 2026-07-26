@@ -1398,6 +1398,22 @@ impl TimelineInteraction {
 			return mouse::Interaction::Grab;
 		}
 
+		if layout.track_labels.contains(pos) {
+			let track_labels_top = layout.track_labels.y;
+			let track_index = ((pos.y - track_labels_top - self.scroll_offset.y) / TRACK_HEIGHT).floor() as usize;
+
+			if track_index < model.tracks.len() {
+				let track_left = bounds.x;
+				let track_y = track_labels_top + (track_index as f32 * TRACK_HEIGHT) + self.scroll_offset.y;
+
+				if track_visible_btn_rect(track_left, track_y).contains(pos)
+					|| track_solo_btn_rect(track_left, track_y).contains(pos)
+				{
+					return mouse::Interaction::Pointer;
+				}
+			}
+		}
+
 		if layout.content.contains(pos)
 			&& let Some((track_id, clip_id)) = self.find_clip_at(model, pos, bounds)
 			&& let Some(clip) = Self::find_clip(model, track_id, clip_id)

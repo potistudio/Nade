@@ -759,43 +759,12 @@ impl TimelineWidget<'_> {
 	// -------------------------------------------------------------------------
 
 	fn draw_visibility_btn(&self, frame: &mut canvas::Frame, rect: Rectangle, display: TrackVisibilityDisplay) {
-		let (bg, border, icon_color, draw_slash) = match display {
-			TrackVisibilityDisplay::Shown => (
-				Color {
-					a: 0.35,
-					..colors::SELECTION
-				},
-				Color {
-					a: 0.85,
-					..colors::SELECTION
-				},
-				colors::TEXT_PRIMARY,
-				false,
-			),
-			TrackVisibilityDisplay::Hidden => (
-				Color::from_rgba(1.0, 1.0, 1.0, 0.06),
-				colors::BORDER_SUBTLE,
-				colors::TEXT_MUTED,
-				false,
-			),
-			// 可視だがソロ除外: ON とは別色＋斜線で第3状態を明示
-			TrackVisibilityDisplay::SoloExcluded => (
-				Color {
-					a: 0.22,
-					..colors::PLAYHEAD
-				},
-				Color {
-					a: 0.90,
-					..colors::PLAYHEAD
-				},
-				colors::TEXT_PRIMARY,
-				true,
-			),
+		let (icon_color, draw_slash) = match display {
+			TrackVisibilityDisplay::Shown => (colors::TEXT_PRIMARY, false),
+			TrackVisibilityDisplay::Hidden => (colors::TEXT_MUTED, false),
+			// 可視だがソロ除外: アクセント色＋斜線で第3状態を明示
+			TrackVisibilityDisplay::SoloExcluded => (colors::PLAYHEAD, true),
 		};
-
-		frame.fill_rectangle(rect.position(), rect.size(), bg);
-		let path = Path::rectangle(rect.position(), rect.size());
-		frame.stroke(&path, Stroke::default().with_color(border).with_width(1.0));
 
 		draw_eye_icon(frame, rect, icon_color);
 
@@ -817,31 +786,6 @@ impl TimelineWidget<'_> {
 	}
 
 	fn draw_solo_btn(&self, frame: &mut canvas::Frame, rect: Rectangle, active: bool, enabled: bool) {
-		let bg = if !enabled {
-			Color::from_rgba(1.0, 1.0, 1.0, 0.03)
-		} else if active {
-			Color {
-				a: 0.35,
-				..colors::SELECTION
-			}
-		} else {
-			Color::from_rgba(1.0, 1.0, 1.0, 0.06)
-		};
-		frame.fill_rectangle(rect.position(), rect.size(), bg);
-
-		let border = if !enabled {
-			Color::from_rgba(1.0, 1.0, 1.0, 0.06)
-		} else if active {
-			Color {
-				a: 0.85,
-				..colors::SELECTION
-			}
-		} else {
-			colors::BORDER_SUBTLE
-		};
-		let path = Path::rectangle(rect.position(), rect.size());
-		frame.stroke(&path, Stroke::default().with_color(border).with_width(1.0));
-
 		let icon_color = if !enabled {
 			Color::from_rgba(colors::TEXT_MUTED.r, colors::TEXT_MUTED.g, colors::TEXT_MUTED.b, 0.35)
 		} else if active {
