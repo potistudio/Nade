@@ -563,15 +563,15 @@ impl CurveEditorWidget<'_> {
 
 fn property_color(property: TransformProperty) -> Color {
 	match property {
-		TransformProperty::PositionX => Color::from_rgb8(224, 92, 92),
-		TransformProperty::PositionY => Color::from_rgb8(92, 196, 116),
-		TransformProperty::PositionZ => Color::from_rgb8(88, 136, 224),
-		TransformProperty::RotationX => Color::from_rgb8(232, 136, 104),
-		TransformProperty::RotationY => Color::from_rgb8(136, 210, 104),
-		TransformProperty::RotationZ => Color::from_rgb8(112, 152, 232),
-		TransformProperty::ScaleX => Color::from_rgb8(220, 116, 156),
-		TransformProperty::ScaleY => Color::from_rgb8(140, 196, 112),
-		TransformProperty::ScaleZ => Color::from_rgb8(112, 172, 220),
+		TransformProperty::PositionX => Color::from_rgb8(243, 139, 168),
+		TransformProperty::PositionY => Color::from_rgb8(166, 227, 161),
+		TransformProperty::PositionZ => Color::from_rgb8(137, 180, 250),
+		TransformProperty::RotationX => Color::from_rgb8(250, 179, 135),
+		TransformProperty::RotationY => Color::from_rgb8(148, 226, 213),
+		TransformProperty::RotationZ => Color::from_rgb8(116, 199, 236),
+		TransformProperty::ScaleX => Color::from_rgb8(245, 194, 231),
+		TransformProperty::ScaleY => Color::from_rgb8(166, 227, 161),
+		TransformProperty::ScaleZ => Color::from_rgb8(137, 220, 235),
 		TransformProperty::Opacity => TEXT_SECONDARY_COLOR,
 	}
 }

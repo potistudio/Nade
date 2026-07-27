@@ -1,6 +1,6 @@
-//! Shared cool dark design system.
+//! Shared Catppuccin Mocha design system.
 //!
-//! Flat chrome, compact density, blue-grey surfaces, cyan accent.
+//! Flat chrome, compact density, warm dark surfaces, sky accent.
 //! Prefer these tokens and [`crate::widgets`] style fns over inline magic numbers.
 
 use iced::theme::Palette;
@@ -10,58 +10,58 @@ use iced::{Color, Theme};
 // Accent
 // ---------------------------------------------------------------------------
 
-/// Active tool / playhead / highlight (cool cyan).
-pub const ACCENT_COLOR: Color = Color::from_rgb8(72, 196, 220);
+/// Active tool / playhead / highlight (sky).
+pub const ACCENT_COLOR: Color = Color::from_rgb8(137, 220, 235);
 
-/// List / dock selection (cool blue).
-pub const SELECTION_COLOR: Color = Color::from_rgb8(64, 140, 196);
+/// List / dock selection (blue).
+pub const SELECTION_COLOR: Color = Color::from_rgb8(137, 180, 250);
 
-pub const SUCCESS_COLOR: Color = Color::from_rgb8(72, 168, 132);
-pub const WARNING_COLOR: Color = Color::from_rgb8(196, 156, 72);
-pub const DANGER_COLOR: Color = Color::from_rgb8(196, 84, 96);
+pub const SUCCESS_COLOR: Color = Color::from_rgb8(166, 227, 161);
+pub const WARNING_COLOR: Color = Color::from_rgb8(249, 226, 175);
+pub const DANGER_COLOR: Color = Color::from_rgb8(243, 139, 168);
 
 // ---------------------------------------------------------------------------
 // Background hierarchy (window → panel → widget)
 // ---------------------------------------------------------------------------
 
-/// App / dock chrome background (`#0f1318`).
-pub const BACKGROUND_COLOR: Color = Color::from_rgb8(15, 19, 24);
+/// App / dock chrome background (base, `#1e1e2e`).
+pub const BACKGROUND_COLOR: Color = Color::from_rgb8(30, 30, 46);
 
-/// Raised panel surface (`#1c222a`).
-pub const PANEL_COLOR: Color = Color::from_rgb8(28, 34, 42);
+/// Raised panel surface (mantle, `#181825`).
+pub const PANEL_COLOR: Color = Color::from_rgb8(24, 24, 37);
 
-/// Header / toolbar strip (`#252c36`).
-pub const HEADER_COLOR: Color = Color::from_rgb8(37, 44, 54);
+/// Header / toolbar strip (surface0, `#313244`).
+pub const HEADER_COLOR: Color = Color::from_rgb8(49, 50, 68);
 
-/// Hover / alternating row (`#222933`).
-pub const BACKGROUND_SELECTED_COLOR: Color = Color::from_rgb8(34, 41, 51);
+/// Hover / alternating row (surface0, `#313244`).
+pub const BACKGROUND_SELECTED_COLOR: Color = Color::from_rgb8(49, 50, 68);
 
 /// Selected row fill (same as selection blue).
 pub const BACKGROUND_ACTIVE_COLOR: Color = SELECTION_COLOR;
 
-/// Recessed widget / input fill (`#12171d`).
-pub const WIDGET_COLOR: Color = Color::from_rgb8(18, 23, 29);
+/// Recessed widget / input fill (crust, `#11111b`).
+pub const WIDGET_COLOR: Color = Color::from_rgb8(17, 17, 27);
 
-/// Widget hover (`#323a46`).
-pub const WIDGET_HOVER_COLOR: Color = Color::from_rgb8(50, 58, 70);
+/// Widget hover (surface1, `#45475a`).
+pub const WIDGET_HOVER_COLOR: Color = Color::from_rgb8(69, 71, 90);
 
 // ---------------------------------------------------------------------------
 // Text
 // ---------------------------------------------------------------------------
 
-pub const TEXT_PRIMARY_COLOR: Color = Color::from_rgb8(220, 228, 236);
-pub const TEXT_SECONDARY_COLOR: Color = Color::from_rgb8(140, 152, 168);
-pub const TEXT_MUTED_COLOR: Color = Color::from_rgb8(96, 108, 124);
+pub const TEXT_PRIMARY_COLOR: Color = Color::from_rgb8(205, 214, 244);
+pub const TEXT_SECONDARY_COLOR: Color = Color::from_rgb8(166, 173, 200);
+pub const TEXT_MUTED_COLOR: Color = Color::from_rgb8(108, 112, 134);
 /// Text on selected / accent backgrounds.
-pub const TEXT_PRIMARY_COLOR_INVERTED: Color = Color::from_rgb8(255, 255, 255);
+pub const TEXT_PRIMARY_COLOR_INVERTED: Color = Color::from_rgb8(30, 30, 46);
 
 // ---------------------------------------------------------------------------
 // Borders / radius
 // ---------------------------------------------------------------------------
 
-pub const BORDER_COLOR: Color = Color::from_rgb8(18, 23, 29);
-pub const BORDER_SUBTLE_COLOR: Color = Color::from_rgb8(36, 44, 54);
-pub const BORDER_ACTIVE_COLOR: Color = Color::from_rgb8(112, 128, 148);
+pub const BORDER_COLOR: Color = Color::from_rgb8(17, 17, 27);
+pub const BORDER_SUBTLE_COLOR: Color = Color::from_rgb8(49, 50, 68);
+pub const BORDER_ACTIVE_COLOR: Color = Color::from_rgb8(127, 132, 156);
 
 pub const BORDER_THICKNESS: f32 = 1.0;
 /// Compact widget radius.
@@ -100,7 +100,7 @@ pub const TREE_INDENT: f32 = 14.0;
 // Iced Theme
 // ---------------------------------------------------------------------------
 
-/// Cool dark palette for stock iced widgets (buttons, pick lists, etc.).
+/// Catppuccin Mocha palette for stock iced widgets (buttons, pick lists, etc.).
 pub const PALETTE: Palette = Palette {
 	background: BACKGROUND_COLOR,
 	text: TEXT_PRIMARY_COLOR,
@@ -110,7 +110,7 @@ pub const PALETTE: Palette = Palette {
 	danger: DANGER_COLOR,
 };
 
-/// Application theme — custom cool dark palette.
+/// Application theme — Catppuccin Mocha.
 pub fn app_theme() -> Theme {
-	Theme::custom("NadeCoolDark", PALETTE)
+	Theme::custom("CatppuccinMocha", PALETTE)
 }

@@ -8,11 +8,13 @@ use std::fmt::Debug;
 
 use wgpu;
 
+use constants::style;
+
 const ZOOM_SPEED: f32 = 0.01;
 const MIN_ZOOM: f32 = 0.05;
 const MAX_ZOOM: f32 = 32.0;
 const SCROLL_LINE_PX: f32 = 20.0;
-const CANVAS_BG: Color = Color::from_rgb8(18, 23, 29);
+const CANVAS_BG: Color = style::WIDGET_COLOR;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]

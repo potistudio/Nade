@@ -1,4 +1,4 @@
-//! Flat cool-dark iced widget styles.
+//! Flat Catppuccin iced widget styles.
 //!
 //! Apply via `.style(widgets::button_tool)` etc. Theme alone only fixes the
 //! palette; these Catalog style fns control borders, radius, and interaction.

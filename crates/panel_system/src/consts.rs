@@ -1,6 +1,6 @@
 //! パネルシステムの定数と色設定
 //!
-//! Colors and sizes follow `constants::style` (cool dark).
+//! Colors and sizes follow `constants::style` (Catppuccin Mocha).
 
 use constants::style;
 use iced::Color;
@@ -25,7 +25,7 @@ pub mod colors {
 	pub const TEXT_SECONDARY: Color = style::TEXT_SECONDARY_COLOR;
 	pub const ACCENT: Color = style::SELECTION_COLOR;
 	pub const RESIZE_HANDLE: Color = style::BACKGROUND_COLOR;
-	pub const CORNER: Color = Color::from_rgba(0.48, 0.56, 0.66, 0.85);
+	pub const CORNER: Color = Color::from_rgba(0.50, 0.52, 0.63, 0.85);
 	pub const CORNER_ACTIVE: Color = style::SELECTION_COLOR;
 	pub const SPLIT_PREVIEW: Color = Color {
 		a: 0.22,

@@ -1,6 +1,6 @@
 //! Colors and layout constants for the timeline UI.
 //!
-//! Palette aligns with `crate::style` (cool dark).
+//! Palette aligns with `crate::style` (Catppuccin Mocha).
 
 use iced::Color;
 
@@ -63,9 +63,9 @@ pub mod colors {
 	pub const RULER_BG: Color = style::HEADER_COLOR;
 	pub const TRACK_LABEL_BG: Color = style::PANEL_COLOR;
 	pub const TRACK_LABEL_BG_ALT: Color = style::BACKGROUND_SELECTED_COLOR;
-	pub const TIMELINE_BG: Color = Color::from_rgb8(24, 30, 38);
-	pub const TIMELINE_BG_ALT: Color = Color::from_rgb8(28, 34, 42);
-	pub const TIMELINE_BG_ALT2: Color = Color::from_rgb8(32, 40, 50);
+	pub const TIMELINE_BG: Color = Color::from_rgb8(24, 24, 37);
+	pub const TIMELINE_BG_ALT: Color = Color::from_rgb8(30, 30, 46);
+	pub const TIMELINE_BG_ALT2: Color = Color::from_rgb8(49, 50, 68);
 
 	pub const BORDER: Color = style::BORDER_SUBTLE_COLOR;
 	pub const BORDER_SUBTLE: Color = style::BORDER_SUBTLE_COLOR;
@@ -75,10 +75,10 @@ pub mod colors {
 	pub const TEXT_SECONDARY: Color = style::TEXT_SECONDARY_COLOR;
 	pub const TEXT_MUTED: Color = style::TEXT_MUTED_COLOR;
 
-	pub const TICK_MAJOR: Color = Color::from_rgb8(132, 148, 168);
-	pub const TICK_MINOR: Color = Color::from_rgb8(56, 68, 84);
+	pub const TICK_MAJOR: Color = Color::from_rgb8(166, 173, 200);
+	pub const TICK_MINOR: Color = Color::from_rgb8(88, 91, 112);
 
-	/// Playhead — cool cyan.
+	/// Playhead — sky.
 	pub const PLAYHEAD: Color = style::ACCENT_COLOR;
 
 	pub const CLIP_OUTLINE: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.12);
@@ -112,15 +112,15 @@ pub mod colors {
 	};
 	pub const SELECTION: Color = style::SELECTION_COLOR;
 
-	/// Muted cool clip strip palette.
+	/// Catppuccin accent clip strip palette.
 	pub const CLIP_PALETTE: [Color; 8] = [
-		Color::from_rgb8(56, 108, 156),
-		Color::from_rgb8(48, 132, 128),
-		Color::from_rgb8(72, 120, 168),
-		Color::from_rgb8(88, 96, 156),
-		Color::from_rgb8(44, 140, 148),
-		Color::from_rgb8(108, 88, 140),
-		Color::from_rgb8(64, 116, 140),
-		Color::from_rgb8(80, 112, 152),
+		Color::from_rgb8(137, 180, 250),
+		Color::from_rgb8(148, 226, 213),
+		Color::from_rgb8(203, 166, 247),
+		Color::from_rgb8(180, 190, 254),
+		Color::from_rgb8(116, 199, 236),
+		Color::from_rgb8(166, 227, 161),
+		Color::from_rgb8(250, 179, 135),
+		Color::from_rgb8(245, 194, 231),
 	];
 }
