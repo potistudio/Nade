@@ -35,7 +35,6 @@ iced = { version = "0.14", features = [
 	"wgpu",
 	"image",
 	"svg",
-	"debug",
 	"tokio",
 	"canvas",
 	"advanced",
@@ -51,7 +50,7 @@ timeline_panel = { path = "../timeline_panel" }
 inspector_panel = { path = "../inspector_panel" }
 rayon = "1.10"
 crossbeam-channel = "0.5.15"
-tokio = { version = "1.48.0", features = ["full"] }
+tokio = { version = "1.48.0", features = ["sync"] }
 bytes = "1.11.0"
 bytemuck = "1.16"
 wgpu = "27.0.1"

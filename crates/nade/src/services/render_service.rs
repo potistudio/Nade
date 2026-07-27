@@ -3,6 +3,7 @@ use core::FrameData;
 use iced::futures::stream::BoxStream;
 use iced::futures::{SinkExt, StreamExt};
 use std::sync::{Arc, Mutex};
+use std::thread;
 
 /// レンダリング結果の接続状態（Subscription用）
 #[derive(Clone)]
@@ -32,40 +33,36 @@ pub fn build_render_stream(conn: &RenderConnection) -> BoxStream<'static, Messag
 	let shutdown_rx = conn.1.lock().unwrap().clone();
 
 	iced::stream::channel(
-		100,
+		32,
 		move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
-			loop {
-				let task_result = tokio::task::spawn_blocking({
-					let rx = rx.clone();
-					let shutdown_rx = shutdown_rx.clone();
-					move || {
-						crossbeam_channel::select! {
-							recv(rx) -> msg => Some(msg),
-							recv(shutdown_rx) -> _ => None,
-						}
-					}
-				})
-				.await;
+			let (async_tx, mut async_rx) = tokio::sync::mpsc::channel::<Option<FrameData>>(32);
 
-				match task_result {
-					Ok(Some(Ok(frame))) => {
-						if output.send(Message::RenderCompleted(frame)).await.is_err() {
-							log::info!("RenderService: Iced channel closed.");
-							break;
+			thread::Builder::new()
+				.name("nade-render-bridge".into())
+				.spawn(move || {
+					loop {
+						crossbeam_channel::select! {
+							recv(rx) -> msg => {
+								match msg {
+									Ok(frame) => {
+										if async_tx.blocking_send(Some(frame)).is_err() {
+											break;
+										}
+									}
+									Err(_) => break,
+								}
+							}
+							recv(shutdown_rx) -> _ => break,
 						}
 					}
-					Ok(Some(Err(_))) => {
-						log::info!("RenderService: Render channel disconnected.");
-						break;
-					}
-					Ok(None) => {
-						log::info!("RenderService: Shutdown signal received.");
-						break;
-					}
-					Err(_) => {
-						log::info!("RenderService: Task join error.");
-						break;
-					}
+					let _ = async_tx.blocking_send(None);
+				})
+				.expect("failed to spawn render bridge thread");
+
+			while let Some(msg) = async_rx.recv().await {
+				let Some(frame) = msg else { break };
+				if output.send(Message::RenderCompleted(frame)).await.is_err() {
+					break;
 				}
 			}
 		},

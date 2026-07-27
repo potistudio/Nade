@@ -13,21 +13,17 @@ use inspector_panel::InspectorMessage;
 use panel_system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
 use std::time::Instant;
 use timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
 
-use core::{
-	AssetId, CompositionId, CoreEffect, FrameData, InstanceId, Model, Msg, SceneObjectData, SceneObjectId, TextObject,
-	update,
-};
+use core::{AssetId, CompositionId, CoreEffect, FrameData, InstanceId, Model, Msg, SceneObjectId, TextObject, update};
 use domain::{AssetType, Instance, InstanceContent, Project, TransformAnimation};
 
 use crate::message::{AppPanelMessage, Message, PreviewMessage};
 use crate::panel_content::PanelContent;
 use crate::panels;
 use crate::services::render_service::{RenderConnection, build_render_stream};
+use crate::services::render_worker::{RenderJob, RenderWorker};
 
 // =============================================================================
 // ウィンドウイベント
@@ -95,8 +91,8 @@ pub(super) struct NadeApp {
 	/// パネルシステム（レイアウト・リサイズ管理）
 	panel_system: PanelSystem<PanelContent>,
 
-	/// レンダリング結果送信用チャンネル
-	render_tx: Sender<FrameData>,
+	/// 常駐レンダリングワーカー
+	render_worker: RenderWorker,
 	/// レンダリング結果受信用チャンネル（Subscriptionで使用）
 	render_rx: Arc<std::sync::Mutex<Receiver<FrameData>>>,
 	/// レンダリングServiceのシャットダウン通知
@@ -104,8 +100,6 @@ pub(super) struct NadeApp {
 	/// レンダリングServiceのシャットダウン受信機（Serviceへ渡す）
 	render_shutdown_rx: Arc<std::sync::Mutex<Receiver<()>>>,
 
-	/// バックグラウンドレンダリング中かどうか
-	is_rendering: Arc<AtomicBool>,
 	/// FPS計算用カウンタ
 	frame_count: u32,
 	/// FPS更新の基準時刻
@@ -126,6 +120,7 @@ impl NadeApp {
 		let panel_system = Self::create_panel_layout();
 		let (render_tx, render_rx) = unbounded::<FrameData>();
 		let (shutdown_tx, shutdown_rx) = bounded(1);
+		let render_worker = RenderWorker::start(render_tx);
 
 		let mut app = Self {
 			project,
@@ -135,11 +130,10 @@ impl NadeApp {
 			project_pane,
 			asset_browser,
 			panel_system,
-			render_tx,
+			render_worker,
 			render_rx: Arc::new(std::sync::Mutex::new(render_rx)),
 			render_shutdown_tx: Some(shutdown_tx),
 			render_shutdown_rx: Arc::new(std::sync::Mutex::new(shutdown_rx)),
-			is_rendering: Arc::new(AtomicBool::new(false)),
 			frame_count: 0,
 			fps_update_time: Instant::now(),
 		};
@@ -232,22 +226,16 @@ impl NadeApp {
 		for effect in effects {
 			match effect {
 				CoreEffect::RenderFrame { time, width, height } => {
-					if self.is_rendering.load(Ordering::SeqCst) {
-						log::trace!("Skipping frame render - previous render still in progress");
-						continue;
+					if !self.spawn_render(time, width, height) {
+						log::trace!("Skipping frame render - render worker busy");
 					}
-					self.spawn_render(time, width, height);
 				}
 			}
 		}
 	}
 
-	/// レンダリングだけを別スレッドで実行する
-	fn spawn_render(&self, time: f32, width: u32, height: u32) {
-		self.is_rendering.store(true, Ordering::SeqCst);
-		let is_rendering = Arc::clone(&self.is_rendering);
-		let render_tx = self.render_tx.clone();
-
+	/// レンダリング要求をワーカーへ送る。キューが満杯なら `false`。
+	fn spawn_render(&self, time: f32, width: u32, height: u32) -> bool {
 		let track_hidden: Vec<bool> = (0..self.timeline.model.tracks.len())
 			.map(|index| !self.timeline.model.is_track_rendered(index))
 			.collect();
@@ -268,24 +256,12 @@ impl NadeApp {
 			})
 			.unwrap_or_default();
 
-		thread::spawn(move || {
-			let img_buffer = renderer::render_objects(
-				objects.iter().map(|obj| obj as &dyn SceneObjectData),
-				time,
-				width,
-				height,
-			);
-			let frame_data = FrameData {
-				width,
-				height,
-				pixels: bytes::Bytes::from(img_buffer.into_raw()),
-			};
-
-			if render_tx.send(frame_data).is_err() {
-				log::info!("Render thread: receiver dropped before frame delivery.");
-			}
-			is_rendering.store(false, Ordering::SeqCst);
-		});
+		self.render_worker.try_submit(RenderJob {
+			objects,
+			time,
+			width,
+			height,
+		})
 	}
 
 	/// バックグラウンドレンダリング完了を処理する
