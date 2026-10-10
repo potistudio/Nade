@@ -12,4 +12,4 @@ workspace = true
 
 [dependencies]
 constants = { path = "../constants" }
-iced = { workspace = true, features = ["image", "svg"] }
+iced = { workspace = true, features = ["canvas", "image", "svg"] }

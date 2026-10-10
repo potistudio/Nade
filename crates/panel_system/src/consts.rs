@@ -7,8 +7,12 @@ use iced::Color;
 
 pub use constants::style::HEADER_HEIGHT;
 
-/// Visible gutter between tiled panels (window chrome shows through).
-pub const PANEL_GAP: f32 = 2.0;
+/// Visible gutter between tiled panels.
+pub const PANEL_GAP: f32 = 4.0;
+
+/// Width of the outline around panels (inside).
+pub const PANEL_OUTLINE_WIDTH: f32 = 1.0;
+
 /// Total resize hit target across the gutter (extends over panel edges; does not widen the gap).
 pub const RESIZE_HIT_SIZE: f32 = 12.0;
 /// Minimum pane size along a split axis (px).
@@ -21,6 +25,7 @@ pub const MOVE_CENTER_ZONE: f32 = 0.22;
 pub mod colors {
 	use super::{Color, style};
 
+	pub const PANEL_OUTLINE_COLOR: Color = style::BORDER_SUBTLE_COLOR;
 	pub const HEADER_BG: Color = style::HEADER_COLOR;
 	pub const TEXT_SECONDARY: Color = style::TEXT_SECONDARY_COLOR;
 	pub const ACCENT: Color = style::SELECTION_COLOR;

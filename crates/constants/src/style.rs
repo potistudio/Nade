@@ -68,6 +68,10 @@ pub const BORDER_THICKNESS: f32 = 1.0;
 pub const BORDER_RADIUS: f32 = 3.0;
 /// Rounded panel chrome.
 pub const PANEL_RADIUS: f32 = 6.0;
+/// Header/body squircle radius inside panel outline padding.
+pub const PANEL_INNER_RADIUS: f32 = PANEL_RADIUS - BORDER_THICKNESS;
+/// Superellipse exponent for panel squircles (`4.0` = classic squircle).
+pub const PANEL_SQUIRCLE_EXPONENT: f32 = 4.0;
 
 // ---------------------------------------------------------------------------
 // Density (compact UI)

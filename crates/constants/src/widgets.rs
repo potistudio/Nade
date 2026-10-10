@@ -110,42 +110,6 @@ pub fn panel(_theme: &Theme) -> container::Style {
 	}
 }
 
-pub fn panel_body(_theme: &Theme) -> container::Style {
-	container::Style {
-		background: Some(PANEL_COLOR.into()),
-		text_color: Some(TEXT_PRIMARY_COLOR),
-		border: Border {
-			color: BORDER_COLOR,
-			width: 0.0,
-			radius: Radius {
-				top_left: 0.0,
-				top_right: 0.0,
-				bottom_right: PANEL_RADIUS,
-				bottom_left: PANEL_RADIUS,
-			},
-		},
-		..Default::default()
-	}
-}
-
-pub fn panel_header(_theme: &Theme) -> container::Style {
-	container::Style {
-		background: Some(HEADER_COLOR.into()),
-		text_color: Some(TEXT_SECONDARY_COLOR),
-		border: Border {
-			color: BORDER_COLOR,
-			width: 0.0,
-			radius: Radius {
-				top_left: PANEL_RADIUS,
-				top_right: PANEL_RADIUS,
-				bottom_right: 0.0,
-				bottom_left: 0.0,
-			},
-		},
-		..Default::default()
-	}
-}
-
 /// Panel interior fill without chrome — use inside [`panel_system`] areas.
 pub fn panel_surface(_theme: &Theme) -> container::Style {
 	container::Style {

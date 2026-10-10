@@ -11,9 +11,10 @@ use iced::{
 
 use crate::{
 	AreaKind,
+	chrome::{PanelChrome, squircle_panel_stack},
 	consts::{
 		CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, MIN_PANEL_SIZE, MOVE_CENTER_ZONE, PANEL_GAP,
-		RESIZE_HIT_SIZE, colors,
+		PANEL_OUTLINE_WIDTH, RESIZE_HIT_SIZE, colors,
 	},
 	container::Area,
 	drag::{CornerAction, DragState},
@@ -1045,8 +1046,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		)
 		.width(Length::Fill)
 		.height(HEADER_HEIGHT)
-		.align_y(iced::Alignment::Center)
-		.style(constants::widgets::panel_header);
+		.align_y(iced::Alignment::Center);
 
 		let body = content_view(area.id, &area.content);
 
@@ -1084,24 +1084,27 @@ impl<C: AreaKind> PanelSystem<C> {
 				.height(Length::Fill)
 		};
 
-		let body_container = container(body_stack)
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.style(constants::widgets::panel_body);
+		let body_container = container(body_stack).width(Length::Fill).height(Length::Fill);
 
-		container(column![header, body_container].spacing(0))
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.clip(true)
-			.style(|_| container::Style {
-				border: iced::Border {
-					color: Color::TRANSPARENT,
-					width: 0.0,
-					radius: constants::style::PANEL_RADIUS.into(),
-				},
-				..Default::default()
-			})
-			.into()
+		let chrome = PanelChrome {
+			header_height: HEADER_HEIGHT,
+			outline_width: PANEL_OUTLINE_WIDTH,
+			outer_radius: constants::style::PANEL_RADIUS,
+			inner_radius: constants::style::PANEL_INNER_RADIUS,
+			exponent: constants::style::PANEL_SQUIRCLE_EXPONENT,
+			panel_color: constants::style::PANEL_COLOR,
+			header_color: colors::HEADER_BG,
+			outline_color: colors::PANEL_OUTLINE_COLOR,
+		};
+
+		squircle_panel_stack(
+			chrome,
+			container(column![header, body_container].spacing(0))
+				.width(Length::Fill)
+				.height(Length::Fill)
+				.padding(PANEL_OUTLINE_WIDTH),
+		)
+		.into()
 	}
 
 	fn view_corner_overlay<'a, M>(
