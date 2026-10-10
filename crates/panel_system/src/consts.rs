@@ -1,6 +1,6 @@
 //! パネルシステムの定数と色設定
 //!
-//! Colors and sizes follow `constants::style` (Catppuccin Mocha).
+//! Colors and sizes follow `constants::style` (Graphite).
 
 use constants::style;
 use iced::Color;
@@ -8,7 +8,7 @@ use iced::Color;
 pub use constants::style::HEADER_HEIGHT;
 
 /// Visible gutter between tiled panels.
-pub const PANEL_GAP: f32 = 4.0;
+pub const PANEL_GAP: f32 = 6.0;
 
 /// Width of the outline around panels (inside).
 pub const PANEL_OUTLINE_WIDTH: f32 = 1.0;
