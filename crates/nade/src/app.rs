@@ -295,7 +295,7 @@ impl NadeApp {
 				if self.current_model.preview.is_playing {
 					self.apply_core_msg(Msg::Tick);
 				}
-				if self.panel_system.is_editor_menu_animating() {
+				if self.panel_system.is_animating() {
 					self.panel_system
 						.update(PanelSystemMessage::<PanelContent, AppPanelMessage>::AnimTick);
 				}
@@ -926,20 +926,20 @@ impl NadeApp {
 			build_render_stream,
 		);
 
-		let keyboard_subscription = iced::event::listen_with(|event, _status, _id| {
-			if let iced::Event::Keyboard(keyboard::Event::KeyPressed {
+		let keyboard_subscription = iced::event::listen_with(|event, _status, _id| match event {
+			iced::Event::Keyboard(keyboard::Event::KeyPressed {
 				key: keyboard::Key::Named(keyboard::key::Named::Space),
 				..
-			}) = event
-			{
-				Some(Message::TogglePlay)
-			} else {
-				None
+			}) => Some(Message::TogglePlay),
+			// 押下（キャプチャ済みを含む）でポインタ下のパネルへフォーカス
+			iced::Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => {
+				Some(Message::PanelSystem(PanelSystemMessage::FocusPointer))
 			}
+			_ => None,
 		});
 
 		// 再生中・メニューアニメ中は ~60fps、それ以外は間引き
-		let tick_ms = if self.current_model.preview.is_playing || self.panel_system.is_editor_menu_animating() {
+		let tick_ms = if self.current_model.preview.is_playing || self.panel_system.is_animating() {
 			16
 		} else {
 			50
