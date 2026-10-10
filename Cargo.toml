@@ -1,6 +1,45 @@
-[package]
-name = "Nade"
-version = "0.0.0"
-edition = "2024"
+[workspace]
+resolver = "3"
+members = ["apps/*", "crates/*", "examples/*"]
+default-members = ["crates/nade"]
 
-[dependencies]
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+authors = ["potistudio <potistudio@proton.me>"]
+license = "MIT"
+publish = false
+
+[profile.release]
+codegen-units = 1
+lto = true
+
+# 未最適化のピクセル・グリフ処理はプレビューを実時間で回すには遅すぎる。
+# 依存クレートは一度ビルドすれば使い回せるのでフル最適化し、自前クレートは
+# ピクセルループを持つ renderer のみ最適化して他はコンパイル速度を優先する。
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev.package.renderer]
+opt-level = 3
+
+[workspace.lints.clippy]
+all = "warn"
+
+[workspace.dependencies]
+anyhow = "1.0.104"
+constants = { path = "crates/constants" }
+core = { path = "crates/core" }
+curve_editor_panel = { path = "crates/curve_editor_panel" }
+domain = { path = "crates/domain" }
+env_logger = "0.11.11"
+effects = { path = "crates/effects" }
+encoder = { path = "crates/encoder" }
+iced = { version = "0.14.0", features = ["advanced", "canvas", "svg"] }
+inspector_panel = { path = "crates/inspector_panel" }
+log = "0.4.33"
+nade-engine = { path = "crates/engine" }
+nade-timeline = { path = "crates/timeline_panel" }
+operators = { path = "crates/operators" }
+serde = { version = "1.0.229", features = ["derive"] }
+uuid = { version = "1.24.0", features = ["v4", "serde"] }

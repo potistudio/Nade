@@ -1,0 +1,13 @@
+[package]
+name = "playground_font"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+eframe = { version = "0.33.2", features = ["wgpu"] }
+egui = { version = "0.33.2", features = ["rayon"] }
+env_logger.workspace = true
+log.workspace = true
+swash = "0.2.6"

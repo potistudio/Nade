@@ -1,0 +1,16 @@
+[package]
+name = "inspector_panel"
+description = "Inspector panel UI for operator editing"
+authors.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+iced.workspace = true
+core.workspace = true
+operators.workspace = true

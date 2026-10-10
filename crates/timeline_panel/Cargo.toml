@@ -1,0 +1,17 @@
+[package]
+name = "timeline_panel"
+description = "Timeline panel"
+authors.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+core = { workspace = true }
+constants = { workspace = true }
+iced = { workspace = true }
+log = { workspace = true }

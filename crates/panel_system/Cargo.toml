@@ -1,0 +1,15 @@
+[package]
+name = "panel_system"
+version.workspace = true
+edition.workspace = true
+description = "Blender-style area tiling system for Iced applications"
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+constants = { path = "../constants" }
+iced = { workspace = true, features = ["canvas", "image", "svg"] }

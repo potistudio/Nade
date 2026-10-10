@@ -1,0 +1,13 @@
+[package]
+name = "operators"
+authors.workspace = true
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+core = { workspace = true }

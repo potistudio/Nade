@@ -1,0 +1,12 @@
+[package]
+name = "gizmos"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+constants = { workspace = true }
+iced = { version = "0.14", features = ["canvas"] }
+env_logger.workspace = true
+log.workspace = true

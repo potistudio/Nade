@@ -1,0 +1,22 @@
+[package]
+name = "renderer"
+authors.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+core = { workspace = true }
+domain = { workspace = true }
+effects = { workspace = true }
+encoder = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+image = "0.25.9"
+rayon = "1.11.0"
+swash = "0.2.6"
