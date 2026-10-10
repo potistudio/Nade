@@ -146,6 +146,15 @@ pub fn panel_header(_theme: &Theme) -> container::Style {
 	}
 }
 
+/// Panel interior fill without chrome — use inside [`panel_system`] areas.
+pub fn panel_surface(_theme: &Theme) -> container::Style {
+	container::Style {
+		background: Some(PANEL_COLOR.into()),
+		text_color: Some(TEXT_PRIMARY_COLOR),
+		..Default::default()
+	}
+}
+
 pub fn toolbar(_theme: &Theme) -> container::Style {
 	container::Style {
 		background: Some(BACKGROUND_COLOR.into()),

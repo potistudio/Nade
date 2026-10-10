@@ -46,7 +46,7 @@ impl<'a> ProjectPaneWidget<'a> {
 			.width(Length::Fill)
 			.height(Length::Fill)
 			.padding([SPACE_1, 0.0])
-			.style(widgets::panel)
+			.style(widgets::panel_surface)
 			.into()
 	}
 }

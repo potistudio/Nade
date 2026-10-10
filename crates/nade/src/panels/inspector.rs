@@ -106,7 +106,7 @@ pub fn view<'a>(
 	.padding(PAD_PANEL)
 	.width(Length::Fill)
 	.height(Length::Fill)
-	.style(widgets::panel)
+	.style(widgets::panel_surface)
 	.into()
 }
 
