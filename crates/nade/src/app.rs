@@ -4,37 +4,78 @@
 
 use asset_browser::{AssetBrowserMessage, AssetBrowserState};
 use browser_panel::{ObjectId, ProjectPaneMessage, ProjectPaneState};
+use constants::icons::Icon;
 use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use curve_editor_panel::{CurveEditorMessage, CurveEditorState};
+use iced::animation::Easing;
 use iced::keyboard;
-use iced::widget::container;
-use iced::{Element, Length, Size, Subscription, Task, Theme};
+use iced::time::{Duration, Instant};
+use iced::widget::{column, container, stack};
+use iced::{Animation, Element, Length, Size, Subscription, Task, Theme};
 use inspector_panel::InspectorMessage;
-use panel_system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
+use panel_system::{PanelSystem, PanelSystemMessage};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
 use timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
 
 use core::{AssetId, CompositionId, CoreEffect, FrameData, InstanceId, Model, Msg, SceneObjectId, TextObject, update};
 use domain::{AssetType, Instance, InstanceContent, Project, TransformAnimation};
 
-use crate::message::{AppPanelMessage, Message, PreviewMessage};
+use crate::message::{AppPanelMessage, Message, PreviewMessage, ShellMessage, TransportMessage};
 use crate::panel_content::PanelContent;
 use crate::panels;
 use crate::services::render_service::{RenderConnection, build_render_stream};
 use crate::services::render_worker::{RenderJob, RenderWorker};
+use crate::shell::{self, toast::Toast};
+use crate::theme::{SHELL_GUTTER, STATUS_BAR_HEIGHT, TITLE_BAR_HEIGHT, panel_area};
+use crate::tool::Tool;
+use crate::workspace::Workspace;
 
 // =============================================================================
-// ウィンドウイベント
+// ウィンドウ・キーボードイベント
 // =============================================================================
 
-fn on_window_resize(event: iced::Event, _status: iced::event::Status, _id: iced::window::Id) -> Option<Message> {
-	if let iced::Event::Window(iced::window::Event::Resized(size)) = event {
-		Some(Message::PanelSystem(PanelSystemMessage::WindowResized(size)))
-	} else {
-		None
+/// ウィンドウイベントをアプリのメッセージへ写像する（キャプチャ済みのキーは無視）
+fn on_window_event(event: iced::Event, status: iced::event::Status, _id: iced::window::Id) -> Option<Message> {
+	match event {
+		iced::Event::Window(iced::window::Event::Resized(size)) => Some(Message::WindowResized(size)),
+		// 押下（キャプチャ済みを含む）でポインタ下のパネルへフォーカス
+		iced::Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => {
+			Some(Message::PanelSystem(PanelSystemMessage::FocusPointer))
+		}
+		iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. })
+			if status == iced::event::Status::Ignored =>
+		{
+			shortcut(&key, modifiers)
+		}
+		_ => None,
 	}
+}
+
+/// After Effects / Final Cut 風の単キーショートカット
+fn shortcut(key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Message> {
+	use keyboard::key::Named;
+
+	if modifiers.command() || modifiers.control() || modifiers.alt() {
+		return None;
+	}
+
+	match key.as_ref() {
+		keyboard::Key::Named(Named::Space) => Some(Message::Transport(TransportMessage::TogglePlay)),
+		keyboard::Key::Named(Named::Home) => Some(Message::Transport(TransportMessage::GoToStart)),
+		keyboard::Key::Named(Named::End) => Some(Message::Transport(TransportMessage::GoToEnd)),
+		keyboard::Key::Named(Named::ArrowLeft) => Some(Message::Transport(TransportMessage::StepBackward)),
+		keyboard::Key::Named(Named::ArrowRight) => Some(Message::Transport(TransportMessage::StepForward)),
+		keyboard::Key::Named(Named::Delete | Named::Backspace) => Some(Message::DeleteSelection),
+		keyboard::Key::Character(c) => Tool::from_key(c).map(|tool| Message::Shell(ShellMessage::SelectTool(tool))),
+		_ => None,
+	}
+}
+
+fn pill_animation(index: usize) -> Animation<f32> {
+	Animation::new(index as f32)
+		.duration(Duration::from_millis(constants::style::MOTION_STANDARD_MS))
+		.easing(Easing::EaseOutCubic)
 }
 
 // =============================================================================
@@ -104,6 +145,27 @@ pub(super) struct NadeApp {
 	frame_count: u32,
 	/// FPS更新の基準時刻
 	fps_update_time: Instant,
+	/// 実測のレンダリングフレームレート
+	render_fps: f32,
+
+	/// ビューアの現在のツール
+	tool: Tool,
+	/// ツールパレットの選択ピル位置
+	tool_pill: Animation<f32>,
+	/// 現在のワークスペース
+	workspace: Workspace,
+	/// ワークスペース切替の選択ピル位置
+	workspace_pill: Animation<f32>,
+	/// ループ再生
+	loop_playback: bool,
+	/// HUD 通知
+	toast: Option<Toast>,
+	/// 直近の update 時刻（アニメーション評価用）
+	now: Instant,
+	/// アプリ起動時刻（ステータスの呼吸アニメーション用）
+	started: Instant,
+	/// ウィンドウの内寸
+	window_size: Size,
 }
 
 //==== Iced API ================================================================
@@ -117,7 +179,8 @@ impl NadeApp {
 		let mut asset_browser = AssetBrowserState::default();
 		asset_browser.expanded_ids.insert(assets_folder);
 
-		let panel_system = Self::create_panel_layout();
+		let window_size = Size::new(constants::WINDOW_WIDTH, constants::WINDOW_HEIGHT);
+		let panel_system = Self::create_panel_layout(Workspace::default(), window_size);
 		let (render_tx, render_rx) = unbounded::<FrameData>();
 		let (shutdown_tx, shutdown_rx) = bounded(1);
 		let render_worker = RenderWorker::start(render_tx);
@@ -136,6 +199,16 @@ impl NadeApp {
 			render_shutdown_rx: Arc::new(std::sync::Mutex::new(shutdown_rx)),
 			frame_count: 0,
 			fps_update_time: Instant::now(),
+			render_fps: 0.0,
+			tool: Tool::default(),
+			tool_pill: pill_animation(Tool::default().index()),
+			workspace: Workspace::default(),
+			workspace_pill: pill_animation(Workspace::default().index()),
+			loop_playback: true,
+			toast: None,
+			now: Instant::now(),
+			started: Instant::now(),
+			window_size,
 		};
 
 		app.rebuild_timeline_for_composition(main_comp);
@@ -144,7 +217,12 @@ impl NadeApp {
 		// 初期フレームを描画
 		app.apply_core_msg(Msg::SetTime(0.0));
 
-		(app, Task::none())
+		// 実際の内寸でパネルレイアウトを合わせる（透明タイトルバー分を含む）
+		let initial_size = iced::window::latest()
+			.and_then(iced::window::size)
+			.map(Message::WindowResized);
+
+		(app, initial_size)
 	}
 
 	fn create_sample_project() -> (Project, CompositionId, AssetId) {
@@ -184,32 +262,12 @@ impl NadeApp {
 		(project, main, assets)
 	}
 
-	/// 初期パネルレイアウトを構築
-	///
-	/// ```text
-	/// ┌─────────┬──────────────────┬───────────┐
-	/// │ Objects │     Preview      │ Inspector │
-	/// ├─────────┼──────────────────┤           │
-	/// │ Assets  │    Timeline      │           │
-	/// └─────────┴──────────────────┴───────────┘
-	/// ```
-	fn create_panel_layout() -> PanelSystem<PanelContent> {
-		let mut builder = LayoutBuilder::new();
-		let objects = builder.area(PanelContent::Project);
-		let assets = builder.area(PanelContent::Assets);
-		let preview = builder.area(PanelContent::MainPreview);
-		let timeline = builder.area(PanelContent::Timeline);
-		let inspector = builder.area(PanelContent::Inspector);
-
-		let left = LayoutBuilder::vsplit(objects, assets, 0.55);
-		let center = LayoutBuilder::vsplit(preview, timeline, 0.65);
-		let main = LayoutBuilder::hsplit(center, inspector, 0.78);
-		let layout = LayoutBuilder::hsplit(left, main, 0.18);
-
-		let mut system = PanelSystem::new().with_layout(layout).with_ids(builder.next_area_id());
-		// 初期ウィンドウサイズを設定（main.rsのwindow_settingsと合わせる）
+	/// ワークスペースのパネルレイアウトを構築
+	fn create_panel_layout(workspace: Workspace, window_size: Size) -> PanelSystem<PanelContent> {
+		let (layout, next_area_id) = workspace.layout();
+		let mut system = PanelSystem::new().with_layout(layout).with_ids(next_area_id);
 		system.update(PanelSystemMessage::<PanelContent, AppPanelMessage>::WindowResized(
-			Size::new(1280.0, 720.0),
+			panel_area(window_size),
 		));
 		system
 	}
@@ -272,28 +330,49 @@ impl NadeApp {
 		let now = Instant::now();
 		let elapsed = now.duration_since(self.fps_update_time).as_secs_f32();
 		if elapsed >= 0.5 {
-			self.current_model.preview.fps = self.frame_count as f32 / elapsed;
+			self.render_fps = self.frame_count as f32 / elapsed;
 			self.frame_count = 0;
 			self.fps_update_time = now;
 		}
 	}
 
 	pub(super) fn update(&mut self, message: Message) -> Task<Message> {
+		self.now = Instant::now();
+
 		match message {
 			Message::RenderCompleted(frame) => {
 				self.handle_render_completed(frame);
 				Task::none()
 			}
 
-			Message::TogglePlay => {
-				self.apply_core_msg(Msg::TogglePlay);
-				log::debug!("Toggling play/pause: {}", self.current_model.preview.is_playing);
+			Message::Transport(transport) => {
+				self.apply_transport(transport);
+				Task::none()
+			}
+
+			Message::Shell(shell_message) => self.apply_shell_message(shell_message),
+
+			Message::DeleteSelection => {
+				self.delete_selected_layer();
+				Task::none()
+			}
+
+			Message::WindowResized(size) => {
+				self.window_size = size;
+				self.panel_system
+					.update(PanelSystemMessage::<PanelContent, AppPanelMessage>::WindowResized(
+						panel_area(size),
+					));
 				Task::none()
 			}
 
 			Message::Tick => {
 				if self.current_model.preview.is_playing {
 					self.apply_core_msg(Msg::Tick);
+					self.wrap_playback();
+				}
+				if self.toast.as_ref().is_some_and(|toast| !toast.is_active(self.now)) {
+					self.toast = None;
 				}
 				if self.panel_system.is_animating() {
 					self.panel_system
@@ -350,6 +429,151 @@ impl NadeApp {
 				iced::exit()
 			}
 		}
+	}
+
+	// -------------------------------------------------------------------------
+	// シェル・トランスポート
+	// -------------------------------------------------------------------------
+
+	fn apply_shell_message(&mut self, message: ShellMessage) -> Task<Message> {
+		match message {
+			ShellMessage::SelectTool(tool) => {
+				self.tool = tool;
+				self.tool_pill.go_mut(tool.index() as f32, self.now);
+				Task::none()
+			}
+			ShellMessage::SelectWorkspace(workspace) => {
+				if workspace != self.workspace {
+					self.workspace = workspace;
+					self.workspace_pill.go_mut(workspace.index() as f32, self.now);
+					self.panel_system = Self::create_panel_layout(workspace, self.window_size);
+				}
+				Task::none()
+			}
+			ShellMessage::NewComposition => {
+				self.create_composition();
+				if let Some(name) = self.target_composition_name() {
+					self.show_toast(Icon::Comp, format!("Created “{name}”"));
+				}
+				Task::none()
+			}
+			ShellMessage::NewTextLayer => {
+				self.add_object_under_selection();
+				Task::none()
+			}
+			ShellMessage::ImportMedia => Self::pick_media_file(),
+			ShellMessage::DragWindow => iced::window::latest().and_then(iced::window::drag),
+			ShellMessage::ToggleMaximize => iced::window::latest().and_then(iced::window::toggle_maximize),
+		}
+	}
+
+	fn apply_transport(&mut self, transport: TransportMessage) {
+		let fps = self.composition_fps();
+		let duration = self.composition_duration();
+		let time = self.current_model.preview.time;
+		let last_frame = core::timecode::frame_at(duration, fps).saturating_sub(1);
+
+		match transport {
+			TransportMessage::TogglePlay => {
+				// 終端で再生したら先頭から
+				let at_end = core::timecode::frame_at(time, fps) >= last_frame;
+				if !self.current_model.preview.is_playing && at_end {
+					self.apply_core_msg(Msg::SetTime(0.0));
+				}
+				self.apply_core_msg(Msg::TogglePlay);
+				log::debug!("Toggling play/pause: {}", self.current_model.preview.is_playing);
+			}
+			TransportMessage::GoToStart => self.apply_core_msg(Msg::SetTime(0.0)),
+			TransportMessage::GoToEnd => {
+				self.apply_core_msg(Msg::SetTime(core::timecode::time_of_frame(last_frame, fps)));
+			}
+			TransportMessage::StepBackward | TransportMessage::StepForward => {
+				let frame = core::timecode::frame_at(time, fps);
+				let target = if matches!(transport, TransportMessage::StepForward) {
+					(frame + 1).min(last_frame)
+				} else {
+					frame.saturating_sub(1)
+				};
+				self.apply_core_msg(Msg::SetTime(core::timecode::time_of_frame(target, fps)));
+			}
+			TransportMessage::ToggleLoop => {
+				self.loop_playback = !self.loop_playback;
+				let label = if self.loop_playback {
+					"Loop playback on"
+				} else {
+					"Loop playback off"
+				};
+				self.show_toast(Icon::Loop, label);
+			}
+		}
+	}
+
+	/// 再生がコンポジションの終端を越えたらループ or 停止
+	fn wrap_playback(&mut self) {
+		let duration = self.composition_duration();
+		let time = self.current_model.preview.time;
+		if time < duration {
+			return;
+		}
+		if self.loop_playback {
+			self.apply_core_msg(Msg::SetTime(time % duration.max(f32::EPSILON)));
+		} else {
+			self.apply_core_msg(Msg::TogglePlay);
+			let fps = self.composition_fps();
+			let last_frame = core::timecode::frame_at(duration, fps).saturating_sub(1);
+			self.apply_core_msg(Msg::SetTime(core::timecode::time_of_frame(last_frame, fps)));
+		}
+	}
+
+	fn composition_fps(&self) -> f32 {
+		self.target_composition()
+			.and_then(|id| self.project.composition(&id))
+			.map_or(30.0, |comp| comp.fps())
+	}
+
+	fn composition_duration(&self) -> f32 {
+		self.target_composition()
+			.and_then(|id| self.project.composition(&id))
+			.map_or(10.0, |comp| comp.duration())
+			.max(0.1)
+	}
+
+	fn target_composition_name(&self) -> Option<String> {
+		self.target_composition()
+			.and_then(|id| self.project.composition(&id))
+			.map(|comp| comp.name().to_string())
+	}
+
+	fn show_toast(&mut self, icon: Icon, text: impl Into<String>) {
+		self.toast = Some(Toast::new(icon, text));
+	}
+
+	/// UI アニメーション（パネル・ピル・トースト）が進行中か
+	fn is_ui_animating(&self) -> bool {
+		self.panel_system.is_animating()
+			|| self.tool_pill.is_animating(self.now)
+			|| self.workspace_pill.is_animating(self.now)
+			|| self.toast.as_ref().is_some_and(|toast| toast.is_active(self.now))
+	}
+
+	/// 選択中のレイヤーを削除（カーブエディタにフォーカスがある時はキー削除を優先）
+	fn delete_selected_layer(&mut self) {
+		if matches!(self.panel_system.focused_content(), Some(PanelContent::CurveEditor)) {
+			return;
+		}
+		let Some(ObjectId::Instance { composition, instance }) = self.project_pane.selected_id else {
+			return;
+		};
+		let Some(comp) = self.project.composition_mut(&composition) else {
+			return;
+		};
+		let name = comp.get(instance).map(|obj| obj.name().to_string()).unwrap_or_default();
+		comp.remove(instance);
+
+		self.rebuild_timeline_for_composition(composition);
+		self.project_pane.selected_id = Some(ObjectId::Composition(composition));
+		self.request_preview_refresh();
+		self.show_toast(Icon::Trash, format!("Deleted “{name}”"));
 	}
 
 	fn apply_timeline_message(&mut self, msg: TimelineMessage) {
@@ -482,6 +706,7 @@ impl NadeApp {
 			instance: instance_id,
 		});
 		self.request_preview_refresh();
+		self.show_toast(Icon::LayerText, format!("Added text layer “{name}”"));
 	}
 
 	/// プレビュー解像度をコンポジションに合わせる（低解像度アップスケールの格子を防ぐ）
@@ -832,9 +1057,15 @@ impl NadeApp {
 				}
 				self.asset_browser.selected_id = Some(id);
 				log::info!("Imported media: {}", path.display());
+				let name = path
+					.file_name()
+					.map(|name| name.to_string_lossy().into_owned())
+					.unwrap_or_default();
+				self.show_toast(Icon::Import, format!("Imported “{name}”"));
 			}
 			None => {
 				log::warn!("Unsupported media type: {}", path.display());
+				self.show_toast(Icon::Close, "Unsupported media type");
 			}
 		}
 	}
@@ -881,6 +1112,7 @@ impl NadeApp {
 		if let Some(track) = self.timeline.model.tracks.get_mut(track_index) {
 			track.add_clip(TimelineClip::new(clip_id, &name, start_time, duration));
 			log::info!("Added `{name}` to timeline at {start_time:.2}s");
+			self.show_toast(Icon::Insert, format!("Added “{name}” to the timeline"));
 		}
 	}
 
@@ -889,10 +1121,58 @@ impl NadeApp {
 			.panel_system
 			.view(|panel_id, content| self.view_panel_content(panel_id, content));
 
-		container(panel_view.map(Message::PanelSystem))
+		let composition = self.target_composition().and_then(|id| self.project.composition(&id));
+
+		let mut chrome = column![];
+		if TITLE_BAR_HEIGHT > 0.0 {
+			chrome = chrome.push(shell::title_bar::view(
+				self.project.name(),
+				composition.map(|comp| comp.name()),
+			));
+		}
+
+		let breathing = self.now.saturating_duration_since(self.started).as_secs_f32() * std::f32::consts::TAU * 0.6;
+		let pulse = breathing.sin() * 0.5 + 0.5;
+
+		let chrome = chrome
+			.push(shell::toolbar::view(shell::toolbar::ToolbarState {
+				tool: self.tool,
+				tool_pill: self.tool_pill.interpolate_with(|value| value, self.now),
+				workspace: self.workspace,
+				workspace_pill: self.workspace_pill.interpolate_with(|value| value, self.now),
+			}))
+			.push(
+				container(panel_view.map(Message::PanelSystem))
+					.padding([0.0, SHELL_GUTTER])
+					.width(Length::Fill)
+					.height(Length::Fill),
+			)
+			.push(shell::status_bar::view(shell::status_bar::StatusInfo {
+				playing: self.current_model.preview.is_playing,
+				pulse,
+				render_fps: self.render_fps,
+				hint: self.tool.hint(),
+				composition: composition.map(|comp| shell::status_bar::CompositionSummary {
+					name: comp.name(),
+					width: comp.width(),
+					height: comp.height(),
+					fps: comp.fps(),
+					duration: comp.duration(),
+				}),
+			}));
+
+		let base = container(chrome)
 			.width(Length::Fill)
 			.height(Length::Fill)
-			.into()
+			.style(constants::widgets::window);
+
+		match self.toast.as_ref().filter(|toast| toast.is_active(self.now)) {
+			Some(toast) => stack![base, shell::toast::view(toast, self.now, STATUS_BAR_HEIGHT + 18.0)]
+				.width(Length::Fill)
+				.height(Length::Fill)
+				.into(),
+			None => base.into(),
+		}
 	}
 
 	fn view_panel_content<'a>(
@@ -926,29 +1206,18 @@ impl NadeApp {
 			build_render_stream,
 		);
 
-		let keyboard_subscription = iced::event::listen_with(|event, _status, _id| match event {
-			iced::Event::Keyboard(keyboard::Event::KeyPressed {
-				key: keyboard::Key::Named(keyboard::key::Named::Space),
-				..
-			}) => Some(Message::TogglePlay),
-			// 押下（キャプチャ済みを含む）でポインタ下のパネルへフォーカス
-			iced::Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => {
-				Some(Message::PanelSystem(PanelSystemMessage::FocusPointer))
-			}
-			_ => None,
-		});
+		let events = iced::event::listen_with(on_window_event);
 
-		// 再生中・メニューアニメ中は ~60fps、それ以外は間引き
-		let tick_ms = if self.current_model.preview.is_playing || self.panel_system.is_animating() {
+		// 再生中・UI アニメ中は ~60fps、それ以外は間引き
+		let tick_ms = if self.current_model.preview.is_playing || self.is_ui_animating() {
 			16
 		} else {
 			50
 		};
 		let tick = iced::time::every(std::time::Duration::from_millis(tick_ms)).map(|_| Message::Tick);
-		let resize = iced::event::listen_with(on_window_resize);
 		let close = iced::window::close_requests().map(Message::CloseRequested);
 
-		Subscription::batch([render_subscription, keyboard_subscription, tick, resize, close])
+		Subscription::batch([render_subscription, events, tick, close])
 	}
 }
 

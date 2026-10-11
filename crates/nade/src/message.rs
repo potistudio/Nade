@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use timeline_panel::TimelineMessage;
 
 use crate::panel_content::PanelContent;
+use crate::tool::Tool;
+use crate::workspace::Workspace;
 use core::FrameData;
 
 pub use asset_browser::AssetBrowserMessage;
@@ -37,11 +39,42 @@ pub enum AppPanelMessage {
 	Preview(PreviewMessage),
 }
 
+/// 再生コントロール（ビューアのトランスポートとショートカット共通）
+#[derive(Debug, Clone, Copy)]
+pub enum TransportMessage {
+	TogglePlay,
+	GoToStart,
+	GoToEnd,
+	StepBackward,
+	StepForward,
+	ToggleLoop,
+}
+
+/// ウィンドウ上部のツールバー／タイトルストリップからの操作
+#[derive(Debug, Clone, Copy)]
+pub enum ShellMessage {
+	SelectTool(Tool),
+	SelectWorkspace(Workspace),
+	NewComposition,
+	NewTextLayer,
+	ImportMedia,
+	/// タイトルストリップのドラッグでウィンドウを移動
+	DragWindow,
+	/// タイトルストリップのダブルクリックで最大化を切り替え
+	ToggleMaximize,
+}
+
 /// アプリケーションメッセージ
 #[derive(Debug, Clone)]
 pub enum Message {
-	/// 再生/一時停止の切り替え
-	TogglePlay,
+	/// 再生コントロール
+	Transport(TransportMessage),
+	/// ツールバー操作
+	Shell(ShellMessage),
+	/// 選択中のレイヤーを削除
+	DeleteSelection,
+	/// ウィンドウサイズ変更
+	WindowResized(iced::Size),
 	/// 定期更新（再生中のアニメーション用）
 	Tick,
 	/// パネルシステムメッセージ
