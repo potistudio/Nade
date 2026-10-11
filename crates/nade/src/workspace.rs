@@ -52,7 +52,7 @@ impl Workspace {
 
 				let left = LayoutBuilder::vsplit(layers, assets, 0.58);
 				let center = LayoutBuilder::vsplit(viewer, timeline, 0.62);
-				let main = LayoutBuilder::hsplit(center, properties, 0.76);
+				let main = LayoutBuilder::hsplit(center, properties, 0.7);
 				LayoutBuilder::hsplit(left, main, 0.17)
 			}
 			Self::Graph => {
@@ -62,7 +62,7 @@ impl Workspace {
 				let properties = builder.area(PanelContent::Inspector);
 
 				let center = LayoutBuilder::vsplit(viewer, curves, 0.5);
-				let main = LayoutBuilder::hsplit(center, properties, 0.76);
+				let main = LayoutBuilder::hsplit(center, properties, 0.7);
 				LayoutBuilder::hsplit(layers, main, 0.17)
 			}
 			Self::Edit => {
@@ -74,7 +74,7 @@ impl Workspace {
 
 				let left = LayoutBuilder::vsplit(assets, layers, 0.55);
 				let center = LayoutBuilder::vsplit(viewer, timeline, 0.52);
-				let main = LayoutBuilder::hsplit(center, properties, 0.8);
+				let main = LayoutBuilder::hsplit(center, properties, 0.74);
 				LayoutBuilder::hsplit(left, main, 0.2)
 			}
 		};

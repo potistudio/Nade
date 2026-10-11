@@ -172,6 +172,13 @@ impl InstanceContent {
 		}
 	}
 
+	pub fn spacing_mut(&mut self) -> Option<&mut f32> {
+		match self {
+			Self::Text { spacing, .. } => Some(spacing),
+			Self::Empty => None,
+		}
+	}
+
 	pub fn fill_color_mut(&mut self) -> Option<&mut [f32; 4]> {
 		match self {
 			Self::Text { fill_color, .. } => Some(fill_color),

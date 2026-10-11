@@ -549,6 +549,23 @@ pub fn text_input(_theme: &Theme, status: text_input_widget::Status) -> text_inp
 	}
 }
 
+/// Flat title field that only reveals its chrome on hover / focus
+/// (inline rename).
+pub fn title_input(theme: &Theme, status: text_input_widget::Status) -> text_input_widget::Style {
+	let base = text_input(theme, status);
+	match status {
+		text_input_widget::Status::Active => text_input_widget::Style {
+			background: Background::Color(Color::TRANSPARENT),
+			..base
+		},
+		text_input_widget::Status::Hovered => text_input_widget::Style {
+			background: Background::Color(white(0.05)),
+			..base
+		},
+		_ => base,
+	}
+}
+
 /// Search field: pill shaped, quieter than a value field.
 pub fn search_input(theme: &Theme, status: text_input_widget::Status) -> text_input_widget::Style {
 	let base = text_input(theme, status);

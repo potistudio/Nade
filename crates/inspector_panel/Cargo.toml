@@ -1,6 +1,6 @@
 [package]
 name = "inspector_panel"
-description = "Inspector panel UI for operator editing"
+description = "Typed messages for the properties panel"
 authors.workspace = true
 version.workspace = true
 license.workspace = true
@@ -11,6 +11,4 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-iced.workspace = true
-core.workspace = true
-operators.workspace = true
+domain.workspace = true

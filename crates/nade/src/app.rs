@@ -12,7 +12,7 @@ use iced::keyboard;
 use iced::time::{Duration, Instant};
 use iced::widget::{column, container, stack};
 use iced::{Animation, Element, Length, Size, Subscription, Task, Theme};
-use inspector_panel::InspectorMessage;
+use inspector_panel::{InspectorMessage, PropertyGroup};
 use panel_system::{PanelSystem, PanelSystemMessage};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -176,6 +176,8 @@ pub(super) struct NadeApp {
 	viewer: ViewerSettings,
 	/// ビューア領域のサイズ（倍率表示用）
 	viewer_size: Size,
+	/// プロパティパネルの UI 状態
+	inspector_ui: panels::inspector::InspectorUi,
 	/// 再生ボタンの ▶ ⇄ ❚❚ モーフ
 	play_morph: Animation<bool>,
 	/// 再生切替 HUD の開始時刻
@@ -232,6 +234,7 @@ impl NadeApp {
 				.duration(Duration::from_millis(constants::style::MOTION_STANDARD_MS))
 				.easing(Easing::EaseInOutCubic),
 			play_hud: None,
+			inspector_ui: panels::inspector::InspectorUi::default(),
 			#[cfg(debug_assertions)]
 			capture: crate::devtools::Capture::from_env(),
 		};
@@ -636,6 +639,7 @@ impl NadeApp {
 		self.panel_system.is_animating()
 			|| self.play_morph.is_animating(self.now)
 			|| self.play_hud_progress().is_some()
+			|| self.inspector_ui.is_animating(self.now)
 			|| self.tool_pill.is_animating(self.now)
 			|| self.workspace_pill.is_animating(self.now)
 			|| self.toast.as_ref().is_some_and(|toast| toast.is_active(self.now))
@@ -971,18 +975,6 @@ impl NadeApp {
 		}
 	}
 
-	fn selected_instance_selection(&self) -> Option<panels::inspector::InspectorSelection<'_>> {
-		let ObjectId::Instance { composition, instance } = self.project_pane.selected_id? else {
-			return None;
-		};
-
-		let obj = self.project.composition(&composition)?.get(instance)?;
-		Some(panels::inspector::InspectorSelection {
-			transform: obj.transform(),
-			content: obj.content(),
-		})
-	}
-
 	fn selected_transform_animation(&self) -> Option<&TransformAnimation> {
 		let ObjectId::Instance { composition, instance } = self.project_pane.selected_id? else {
 			return None;
@@ -1201,9 +1193,30 @@ impl NadeApp {
 	}
 
 	fn apply_inspector_message(&mut self, msg: InspectorMessage) {
+		let now = self.now;
+		match msg {
+			InspectorMessage::ToggleSection(section) => {
+				self.inspector_ui.toggle(section, now);
+				return;
+			}
+			InspectorMessage::ToggleScaleLink => {
+				self.inspector_ui.scale_linked = !self.inspector_ui.scale_linked;
+				return;
+			}
+			InspectorMessage::HexEdited(draft) => {
+				self.inspector_ui.hex_draft = Some(draft);
+				return;
+			}
+			_ => {}
+		}
+
 		let Some(ObjectId::Instance { composition, instance }) = self.project_pane.selected_id else {
 			return;
 		};
+		let time = self.current_model.preview.time;
+		let fps = self.composition_fps();
+		let scale_linked = self.inspector_ui.scale_linked;
+		let hex_draft = self.inspector_ui.hex_draft.take();
 
 		let Some(obj) = self
 			.project
@@ -1213,21 +1226,74 @@ impl NadeApp {
 			return;
 		};
 
+		let mut toast = None;
+		let mut jump = None;
+		let mut renamed = None;
+
 		match msg {
-			InspectorMessage::UpdateTransform { field, index, value } => {
-				let transform = obj.transform_mut();
-				let target = match field.as_str() {
-					"position" => &mut transform.position,
-					"rotation" => &mut transform.rotation,
-					"scale" => &mut transform.scale,
-					_ => return,
+			InspectorMessage::SetChannel { property, value } => {
+				let partner = match property {
+					TransformProperty::ScaleX => Some(TransformProperty::ScaleY),
+					TransformProperty::ScaleY => Some(TransformProperty::ScaleX),
+					_ => None,
 				};
-				if let Some(slot) = target.get_mut(index) {
-					*slot = value;
+				// 縦横比を固定: 変化率をもう一方の軸にも掛ける
+				if let (true, Some(partner)) = (scale_linked, partner) {
+					let previous = obj.property_at(property, time);
+					let other = obj.property_at(partner, time);
+					let other_next = if previous.abs() > f32::EPSILON {
+						other * value / previous
+					} else {
+						value
+					};
+					obj.set_property_at(partner, time, other_next);
 				}
+				obj.set_property_at(property, time, value);
 			}
-			InspectorMessage::SetOpacity(opacity) => {
-				obj.transform_mut().opacity = opacity.clamp(0.0, 1.0);
+			InspectorMessage::ToggleKeyframe(group) => {
+				let channels = group.channels();
+				let on_key = channels
+					.iter()
+					.any(|property| obj.animation.curve(*property).key_at(time).is_some());
+				for property in channels {
+					let has_key = obj.animation.curve(*property).key_at(time).is_some();
+					if has_key == on_key {
+						obj.toggle_key_at(*property, time);
+					}
+				}
+				let timecode = core::timecode::format(time, fps);
+				toast = Some(if on_key {
+					(Icon::Keyframe, format!("Removed {} key at {timecode}", group.label()))
+				} else {
+					(Icon::KeyframeFilled, format!("Keyed {} at {timecode}", group.label()))
+				});
+			}
+			InspectorMessage::JumpToKey { group, forward } => {
+				let times = group.channels().iter().filter_map(|property| {
+					let curve = obj.animation.curve(*property);
+					if forward {
+						curve.next_key_time(time)
+					} else {
+						curve.previous_key_time(time)
+					}
+				});
+				jump = if forward {
+					times.reduce(f32::min)
+				} else {
+					times.reduce(f32::max)
+				};
+			}
+			InspectorMessage::ResetTransform => {
+				for group in PropertyGroup::ALL {
+					for property in group.channels() {
+						obj.set_property_at(*property, time, PropertyGroup::default_value(*property));
+					}
+				}
+				toast = Some((Icon::Reset, "Transform reset".to_string()));
+			}
+			InspectorMessage::Rename(name) => {
+				obj.name = name.clone();
+				renamed = Some(name);
 			}
 			InspectorMessage::SetText(text) => {
 				if let Some(slot) = obj.content_mut().text_mut() {
@@ -1239,16 +1305,90 @@ impl NadeApp {
 					*slot = size.max(1.0);
 				}
 			}
-			InspectorMessage::SetFillColor { index, value } => {
+			InspectorMessage::SetTracking(spacing) => {
+				if let Some(slot) = obj.content_mut().spacing_mut() {
+					*slot = spacing;
+				}
+			}
+			InspectorMessage::SetFillChannel { index, value } => {
 				if let Some(color) = obj.content_mut().fill_color_mut()
 					&& let Some(slot) = color.get_mut(index)
 				{
 					*slot = value.clamp(0.0, 1.0);
 				}
 			}
+			InspectorMessage::SetFillRgb(rgb) => {
+				if let Some(color) = obj.content_mut().fill_color_mut() {
+					color[..3].copy_from_slice(&rgb);
+				}
+			}
+			InspectorMessage::HexSubmitted => {
+				if let Some(rgb) = hex_draft.as_deref().and_then(parse_hex_color)
+					&& let Some(color) = obj.content_mut().fill_color_mut()
+				{
+					color[..3].copy_from_slice(&rgb);
+				}
+			}
+			InspectorMessage::ToggleSection(_) | InspectorMessage::ToggleScaleLink | InspectorMessage::HexEdited(_) => {
+			}
 		}
 
-		self.request_preview_refresh();
+		if let Some(name) = renamed {
+			for clip in self
+				.timeline
+				.model
+				.tracks
+				.iter_mut()
+				.flat_map(|track| track.clips.iter_mut())
+			{
+				if clip.instance_id == Some(instance) && clip.composition_id == Some(composition) {
+					clip.name = name.clone();
+				}
+			}
+		}
+		if let Some((icon, text)) = toast {
+			self.show_toast(icon, text);
+		}
+		match jump {
+			Some(time) => self.apply_core_msg(Msg::SetTime(time)),
+			None => self.request_preview_refresh(),
+		}
+	}
+
+	fn inspector_target(&self) -> panels::inspector::InspectorTarget<'_> {
+		use panels::inspector::{InspectorTarget, LayerTarget};
+
+		match self.project_pane.selected_id {
+			Some(ObjectId::Instance { composition, instance }) => {
+				let Some(obj) = self
+					.project
+					.composition(&composition)
+					.and_then(|comp| comp.get(instance))
+				else {
+					return InspectorTarget::Empty;
+				};
+				InspectorTarget::Layer(LayerTarget {
+					instance: obj,
+					time: self.current_model.preview.time,
+					fps: self.composition_fps(),
+					label: constants::style::label_color(obj.track_index()),
+				})
+			}
+			Some(ObjectId::Composition(id)) => match self.project.composition(&id) {
+				Some(comp) => InspectorTarget::Composition {
+					summary: crate::viewer::CompositionSummary {
+						name: comp.name(),
+						width: comp.width(),
+						height: comp.height(),
+						fps: comp.fps(),
+						duration: comp.duration(),
+					},
+					layers: comp.len(),
+				},
+				None => InspectorTarget::Empty,
+			},
+			None => InspectorTarget::Empty,
+		}
 	}
 
 	fn apply_assets_message(&mut self, msg: AssetBrowserMessage) -> Task<Message> {
@@ -1461,7 +1601,7 @@ impl NadeApp {
 				self.current_model.preview.time,
 			),
 			PanelContent::MainPreview => panels::preview::view(self.viewer_props()),
-			PanelContent::Inspector => panels::inspector::view(self.selected_instance_selection()),
+			PanelContent::Inspector => panels::inspector::view(self.inspector_target(), &self.inspector_ui, self.now),
 			PanelContent::Project => panels::browser::view(&self.project, &self.project_pane),
 			PanelContent::Assets => panels::assets::view(&self.project, &self.asset_browser),
 		}
@@ -1502,6 +1642,22 @@ fn instance_to_text_object(instance: &Instance, time: f32) -> Option<TextObject>
 		spacing,
 		fill_color,
 	})
+}
+
+/// `#RRGGBB` / `RRGGBB` / `#RGB` → linear 0..1 RGB.
+fn parse_hex_color(input: &str) -> Option<[f32; 3]> {
+	let hex = input.trim().trim_start_matches('#');
+	let expanded: String = match hex.len() {
+		3 => hex.chars().flat_map(|c| [c, c]).collect(),
+		6 => hex.to_string(),
+		_ => return None,
+	};
+	let channel = |index: usize| u8::from_str_radix(&expanded[index..index + 2], 16).ok();
+	Some([
+		channel(0)? as f32 / 255.0,
+		channel(2)? as f32 / 255.0,
+		channel(4)? as f32 / 255.0,
+	])
 }
 
 fn unique_composition_name(project: &Project) -> String {
@@ -1548,4 +1704,17 @@ fn unique_numbered_name(base: &str, existing: &[String]) -> String {
 	}
 
 	unreachable!()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::parse_hex_color;
+
+	#[test]
+	fn parses_hex_colors() {
+		assert_eq!(parse_hex_color("#FF0000"), Some([1.0, 0.0, 0.0]));
+		assert_eq!(parse_hex_color("0f0"), Some([0.0, 1.0, 0.0]));
+		assert_eq!(parse_hex_color("#12345"), None);
+		assert_eq!(parse_hex_color("#GG0000"), None);
+	}
 }

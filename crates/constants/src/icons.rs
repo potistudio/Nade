@@ -52,6 +52,7 @@ icon_set! {
 	KeyframeFilled => "keyframe_filled",
 	LayerNull => "layer_null",
 	LayerText => "layer_text",
+	Link => "link",
 	Lock => "lock",
 	Loop => "loop",
 	Minus => "minus",
