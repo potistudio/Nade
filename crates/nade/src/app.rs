@@ -319,7 +319,9 @@ impl NadeApp {
 		let Some(comp) = project.composition_mut(&composition) else {
 			return;
 		};
-		let keys: [(&str, TransformProperty, &[(f32, f32)]); 6] = [
+		/// (レイヤー名, チャンネル, [(時刻, 値)])
+		type SampleKeys = (&'static str, TransformProperty, &'static [(f32, f32)]);
+		let keys: [SampleKeys; 6] = [
 			("Title", TransformProperty::PositionY, &[(0.0, 40.0), (1.0, -60.0)]),
 			("Title", TransformProperty::Opacity, &[(0.0, 0.0), (0.6, 1.0)]),
 			("Badge", TransformProperty::ScaleX, &[(0.8, 0.4), (1.4, 1.0)]),
@@ -1424,7 +1426,6 @@ impl NadeApp {
 				InspectorTarget::Layer(LayerTarget {
 					instance: obj,
 					time: self.current_model.preview.time,
-					fps: self.composition_fps(),
 					label: constants::style::label_color(obj.track_index()),
 				})
 			}

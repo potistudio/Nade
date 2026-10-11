@@ -76,7 +76,6 @@ impl InspectorUi {
 pub struct LayerTarget<'a> {
 	pub instance: &'a Instance,
 	pub time: f32,
-	pub fps: f32,
 	pub label: Color,
 }
 
@@ -476,7 +475,7 @@ fn property_row<'a>(layer: &LayerTarget<'a>, group: PropertyGroup, ui: &Inspecto
 					property: TransformProperty::Opacity,
 					value,
 				})
-				.step(0.01)
+				.step(0.01_f32)
 				.width(Length::Fill)
 				.style(widgets::slider),
 				field(TransformProperty::Opacity)
