@@ -405,9 +405,9 @@ pub fn button_segment(selected: bool) -> impl Fn(&Theme, button::Status) -> butt
 			(false, button::Status::Hovered | button::Status::Pressed) => TEXT_PRIMARY_COLOR,
 			(false, _) => TEXT_SECONDARY_COLOR,
 		};
+		// 押下時の専用スタイルは持たない（選択ピルの移動で反応を示す）
 		let background = match (selected, status) {
-			(false, button::Status::Hovered) => Some(white(0.04).into()),
-			(false, button::Status::Pressed) => Some(white(0.08).into()),
+			(false, button::Status::Hovered | button::Status::Pressed) => Some(white(0.04).into()),
 			_ => None,
 		};
 		button::Style {
