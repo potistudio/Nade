@@ -72,6 +72,11 @@ impl Composition {
 		self.fps
 	}
 
+	/// Returns the playable duration of the composition in seconds
+	pub fn duration(&self) -> f32 {
+		(self.end_time - self.start_time).max(0.0) as f32
+	}
+
 	/// Returns whether this composition has any objects
 	pub fn has_objects(&self) -> bool {
 		!self.instances.is_empty()
@@ -83,7 +88,14 @@ impl Composition {
 	}
 
 	pub fn add_instance_named(&mut self, node_id: NodeId, name: impl Into<String>) -> &mut Instance {
-		let next_id = InstanceId::new(self.instances.len());
+		// 削除後も ID が衝突しないよう、既存の最大 ID の次を採番する
+		let next_id = InstanceId::new(
+			self.instances
+				.iter()
+				.map(|instance| instance.id().value() + 1)
+				.max()
+				.unwrap_or(0),
+		);
 		let name = name.into();
 		// 先頭から重ね、空いているトラック（レイヤー）に配置する
 		let start_time = 0.0;
@@ -174,6 +186,18 @@ mod tests {
 		assert_eq!(b, 1);
 		assert_eq!(c, 2);
 		assert!(composition.all_objects().all(|instance| instance.start_time() == 0.0));
+	}
+
+	#[test]
+	fn instance_ids_stay_unique_after_removal() {
+		let mut composition = Composition::new(CompositionId::new(0), "Test", 1920, 1080, 60.0);
+		let a = composition.add_instance_named(NodeId::new(0), "A").id();
+		let b = composition.add_instance_named(NodeId::new(1), "B").id();
+		composition.remove(a);
+		let c = composition.add_instance_named(NodeId::new(2), "C").id();
+
+		assert_ne!(b, c);
+		assert!(composition.get(b).is_some_and(|instance| instance.name() == "B"));
 	}
 
 	#[test]
