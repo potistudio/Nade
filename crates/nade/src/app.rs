@@ -1047,6 +1047,15 @@ impl NadeApp {
 	}
 
 	fn apply_curve_editor_message(&mut self, msg: CurveEditorMessage) {
+		// キャンバスはフォーカスに関係なくキー入力を受け取るため、Delete は
+		// カーブエディタにフォーカスがある時だけキー削除として扱う
+		if matches!(
+			msg,
+			CurveEditorMessage::CanvasEvent(curve_editor_panel::CurveCanvasEvent::DeletePressed)
+		) && !matches!(self.panel_system.focused_content(), Some(PanelContent::CurveEditor))
+		{
+			return;
+		}
 		let Some(ObjectId::Instance { composition, instance }) = self.project_pane.selected_id else {
 			return;
 		};
