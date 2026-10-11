@@ -303,6 +303,7 @@ impl NadeApp {
 			badge.transform.opacity = 0.85;
 			badge.set_content(InstanceContent::text("Badge"));
 		}
+		Self::animate_sample(&mut project, main);
 
 		let node_bg = project.create_node();
 		if let Some(comp) = project.composition_mut(&scene) {
@@ -310,6 +311,37 @@ impl NadeApp {
 		}
 
 		(project, main, assets)
+	}
+
+	/// サンプルにモーショングラフィックスらしい動きを付ける
+	/// （タイトルのスライドイン + フェード、バッジのポップ）
+	fn animate_sample(project: &mut Project, composition: CompositionId) {
+		let Some(comp) = project.composition_mut(&composition) else {
+			return;
+		};
+		let keys: [(&str, TransformProperty, &[(f32, f32)]); 6] = [
+			("Title", TransformProperty::PositionY, &[(0.0, 40.0), (1.0, -60.0)]),
+			("Title", TransformProperty::Opacity, &[(0.0, 0.0), (0.6, 1.0)]),
+			("Badge", TransformProperty::ScaleX, &[(0.8, 0.4), (1.4, 1.0)]),
+			("Badge", TransformProperty::ScaleY, &[(0.8, 0.4), (1.4, 1.0)]),
+			("Badge", TransformProperty::Opacity, &[(0.8, 0.0), (1.1, 0.85)]),
+			("Badge", TransformProperty::RotationZ, &[(0.8, -12.0), (1.6, 0.0)]),
+		];
+		let ids: Vec<(String, InstanceId)> = comp
+			.all_objects()
+			.map(|instance| (instance.name().to_string(), instance.id()))
+			.collect();
+		for (name, property, points) in keys {
+			let Some(id) = ids.iter().find(|(candidate, _)| candidate == name).map(|(_, id)| *id) else {
+				continue;
+			};
+			if let Some(instance) = comp.get_mut(id) {
+				let curve = instance.animation.curve_mut(property);
+				for &(time, value) in points {
+					curve.add_key(time, value);
+				}
+			}
+		}
 	}
 
 	/// ワークスペースのパネルレイアウトを構築
@@ -755,7 +787,29 @@ impl NadeApp {
 				}
 				self.sync_preview_size_from_composition(composition);
 				self.sync_timeline_selection_from_object(id);
+				self.focus_animated_channel(composition, instance);
 			}
+		}
+	}
+
+	/// カーブエディタの表示チャンネルが空なら、アニメーションのある最初のチャンネルへ切り替える
+	fn focus_animated_channel(&mut self, composition: CompositionId, instance: InstanceId) {
+		let Some(obj) = self
+			.project
+			.composition(&composition)
+			.and_then(|comp| comp.get(instance))
+		else {
+			return;
+		};
+		if obj.is_animated(self.curve_editor.selected_property) {
+			return;
+		}
+		if let Some(property) = TransformProperty::ALL
+			.into_iter()
+			.find(|property| obj.is_animated(*property))
+		{
+			self.curve_editor.selected_property = property;
+			self.curve_editor.selected_key = None;
 		}
 	}
 
