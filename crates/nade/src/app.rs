@@ -1427,6 +1427,10 @@ impl NadeApp {
 				self.add_selected_asset_to_timeline();
 				Task::none()
 			}
+			AssetBrowserMessage::FilterChanged(filter) => {
+				self.asset_browser.filter = filter;
+				Task::none()
+			}
 		}
 	}
 

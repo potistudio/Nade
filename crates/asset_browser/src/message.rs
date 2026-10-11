@@ -13,4 +13,6 @@ pub enum AssetBrowserMessage {
 	NewFolder,
 	/// Add the selected media asset to the timeline.
 	AddToTimeline,
+	/// Search field text changed.
+	FilterChanged(String),
 }
