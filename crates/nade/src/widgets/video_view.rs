@@ -1,20 +1,16 @@
 use crate::message::PreviewMessage;
 use core::FrameData;
 use iced::advanced::graphics::Viewport;
-use iced::keyboard;
-use iced::widget::shader::{Action, Pipeline, Primitive, Program};
-use iced::{Color, Event, Point, Rectangle, Size, Vector, mouse};
+use iced::widget::shader::{Pipeline, Primitive, Program};
+use iced::{Color, Rectangle, Vector, mouse};
 use std::fmt::Debug;
 
 use wgpu;
 
 use constants::style;
 
-const ZOOM_SPEED: f32 = 0.01;
-const MIN_ZOOM: f32 = 0.05;
-const MAX_ZOOM: f32 = 32.0;
-const SCROLL_LINE_PX: f32 = 20.0;
-const CANVAS_BG: Color = style::WIDGET_COLOR;
+/// Backdrop around the comp frame (pasteboard).
+const CANVAS_BG: Color = style::WELL_COLOR;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -48,149 +44,18 @@ impl VideoView {
 	}
 }
 
-/// Ephemeral interaction state only (persists while the shader widget stays mounted).
-#[derive(Debug, Default)]
-pub struct VideoViewState {
-	modifiers: keyboard::Modifiers,
-	panning: Option<Point>,
-}
-
-fn fit_scale(viewport: Size, frame_w: f32, frame_h: f32) -> f32 {
-	(viewport.width / frame_w.max(1.0)).min(viewport.height / frame_h.max(1.0))
-}
-
-fn frame_origin(zoom: f32, offset: Vector, viewport: Size, frame_w: f32, frame_h: f32) -> Point {
-	let display_scale = fit_scale(viewport, frame_w, frame_h) * zoom;
-	let display_w = frame_w * display_scale;
-	let display_h = frame_h * display_scale;
-	Point::new(
-		(viewport.width - display_w) * 0.5 + offset.x,
-		(viewport.height - display_h) * 0.5 + offset.y,
-	)
-}
-
-fn screen_to_local(zoom: f32, offset: Vector, screen: Point, viewport: Size, frame_w: f32, frame_h: f32) -> Point {
-	let origin = frame_origin(zoom, offset, viewport, frame_w, frame_h);
-	let display_scale = fit_scale(viewport, frame_w, frame_h) * zoom;
-	Point::new(
-		(screen.x - origin.x) / display_scale,
-		(screen.y - origin.y) / display_scale,
-	)
-}
-
-fn zoom_at(
-	zoom: f32,
-	offset: Vector,
-	delta: f32,
-	cursor: Point,
-	viewport: Size,
-	frame_w: f32,
-	frame_h: f32,
-) -> (f32, Vector) {
-	let local = screen_to_local(zoom, offset, cursor, viewport, frame_w, frame_h);
-	let new_zoom = (zoom * (1.0 + delta * ZOOM_SPEED)).clamp(MIN_ZOOM, MAX_ZOOM);
-	if (new_zoom - zoom).abs() < f32::EPSILON {
-		return (zoom, offset);
-	}
-
-	let display_scale = fit_scale(viewport, frame_w, frame_h) * new_zoom;
-	let display_w = frame_w * display_scale;
-	let display_h = frame_h * display_scale;
-	let center_origin = Point::new((viewport.width - display_w) * 0.5, (viewport.height - display_h) * 0.5);
-	let new_offset = Vector::new(
-		cursor.x - center_origin.x - local.x * display_scale,
-		cursor.y - center_origin.y - local.y * display_scale,
-	);
-	(new_zoom, new_offset)
-}
-
-fn view_changed(zoom: f32, offset: Vector) -> PreviewMessage {
-	PreviewMessage::ViewChanged {
-		zoom,
-		offset: [offset.x, offset.y],
-	}
-}
-
 impl Program<PreviewMessage> for VideoView {
-	type State = VideoViewState;
+	type State = ();
 	type Primitive = VideoPrimitive;
 
-	fn update(
+	// 入力はすべて ViewerOverlay が扱う。ここでは描画のみ。
+	fn mouse_interaction(
 		&self,
-		state: &mut Self::State,
-		event: &Event,
-		bounds: Rectangle,
-		cursor: mouse::Cursor,
-	) -> Option<Action<PreviewMessage>> {
-		let Some(frame) = &self.frame else {
-			return None;
-		};
-		let frame_w = frame.width as f32;
-		let frame_h = frame.height as f32;
-		let viewport = bounds.size();
-
-		match event {
-			Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
-				state.modifiers = *modifiers;
-				None
-			}
-			Event::Mouse(mouse_event) => match mouse_event {
-				mouse::Event::ButtonPressed(mouse::Button::Middle) => {
-					let cursor_pos = cursor.position_in(bounds)?;
-					state.panning = Some(cursor_pos);
-					Some(Action::capture())
-				}
-				mouse::Event::ButtonReleased(mouse::Button::Middle) => {
-					if state.panning.take().is_some() {
-						Some(Action::capture())
-					} else {
-						None
-					}
-				}
-				mouse::Event::CursorMoved { .. } => {
-					let cursor_pos = cursor.position_in(bounds)?;
-					if let Some(prev) = state.panning {
-						let offset = Vector::new(
-							self.offset.x + cursor_pos.x - prev.x,
-							self.offset.y + cursor_pos.y - prev.y,
-						);
-						state.panning = Some(cursor_pos);
-						Some(Action::publish(view_changed(self.zoom, offset)).and_capture())
-					} else {
-						None
-					}
-				}
-				mouse::Event::WheelScrolled { delta } => {
-					let cursor_pos = cursor.position_in(bounds)?;
-					let (dx, dy) = match delta {
-						mouse::ScrollDelta::Lines { x, y } => (*x * SCROLL_LINE_PX, *y * SCROLL_LINE_PX),
-						mouse::ScrollDelta::Pixels { x, y } => (*x, *y),
-					};
-
-					let (zoom, offset) = if state.modifiers.control() {
-						zoom_at(self.zoom, self.offset, dy, cursor_pos, viewport, frame_w, frame_h)
-					} else if state.modifiers.shift() {
-						(self.zoom, Vector::new(self.offset.x + dy, self.offset.y))
-					} else {
-						(self.zoom, Vector::new(self.offset.x + dx, self.offset.y + dy))
-					};
-					Some(Action::publish(view_changed(zoom, offset)).and_capture())
-				}
-				_ => None,
-			},
-			_ => None,
-		}
-	}
-
-	fn mouse_interaction(&self, state: &Self::State, bounds: Rectangle, cursor: mouse::Cursor) -> mouse::Interaction {
-		if state.panning.is_some() {
-			return mouse::Interaction::Grabbing;
-		}
-		if cursor.is_over(bounds) {
-			mouse::Interaction::Grab
-		} else {
-			mouse::Interaction::default()
-		}
+		_state: &Self::State,
+		_bounds: Rectangle,
+		_cursor: mouse::Cursor,
+	) -> mouse::Interaction {
+		mouse::Interaction::None
 	}
 
 	fn draw(&self, _state: &Self::State, _cursor: mouse::Cursor, bounds: Rectangle) -> Self::Primitive {

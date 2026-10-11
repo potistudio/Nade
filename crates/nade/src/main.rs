@@ -10,6 +10,7 @@ mod services;
 mod shell;
 mod theme;
 mod tool;
+mod viewer;
 mod widgets;
 mod workspace;
 

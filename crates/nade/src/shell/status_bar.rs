@@ -9,14 +9,7 @@ use iced::{Alignment, Border, Color, Element, Length};
 
 use crate::message::Message;
 use crate::theme::{SHELL_GUTTER, STATUS_BAR_HEIGHT};
-
-pub struct CompositionSummary<'a> {
-	pub name: &'a str,
-	pub width: u32,
-	pub height: u32,
-	pub fps: f32,
-	pub duration: f32,
-}
+use crate::viewer::CompositionSummary;
 
 pub struct StatusInfo<'a> {
 	pub playing: bool,
