@@ -294,6 +294,50 @@ impl Instance {
 	pub fn end_time(&self) -> f32 {
 		self.start_time + self.duration
 	}
+
+	/// Whether the channel has keyframes.
+	pub fn is_animated(&self, property: TransformProperty) -> bool {
+		!self.animation.curve(property).is_empty()
+	}
+
+	/// Evaluated channel value at `time`.
+	pub fn property_at(&self, property: TransformProperty, time: f32) -> f32 {
+		self.animation
+			.curve(property)
+			.evaluate(property.value(&self.transform), time)
+	}
+
+	/// Write a channel the way motion graphics tools do: animated channels get
+	/// a keyframe at `time`, static channels change the base value.
+	pub fn set_property_at(&mut self, property: TransformProperty, time: f32, value: f32) {
+		let value = match property {
+			TransformProperty::Opacity => value.clamp(0.0, 1.0),
+			_ => value,
+		};
+		if self.is_animated(property) {
+			self.animation.curve_mut(property).add_key(time, value);
+		} else {
+			property.set_value(&mut self.transform, value);
+		}
+	}
+
+	/// Stopwatch toggle: removes the key at `time`, or keys the current value.
+	/// Returns `true` when a key was added.
+	pub fn toggle_key_at(&mut self, property: TransformProperty, time: f32) -> bool {
+		let value = self.property_at(property, time);
+		let curve = self.animation.curve_mut(property);
+		if let Some(id) = curve.key_at(time).map(|key| key.id) {
+			curve.remove_key(id);
+			// 最後のキーを消したら静的な値として残す
+			if curve.is_empty() {
+				property.set_value(&mut self.transform, value);
+			}
+			false
+		} else {
+			curve.add_key(time, value);
+			true
+		}
+	}
 }
 
 #[cfg(test)]
@@ -327,6 +371,30 @@ mod tests {
 		let transform = instance.transform_at(1.0);
 		assert!((transform.position[0] - 50.0).abs() < 0.001);
 		assert_eq!(transform.position[1], 20.0);
+	}
+
+	#[test]
+	fn editing_animated_channel_sets_key() {
+		let mut instance = Instance::new(InstanceId::new(0), NodeId::new(0), "A", 0.0, 5.0);
+		instance.set_property_at(TransformProperty::PositionX, 1.0, 40.0);
+		assert_eq!(instance.transform.position[0], 40.0);
+		assert!(!instance.is_animated(TransformProperty::PositionX));
+
+		assert!(instance.toggle_key_at(TransformProperty::PositionX, 0.0));
+		instance.set_property_at(TransformProperty::PositionX, 2.0, 100.0);
+		let curve = instance.animation.curve(TransformProperty::PositionX);
+		assert_eq!(curve.keys().len(), 2);
+		assert_eq!(instance.property_at(TransformProperty::PositionX, 2.0), 100.0);
+	}
+
+	#[test]
+	fn removing_last_key_keeps_value() {
+		let mut instance = Instance::new(InstanceId::new(0), NodeId::new(0), "A", 0.0, 5.0);
+		instance.toggle_key_at(TransformProperty::ScaleX, 1.0);
+		instance.set_property_at(TransformProperty::ScaleX, 1.0, 2.5);
+		assert!(!instance.toggle_key_at(TransformProperty::ScaleX, 1.0));
+		assert!(!instance.is_animated(TransformProperty::ScaleX));
+		assert_eq!(instance.transform.scale[0], 2.5);
 	}
 
 	#[test]
