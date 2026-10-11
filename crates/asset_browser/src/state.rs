@@ -5,4 +5,6 @@ use std::collections::HashSet;
 pub struct AssetBrowserState {
 	pub expanded_ids: HashSet<AssetId>,
 	pub selected_id: Option<AssetId>,
+	/// Case-insensitive name filter from the search field.
+	pub filter: String,
 }

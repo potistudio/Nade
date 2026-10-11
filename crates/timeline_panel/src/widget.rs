@@ -1,13 +1,19 @@
 //! タイムラインウィジェットの実装
+//!
+//! After Effects 風のレイヤータイムライン: ラベル色付きのレイヤーバー、
+//! キーフレームの菱形、左上のタイムコード、コンポ終端の影を描画する。
+
+use std::collections::HashMap;
 
 use iced::{
-	Color, Element, Event, Length, Point, Rectangle, Size, Theme,
+	Alignment, Color, Element, Event, Font, Length, Point, Rectangle, Size, Theme,
+	alignment::Vertical,
 	keyboard::{self, Key},
 	mouse,
 	widget::{
-		button,
-		canvas::{self, Canvas, Geometry, Path, Stroke, Text},
-		column, container, row, slider,
+		Space, button,
+		canvas::{self, Canvas, Geometry, LineCap, Path, Stroke, Text},
+		container, row, slider,
 	},
 };
 
@@ -15,7 +21,6 @@ use crate::{
 	TimelineClip, TimelineModel,
 	icons::{draw_eye_icon, draw_solo_icon},
 	interaction::{TimelineInteraction, TimelineLayout},
-	utils::{format_time, lighten_color},
 };
 use constants::timeline::{
 	colors::{CLIP_HOVERED_OUTLINE, CLIP_RESIZE_HANDLE, CLIP_SELECTED_OUTLINE, CLIP_SHRINKING_OUTLINE},
@@ -23,61 +28,29 @@ use constants::timeline::{
 };
 use core::TrackVisibilityDisplay;
 
-fn squircle_path(center: Point, width: f32, height: f32, corner_radius: f32) -> Path {
-	// コーナー半径は短辺の半分を超えられない
-	let r = corner_radius.min(width / 2.0).min(height / 2.0);
-	let n = 5.0f32; // iOS近似
+/// Minimum spacing between labelled ruler ticks (px).
+const MIN_LABEL_SPACING: f32 = 76.0;
+/// Subdivisions between labelled ticks.
+const RULER_SUBDIVISIONS: u32 = 5;
+const KEYFRAME_RADIUS: f32 = 4.5;
 
-	let hw = width / 2.0;
-	let hh = height / 2.0;
+/// Truncate `label` with an ellipsis to fit `width` px (approximate glyph width).
+fn fit_label(label: &str, width: f32, glyph_width: f32) -> Option<String> {
+	let capacity = (width / glyph_width).floor() as usize;
+	let length = label.chars().count();
+	if capacity == 0 {
+		None
+	} else if length <= capacity {
+		Some(label.to_string())
+	} else if capacity <= 1 {
+		None
+	} else {
+		Some(label.chars().take(capacity - 1).chain(std::iter::once('…')).collect())
+	}
+}
 
-	// 各コーナーの中心
-	let corners = [
-		Point::new(center.x + hw - r, center.y - hh + r), // 右上
-		Point::new(center.x + hw - r, center.y + hh - r), // 右下
-		Point::new(center.x - hw + r, center.y + hh - r), // 左下
-		Point::new(center.x - hw + r, center.y - hh + r), // 左上
-	];
-
-	// コーナーごとの開始角度（ラジアン）
-	let start_angles = [
-		-std::f32::consts::FRAC_PI_2, // 上→右
-		0.0,                          // 右→下
-		std::f32::consts::FRAC_PI_2,  // 下→左
-		std::f32::consts::PI,         // 左→上
-	];
-
-	let corner_steps = 64usize;
-
-	Path::new(|builder| {
-		let mut first = true;
-
-		for (corner, &start_angle) in corners.iter().zip(start_angles.iter()) {
-			for i in 0..=corner_steps {
-				// 0..=corner_steps で π/2 を分割
-				let local_t = (i as f32) / (corner_steps as f32); // 0.0..=1.0
-				let angle = start_angle + local_t * std::f32::consts::FRAC_PI_2;
-
-				let cos_a = angle.cos();
-				let sin_a = angle.sin();
-
-				// 超楕円の曲線を単位円に適用してからrでスケール
-				let lx = cos_a.abs().powf(2.0 / n) * cos_a.signum() * r;
-				let ly = sin_a.abs().powf(2.0 / n) * sin_a.signum() * r;
-
-				let point = Point::new(corner.x + lx, corner.y + ly);
-
-				if first {
-					builder.move_to(point);
-					first = false;
-				} else {
-					builder.line_to(point);
-				}
-			}
-		}
-
-		builder.close();
-	})
+fn rounded_rect(rect: Rectangle, radius: f32) -> Path {
+	Path::rounded_rectangle(rect.position(), rect.size(), radius.min(rect.height * 0.5).into())
 }
 
 /// Messages that can be sent by the TimelineWidget
@@ -140,6 +113,12 @@ pub struct TimelineWidget<'a> {
 	reorder_preview: Option<(usize, usize)>,
 	/// Track that should glow (from mouse release animation)
 	glowing_track: Option<(usize, f32)>,
+	/// Composition frame rate for timecode and ruler labels.
+	fps: f32,
+	/// Composition duration; time past it is shaded.
+	duration: Option<f32>,
+	/// Keyframe times per clip id (absolute composition time).
+	keyframes: HashMap<usize, Vec<f32>>,
 }
 
 //* -------- Public API -------- */
@@ -151,92 +130,91 @@ impl<'a> TimelineWidget<'a> {
 			model,
 			current_time: 0.0,
 			reorder_preview: None,
-			glowing_track: None,
+			glowing_track: state.reorder_glow,
+			fps: 30.0,
+			duration: None,
+			keyframes: HashMap::new(),
 		}
 	}
 
-	/// Create a new TimelineWidget with reorder preview
-	pub fn with_reorder_preview(
-		state: &'a TimelineInteraction,
-		model: &'a TimelineModel,
-		current_time: f32,
-		reorder_preview: Option<(usize, usize)>,
-	) -> Self {
-		Self {
-			state,
-			model,
-			current_time,
-			reorder_preview,
-			glowing_track: state.reorder_glow,
-		}
+	/// Frame rate used for the timecode readout and ruler labels.
+	pub fn frame_rate(mut self, fps: f32) -> Self {
+		self.fps = fps;
+		self
+	}
+
+	/// Composition duration (shades the region past the end).
+	pub fn duration(mut self, duration: f32) -> Self {
+		self.duration = Some(duration);
+		self
+	}
+
+	/// Keyframe times to mark on clips, keyed by clip id.
+	pub fn keyframes(mut self, keyframes: HashMap<usize, Vec<f32>>) -> Self {
+		self.keyframes = keyframes;
+		self
 	}
 
 	/// Create the view element
-	pub fn view(self, current_time: f32) -> Element<'a, TimelineMessage> {
-		Self::with_reorder_preview(self.state, self.model, current_time, None).view_internal()
+	pub fn view(mut self, current_time: f32) -> Element<'a, TimelineMessage> {
+		self.current_time = current_time;
+		self.view_internal()
 	}
 
 	pub fn view_internal(self) -> Element<'a, TimelineMessage> {
-		let time_scale = self.state.time_scale;
-		let zoom_controls = Self::zoom_control_view(time_scale);
-		let timeline_canvas: Element<'a, TimelineMessage> = Canvas::new(Self {
-			state: self.state,
-			model: self.model,
-			current_time: self.current_time,
-			reorder_preview: self.reorder_preview,
-			glowing_track: self.glowing_track,
-		})
-		.width(Length::Fill)
-		.height(Length::Fill)
-		.into();
+		let zoom_controls = Self::zoom_control_view(self.state.time_scale);
+		let timeline_canvas: Element<'a, TimelineMessage> =
+			Canvas::new(self).width(Length::Fill).height(Length::Fill).into();
 
-		column![timeline_canvas, zoom_controls].into()
+		iced::widget::column![timeline_canvas, zoom_controls].into()
 	}
 }
 
 //* -------- Private API -------- */
 impl TimelineWidget<'_> {
 	fn zoom_control_view(time_scale: f32) -> Element<'static, TimelineMessage> {
-		use constants::style::{FONT_UI, PAD_BUTTON, PAD_TOOLBAR, SPACE_2, TOOLBAR_HEIGHT};
+		use constants::icons::{Icon, icon};
+		use constants::style::{FONT_TINY, SPACE_1, SPACE_2, SPACE_4, TEXT_SECONDARY_COLOR, TOOLBAR_HEIGHT};
 		use constants::widgets;
 
-		let zoom_percent = (time_scale * 100.0) as i32;
+		let icon_button = |glyph: Icon, label: &'static str, message: TimelineMessage| {
+			widgets::tip(
+				button(widgets::button_body_center(icon(glyph, 13.0, TEXT_SECONDARY_COLOR)))
+					.padding(0)
+					.width(TOOLBAR_HEIGHT)
+					.height(TOOLBAR_HEIGHT)
+					.style(widgets::button_ghost)
+					.on_press(message),
+				label,
+				iced::widget::tooltip::Position::Top,
+			)
+		};
 
-		let zoom_out_btn = button(widgets::button_body_center(widgets::ui_label("−", FONT_UI)))
-			.on_press(TimelineMessage::ZoomOut)
-			.padding(PAD_BUTTON)
-			.width(Length::Shrink)
-			.height(TOOLBAR_HEIGHT)
-			.style(widgets::button_tool);
-
-		let zoom_slider = slider(0.1..=10.0, time_scale, TimelineMessage::ZoomChanged)
+		let zoom_slider = slider(MIN_SCALE..=MAX_SCALE, time_scale, TimelineMessage::ZoomChanged)
 			.step(0.1_f32)
 			.width(120)
 			.style(widgets::slider);
 
-		let zoom_in_btn = button(widgets::button_body_center(widgets::ui_label("+", FONT_UI)))
-			.on_press(TimelineMessage::ZoomIn)
-			.padding(PAD_BUTTON)
-			.width(Length::Shrink)
-			.height(TOOLBAR_HEIGHT)
-			.style(widgets::button_tool);
+		let zoom_label = widgets::mono_label(format!("{:.0}%", time_scale * 100.0), FONT_TINY + 1.0)
+			.color(TEXT_SECONDARY_COLOR)
+			.width(40);
 
-		let zoom_label = widgets::ui_label(format!("{zoom_percent}%"), FONT_UI).width(36);
-
-		let reset_btn = button(widgets::button_body_center(widgets::ui_label("1:1", FONT_UI)))
-			.on_press(TimelineMessage::ResetZoom)
-			.padding(PAD_BUTTON)
-			.width(Length::Shrink)
-			.height(TOOLBAR_HEIGHT)
-			.style(widgets::button_tool);
-
-		let controls = row![zoom_out_btn, zoom_slider, zoom_in_btn, zoom_label, reset_btn,]
-			.spacing(SPACE_2)
-			.align_y(iced::Alignment::Center);
+		let controls = row![
+			Space::new().width(Length::Fill),
+			icon_button(Icon::Minus, "Zoom Out  −", TimelineMessage::ZoomOut),
+			zoom_slider,
+			icon_button(Icon::Plus, "Zoom In  +", TimelineMessage::ZoomIn),
+			zoom_label,
+			icon_button(Icon::Fit, "Reset Zoom", TimelineMessage::ResetZoom),
+		]
+		.spacing(SPACE_1 + 2.0)
+		.align_y(Alignment::Center);
 
 		container(controls)
-			.padding(PAD_TOOLBAR)
+			.padding([SPACE_1, SPACE_4])
 			.width(Length::Fill)
+			.height(TOOLBAR_HEIGHT + SPACE_2 * 2.0)
+			.center_y(TOOLBAR_HEIGHT + SPACE_2 * 2.0)
 			.style(widgets::toolbar)
 			.into()
 	}
@@ -246,12 +224,42 @@ impl TimelineWidget<'_> {
 
 		frame.fill_rectangle(Point::ORIGIN, bounds, colors::BACKGROUND);
 
-		self.draw_range_slider(frame, self.state, self.model, layout.range_slider);
 		self.draw_timeline_content(frame, self.state, self.model, layout.content);
-		self.draw_ruler(frame, self.state, layout.ruler);
+		self.draw_composition_end(frame, layout.ruler, layout.content);
+		self.draw_ruler(frame, self.state, layout.ruler, layout.content);
+		self.draw_range_slider(frame, self.state, self.model, layout.range_slider);
 		self.draw_track_labels(frame, self.state, self.model, layout.track_labels);
+		self.draw_corner(
+			frame,
+			Rectangle::new(Point::ORIGIN, Size::new(TRACK_LABEL_WIDTH, layout.content.y)),
+		);
 		self.draw_playhead(frame, self.state, layout.ruler, layout.content);
 		self.draw_selection_rect(frame);
+	}
+
+	/// 左上: 現在時刻のタイムコード（AE のタイムコード表示に相当）
+	fn draw_corner(&self, frame: &mut canvas::Frame, rect: Rectangle) {
+		frame.fill_rectangle(rect.position(), rect.size(), colors::RULER_BG);
+		frame.fill_text(Text {
+			content: core::timecode::format(self.current_time, self.fps),
+			position: Point::new(rect.x + 10.0, rect.y + rect.height * 0.5),
+			color: constants::style::ACCENT_BRIGHT_COLOR,
+			size: 14.0.into(),
+			font: Font::MONOSPACE,
+			align_y: Vertical::Center,
+			..Text::default()
+		});
+		frame.fill_text(Text {
+			content: format!("{:.0} fps", self.fps),
+			position: Point::new(rect.x + rect.width - 10.0, rect.y + rect.height * 0.5),
+			color: colors::TEXT_MUTED,
+			size: 9.0.into(),
+			align_x: iced::advanced::text::Alignment::Right,
+			align_y: Vertical::Center,
+			..Text::default()
+		});
+		self.draw_vertical_line(frame, rect.x + rect.width, rect.y, rect.y + rect.height, colors::BORDER);
+		self.draw_horizontal_line(frame, rect.x, rect.x + rect.width, rect.y + rect.height, colors::BORDER);
 	}
 
 	fn draw_range_slider(
@@ -262,13 +270,6 @@ impl TimelineWidget<'_> {
 		rect: Rectangle,
 	) {
 		frame.fill_rectangle(rect.position(), rect.size(), colors::RANGE_SLIDER_BG);
-		self.draw_horizontal_line(
-			frame,
-			rect.x,
-			rect.x + rect.width,
-			rect.y + rect.height - 1.0,
-			colors::BORDER_DARK,
-		);
 
 		let padding = 3.0_f32;
 		let track_rect = Rectangle {
@@ -277,44 +278,29 @@ impl TimelineWidget<'_> {
 			width: (rect.width - padding * 2.0).max(0.0),
 			height: rect.height - padding * 2.0,
 		};
-
-		let track_path = Path::rounded_rectangle(
-			track_rect.position(),
-			track_rect.size(),
-			(track_rect.height / 2.0).into(),
-		);
-		frame.fill(&track_path, colors::RANGE_SLIDER_TRACK);
+		frame.fill(&rounded_rect(track_rect, track_rect.height), colors::RANGE_SLIDER_TRACK);
 
 		let total_duration = state.total_timeline_duration(model);
 		if total_duration <= 0.0 || track_rect.width <= 0.0 {
 			return;
 		}
 
-		let visible_start = state.visible_start_time();
-		let visible_end = state.visible_end_time();
-
-		let norm_start = (visible_start / total_duration).clamp(0.0, 1.0);
-		let norm_end = (visible_end / total_duration).clamp(0.0, 1.0);
-
+		let norm_start = (state.visible_start_time() / total_duration).clamp(0.0, 1.0);
+		let norm_end = (state.visible_end_time() / total_duration).clamp(0.0, 1.0);
 		let handle_l = track_rect.x + norm_start * track_rect.width;
 		let handle_r = (track_rect.x + norm_end * track_rect.width).max(handle_l + 4.0);
-		let handle_w = handle_r - handle_l;
 
-		let handle_rect = Rectangle {
-			x: handle_l,
-			y: track_rect.y,
-			width: handle_w,
-			height: track_rect.height,
-		};
-
-		let handle_path = Path::rounded_rectangle(
-			handle_rect.position(),
-			handle_rect.size(),
-			(track_rect.height / 2.0).into(),
+		let handle = rounded_rect(
+			Rectangle {
+				x: handle_l,
+				width: handle_r - handle_l,
+				..track_rect
+			},
+			track_rect.height,
 		);
-		frame.fill(&handle_path, colors::RANGE_SLIDER_HANDLE);
+		frame.fill(&handle, colors::RANGE_SLIDER_HANDLE);
 		frame.stroke(
-			&handle_path,
+			&handle,
 			Stroke::default()
 				.with_color(colors::RANGE_SLIDER_HANDLE_BORDER)
 				.with_width(1.0),
@@ -334,45 +320,61 @@ impl TimelineWidget<'_> {
 			height: sel_rect.height,
 		};
 
-		frame.fill_rectangle(local_rect.position(), local_rect.size(), colors::SELECTION_FILL);
-
-		let sel_path = Path::rectangle(local_rect.position(), local_rect.size());
+		let path = rounded_rect(local_rect, 3.0);
+		frame.fill(&path, colors::SELECTION_FILL);
 		frame.stroke(
-			&sel_path,
+			&path,
 			Stroke::default().with_color(colors::SELECTION_STROKE).with_width(1.0),
 		);
 	}
 
-	fn draw_ruler(&self, frame: &mut canvas::Frame, state: &TimelineInteraction, rect: Rectangle) {
-		frame.fill_rectangle(rect.position(), rect.size(), colors::RULER_BG);
+	/// Ruler tick spacing in seconds: the smallest "nice" step whose labels
+	/// stay at least [`MIN_LABEL_SPACING`] apart.
+	fn label_step(&self) -> f32 {
+		let pixels_per_second = PIXELS_PER_SECOND * self.state.time_scale;
+		let frame = 1.0 / self.fps.max(1.0);
+		[
+			frame,
+			frame * 2.0,
+			frame * 5.0,
+			frame * 10.0,
+			0.5,
+			1.0,
+			2.0,
+			5.0,
+			10.0,
+			30.0,
+			60.0,
+		]
+		.into_iter()
+		.find(|step| step * pixels_per_second >= MIN_LABEL_SPACING)
+		.unwrap_or(120.0)
+	}
 
+	fn draw_ruler(&self, frame: &mut canvas::Frame, state: &TimelineInteraction, rect: Rectangle, lanes: Rectangle) {
+		frame.fill_rectangle(rect.position(), rect.size(), colors::RULER_BG);
 		self.draw_horizontal_line(frame, rect.x, rect.x + rect.width, rect.y + rect.height, colors::BORDER);
 
-		let visible_start_time = state.x_to_time(rect.x, rect.x).max(0.0);
-		let visible_end_time = state.x_to_time(rect.x + rect.width, rect.x);
-		let base_interval = state.calculate_tick_interval();
+		let step = self.label_step();
+		let minor = step / RULER_SUBDIVISIONS as f32;
+		let visible_start = state.x_to_time(rect.x, rect.x).max(0.0);
+		let visible_end = state.x_to_time(rect.x + rect.width, rect.x);
+		let first = (visible_start / minor).floor() as i64;
+		let last = (visible_end / minor).ceil() as i64;
 
-		let start_tick = (visible_start_time / base_interval).floor() as i32;
-		let end_tick = (visible_end_time / base_interval).ceil() as i32;
-
-		for i in start_tick..=end_tick {
-			let time = i as f32 * base_interval;
-			if time < 0.0 {
-				continue;
-			}
-
+		for index in first.max(0)..=last {
+			let time = index as f32 * minor;
 			let x = state.time_to_x(time, rect.x);
 			if x < rect.x || x > rect.x + rect.width {
 				continue;
 			}
 
-			let is_major = (i % 2) == 0;
+			let is_major = index % RULER_SUBDIVISIONS as i64 == 0;
 			let (tick_height, tick_color) = if is_major {
-				(10.0, colors::TICK_MAJOR)
+				(8.0, colors::TICK_MAJOR)
 			} else {
-				(5.0, colors::TICK_MINOR)
+				(4.0, colors::TICK_MINOR)
 			};
-
 			self.draw_vertical_line(
 				frame,
 				x,
@@ -382,14 +384,42 @@ impl TimelineWidget<'_> {
 			);
 
 			if is_major {
+				self.draw_vertical_line(frame, x, lanes.y, lanes.y + lanes.height, colors::GRID_LINE);
 				frame.fill_text(Text {
-					content: format_time(time),
-					position: Point::new(x, rect.y + 4.0),
+					content: core::timecode::format_ruler(time, self.fps),
+					position: Point::new(x + 4.0, rect.y + 4.0),
 					color: colors::TEXT_SECONDARY,
-					size: 10.0.into(),
+					size: 9.5.into(),
+					font: Font::MONOSPACE,
 					..Text::default()
 				});
 			}
+		}
+	}
+
+	/// コンポジション終端より後ろを暗くし、終端に線を引く
+	fn draw_composition_end(&self, frame: &mut canvas::Frame, ruler: Rectangle, lanes: Rectangle) {
+		let Some(duration) = self.duration else {
+			return;
+		};
+		let x = self.state.time_to_x(duration, lanes.x);
+		if x >= lanes.x + lanes.width {
+			return;
+		}
+		let start = x.max(lanes.x);
+		frame.fill_rectangle(
+			Point::new(start, ruler.y),
+			Size::new(lanes.x + lanes.width - start, lanes.y + lanes.height - ruler.y),
+			Color::from_rgba(0.0, 0.0, 0.0, 0.32),
+		);
+		if x >= lanes.x {
+			self.draw_vertical_line(
+				frame,
+				x,
+				ruler.y,
+				lanes.y + lanes.height,
+				Color::from_rgba(1.0, 1.0, 1.0, 0.18),
+			);
 		}
 	}
 
@@ -402,118 +432,126 @@ impl TimelineWidget<'_> {
 	) {
 		frame.fill_rectangle(rect.position(), rect.size(), colors::TRACK_LABEL_BG);
 
-		self.draw_vertical_line(frame, rect.x + rect.width, rect.y, rect.y + rect.height, colors::BORDER);
-
 		let reorder_preview = self.reorder_preview;
 		let insert_before_idx =
 			reorder_preview.map(|(from_idx, to_idx)| if to_idx < from_idx { to_idx } else { to_idx + 1 });
 
-		for (i, track) in model.tracks.iter().enumerate() {
-			// Calculate offset if this track should be shifted due to reordering
-			let mut y_offset = 0.0;
-			if let Some(insert_idx) = insert_before_idx
-				&& i >= insert_idx
-			{
-				y_offset = TRACK_HEIGHT; // Shift down
-			}
+		// with_clip はキャンバス原点がずれていると誤ってクリップされるため使わない。
+		// はみ出しは後から描くルーラー／コーナーが覆う。
+		{
+			for (i, track) in model.tracks.iter().enumerate() {
+				let y_offset = match insert_before_idx {
+					Some(insert_idx) if i >= insert_idx => TRACK_HEIGHT,
+					_ => 0.0,
+				};
+				let y = rect.y + (i as f32 * TRACK_HEIGHT) + state.scroll_offset.y + y_offset;
 
-			let y = rect.y + (i as f32 * TRACK_HEIGHT) + state.scroll_offset.y + y_offset;
+				if !state.is_track_visible(y, rect) {
+					continue;
+				}
 
-			if !state.is_track_visible(y, rect) {
-				continue;
-			}
+				let row_rect = Rectangle::new(Point::new(rect.x, y), Size::new(rect.width, TRACK_HEIGHT));
+				let bg_color = if state.selected_track_index == Some(i) {
+					Color::from_rgba(1.0, 1.0, 1.0, 0.06)
+				} else if i % 2 == 0 {
+					colors::TRACK_LABEL_BG
+				} else {
+					colors::TRACK_LABEL_BG_ALT
+				};
+				frame.fill_rectangle(row_rect.position(), row_rect.size(), bg_color);
 
-			let bg_color = if i % 2 == 0 {
-				colors::TRACK_LABEL_BG
-			} else {
-				colors::TRACK_LABEL_BG_ALT
-			};
-			frame.fill_rectangle(Point::new(rect.x, y), Size::new(rect.width, TRACK_HEIGHT), bg_color);
+				// ラベル色の帯（掴んで並べ替えるハンドルを兼ねる）
+				let rendered = model.is_track_rendered(i);
+				let mut label = Self::clip_base_color(i, 0);
+				if !rendered {
+					label.a = 0.35;
+				}
+				let strip = Rectangle {
+					x: rect.x + (TRACK_HANDLE_WIDTH - 4.0) * 0.5,
+					y: y + 6.0,
+					width: 4.0,
+					height: TRACK_HEIGHT - 12.0,
+				};
+				frame.fill(&rounded_rect(strip, 2.0), label);
 
-			// Draw track reorder handle on the left side (vertical grip)
-			let handle_width = TRACK_HANDLE_WIDTH;
-			let handle_rect = Rectangle {
-				x: rect.x,
-				y,
-				width: handle_width,
-				height: TRACK_HEIGHT,
-			};
-			frame.fill_rectangle(handle_rect.position(), handle_rect.size(), colors::TRACK_REORDER_HANDLE);
+				self.draw_visibility_btn(frame, track_visible_btn_rect(rect.x, y), model.visibility_display(i));
+				self.draw_solo_btn(frame, track_solo_btn_rect(rect.x, y), track.solo, track.visible);
 
-			// Draw vertical grip lines (3 vertical lines)
-			let grip_center_x = rect.x + handle_width / 2.0;
-			for line_i in 0..3 {
-				let line_x = grip_center_x - 1.5 + (line_i as f32 * 1.5);
-				self.draw_vertical_line_with_width(
+				// 1 クリップのトラックは AE のレイヤーのようにクリップ名を表示
+				let name = match track.clips.as_slice() {
+					[only] => only.name.as_str(),
+					_ => track.name.as_str(),
+				};
+				let name_x = track_name_x(rect.x);
+				frame.fill_text(Text {
+					content: format!("{}", i + 1),
+					position: Point::new(name_x, y + TRACK_HEIGHT * 0.5),
+					color: colors::TEXT_MUTED,
+					size: 10.0.into(),
+					font: Font::MONOSPACE,
+					align_y: Vertical::Center,
+					..Text::default()
+				});
+				frame.fill_text(Text {
+					content: name.to_string(),
+					position: Point::new(name_x + 18.0, y + TRACK_HEIGHT * 0.5),
+					color: if rendered {
+						colors::TEXT_PRIMARY
+					} else {
+						colors::TEXT_MUTED
+					},
+					size: 11.0.into(),
+					align_y: Vertical::Center,
+					..Text::default()
+				});
+
+				self.draw_horizontal_line(
 					frame,
-					line_x,
-					y + 4.0,
-					y + TRACK_HEIGHT - 4.0,
-					colors::TEXT_MUTED,
-					1.0,
+					rect.x,
+					rect.x + rect.width,
+					y + TRACK_HEIGHT,
+					colors::BORDER_SUBTLE,
 				);
 			}
 
-			let rendered = model.is_track_rendered(i);
-			self.draw_visibility_btn(frame, track_visible_btn_rect(rect.x, y), model.visibility_display(i));
-			self.draw_solo_btn(frame, track_solo_btn_rect(rect.x, y), track.solo, track.visible);
+			// 並べ替え中の挿入位置
+			if let Some(insert_idx) = insert_before_idx {
+				let gap_y = rect.y + (insert_idx as f32 * TRACK_HEIGHT) + state.scroll_offset.y;
+				let gap = rounded_rect(
+					Rectangle::new(
+						Point::new(rect.x + 2.0, gap_y + 2.0),
+						Size::new(rect.width - 4.0, TRACK_HEIGHT - 4.0),
+					),
+					5.0,
+				);
+				frame.fill(
+					&gap,
+					Color {
+						a: 0.12,
+						..colors::SELECTION
+					},
+				);
+				frame.stroke(
+					&gap,
+					Stroke::default().with_color(colors::SELECTION_STROKE).with_width(1.5),
+				);
+			}
 
-			let text_color = if rendered {
-				colors::TEXT_PRIMARY
-			} else {
-				colors::TEXT_MUTED
-			};
-			frame.fill_text(Text {
-				content: track.name.clone(),
-				position: Point::new(track_name_x(rect.x), y + TRACK_HEIGHT / 2.0 - 6.0),
-				color: text_color,
-				size: 11.0.into(),
-				..Text::default()
-			});
-
-			self.draw_horizontal_line(
-				frame,
-				rect.x,
-				rect.x + rect.width,
-				y + TRACK_HEIGHT,
-				colors::BORDER_SUBTLE,
-			);
+			// 並べ替え直後のハイライト
+			if let Some((track_idx, alpha)) = self.glowing_track {
+				let glow_y = rect.y + (track_idx as f32 * TRACK_HEIGHT) + state.scroll_offset.y;
+				frame.fill_rectangle(
+					Point::new(rect.x, glow_y),
+					Size::new(rect.width, TRACK_HEIGHT),
+					Color {
+						a: alpha * 0.25,
+						..colors::SELECTION
+					},
+				);
+			}
 		}
 
-		// Draw gap indicator if reordering
-		if let Some((from_idx, to_idx)) = reorder_preview {
-			let insert_idx = if to_idx < from_idx { to_idx } else { to_idx + 1 };
-			let gap_y = rect.y + (insert_idx as f32 * TRACK_HEIGHT) + state.scroll_offset.y;
-
-			// Draw highlight in the gap
-			frame.fill_rectangle(
-				Point::new(rect.x, gap_y),
-				Size::new(rect.width, TRACK_HEIGHT),
-				Color::from_rgba(1.0, 1.0, 1.0, 0.15),
-			);
-
-			// Draw border
-			let gap_path = Path::rectangle(Point::new(rect.x, gap_y), Size::new(rect.width, TRACK_HEIGHT));
-			frame.stroke(
-				&gap_path,
-				Stroke::default().with_color(colors::PLAYHEAD).with_width(2.0),
-			);
-		}
-
-		// Brief highlight for track that was just reordered
-		if let Some((track_idx, alpha)) = self.glowing_track {
-			let glow_y = rect.y + (track_idx as f32 * TRACK_HEIGHT) + state.scroll_offset.y;
-			let glow_color = Color {
-				a: alpha * 0.25,
-				..colors::SELECTION
-			};
-
-			frame.fill_rectangle(
-				Point::new(rect.x, glow_y),
-				Size::new(rect.width, TRACK_HEIGHT),
-				glow_color,
-			);
-		}
+		self.draw_vertical_line(frame, rect.x + rect.width, rect.y, rect.y + rect.height, colors::BORDER);
 	}
 
 	fn draw_timeline_content(
@@ -529,76 +567,61 @@ impl TimelineWidget<'_> {
 		let insert_before_idx =
 			reorder_preview.map(|(from_idx, to_idx)| if to_idx < from_idx { to_idx } else { to_idx + 1 });
 
-		for (track_index, track) in model.tracks.iter().enumerate() {
-			// Calculate offset if this track should be shifted due to reordering
-			let mut y_offset = 0.0;
-			if let Some(insert_idx) = insert_before_idx
-				&& track_index >= insert_idx
-			{
-				y_offset = TRACK_HEIGHT; // Shift down
-			}
+		{
+			for (track_index, track) in model.tracks.iter().enumerate() {
+				let y_offset = match insert_before_idx {
+					Some(insert_idx) if track_index >= insert_idx => TRACK_HEIGHT,
+					_ => 0.0,
+				};
+				let y = rect.y + (track_index as f32 * TRACK_HEIGHT) + state.scroll_offset.y + y_offset;
 
-			let y = rect.y + (track_index as f32 * TRACK_HEIGHT) + state.scroll_offset.y + y_offset;
+				if !state.is_track_visible(y, rect) {
+					continue;
+				}
 
-			if !state.is_track_visible(y, rect) {
-				continue;
-			}
+				let bg_color = if track_index % 2 == 0 {
+					colors::TIMELINE_BG_ALT
+				} else {
+					colors::TIMELINE_BG_ALT2
+				};
+				frame.fill_rectangle(Point::new(rect.x, y), Size::new(rect.width, TRACK_HEIGHT), bg_color);
 
-			let bg_color = if track_index % 2 == 0 {
-				colors::TIMELINE_BG_ALT
-			} else {
-				colors::TIMELINE_BG_ALT2
-			};
-			frame.fill_rectangle(Point::new(rect.x, y), Size::new(rect.width, TRACK_HEIGHT), bg_color);
+				for clip in &track.clips {
+					self.draw_clip(
+						frame,
+						state,
+						rect,
+						clip,
+						y,
+						track_index,
+						model.is_track_rendered(track_index),
+					);
+				}
 
-			for clip in &track.clips {
-				self.draw_clip(
+				self.draw_horizontal_line(
 					frame,
-					state,
-					rect,
-					clip,
-					y,
-					track_index,
-					model.is_track_rendered(track_index),
+					rect.x,
+					rect.x + rect.width,
+					y + TRACK_HEIGHT,
+					colors::BORDER_DARK,
 				);
 			}
 
-			self.draw_horizontal_line(
-				frame,
-				rect.x,
-				rect.x + rect.width,
-				y + TRACK_HEIGHT,
-				colors::BORDER_DARK,
-			);
-		}
-
-		// Draw gap indicator in timeline content area if reordering
-		if let Some((_, to_idx)) = reorder_preview {
-			let insert_idx = if to_idx < model.tracks.len() {
-				if to_idx < reorder_preview.unwrap().0 {
-					to_idx
-				} else {
-					to_idx + 1
-				}
-			} else {
-				model.tracks.len()
-			};
-			let gap_y = rect.y + (insert_idx as f32 * TRACK_HEIGHT) + state.scroll_offset.y;
-
-			frame.fill_rectangle(
-				Point::new(rect.x, gap_y),
-				Size::new(rect.width, TRACK_HEIGHT),
-				Color::from_rgba(1.0, 1.0, 1.0, 0.15),
-			);
-
-			let gap_path = Path::rectangle(Point::new(rect.x, gap_y), Size::new(rect.width, TRACK_HEIGHT));
-			frame.stroke(
-				&gap_path,
-				Stroke::default().with_color(colors::PLAYHEAD).with_width(2.0),
-			);
+			if let Some(insert_idx) = insert_before_idx {
+				let gap_y = rect.y + (insert_idx as f32 * TRACK_HEIGHT) + state.scroll_offset.y;
+				frame.fill_rectangle(
+					Point::new(rect.x, gap_y),
+					Size::new(rect.width, TRACK_HEIGHT),
+					Color {
+						a: 0.08,
+						..colors::SELECTION
+					},
+				);
+			}
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn draw_clip(
 		&self,
 		frame: &mut canvas::Frame,
@@ -619,7 +642,7 @@ impl TimelineWidget<'_> {
 		let clip_rect = Rectangle {
 			x: x_start,
 			y: track_y + TRACK_PADDING,
-			width: x_end - x_start,
+			width: (x_end - x_start).max(1.0),
 			height: TRACK_HEIGHT - TRACK_PADDING * 2.0,
 		};
 
@@ -628,93 +651,126 @@ impl TimelineWidget<'_> {
 		let is_shrinking = state.alt_shrinking_clip == Some((track_index, clip.id));
 		// Duplicate clips (id >= 10000) are shown semi-transparent during drag
 		let is_duplicate = clip.id >= 10000;
-		let base_color = Self::clip_base_color(track_index, clip.id);
-		let mut clip_color = if is_selected {
-			lighten_color(base_color, 0.2)
-		} else {
-			base_color
-		};
-		if !track_rendered {
-			clip_color.a *= 0.35;
-		}
+		let label = Self::clip_base_color(track_index, clip.id);
+		let dim = if track_rendered { 1.0 } else { 0.4 };
+		let dim = if is_duplicate { dim * 0.5 } else { dim };
 
-		let clip_path = squircle_path(
-			Point::new(
-				clip_rect.x + clip_rect.width / 2.0,
-				clip_rect.y + clip_rect.height / 2.0,
-			),
-			clip_rect.width,
-			clip_rect.height,
-			CLIP_CORNER_RADIUS,
+		let body = rounded_rect(clip_rect, CLIP_CORNER_RADIUS);
+		let fill_alpha = if is_selected { 0.58 } else { 0.34 };
+		frame.fill(
+			&body,
+			Color {
+				a: fill_alpha * dim,
+				..constants::style::mix(label, Color::BLACK, 0.15)
+			},
 		);
 
-		// Apply transparency for duplicate clips
-		if is_duplicate {
-			let transparent_color = Color::from_rgba(
-				clip_color.r,
-				clip_color.g,
-				clip_color.b,
-				0.5, // 50% opacity
-			);
-			frame.fill(&clip_path, transparent_color);
-			frame.stroke(
-				&clip_path,
-				Stroke::default().with_color(CLIP_HOVERED_OUTLINE).with_width(1.0),
-			);
+		// 左端のラベル帯（角丸に沿わせるため左側だけ丸める）
+		let strip = Path::rounded_rectangle(
+			clip_rect.position(),
+			Size::new(4.0_f32.min(clip_rect.width), clip_rect.height),
+			iced::border::Radius {
+				top_left: CLIP_CORNER_RADIUS,
+				top_right: 0.0,
+				bottom_right: 0.0,
+				bottom_left: CLIP_CORNER_RADIUS,
+			},
+		);
+		frame.fill(&strip, Color { a: dim, ..label });
+
+		if let Some(name) = fit_label(&clip.name, clip_rect.width - 18.0, 6.2) {
+			frame.fill_text(Text {
+				content: name,
+				position: Point::new(clip_rect.x + 10.0, clip_rect.y + clip_rect.height * 0.5),
+				color: Color::from_rgba(1.0, 1.0, 1.0, 0.92 * dim),
+				size: 11.0.into(),
+				align_y: Vertical::Center,
+				..Text::default()
+			});
+		}
+
+		let outline = if is_selected {
+			Stroke::default().with_color(CLIP_SELECTED_OUTLINE).with_width(1.5)
+		} else if is_hovered {
+			Stroke::default().with_color(CLIP_HOVERED_OUTLINE).with_width(1.0)
 		} else {
-			frame.fill(&clip_path, clip_color);
+			Stroke::default()
+				.with_color(Color { a: 0.55 * dim, ..label })
+				.with_width(1.0)
+		};
+		frame.stroke(&body, outline);
+
+		if is_shrinking {
 			frame.stroke(
-				&clip_path,
-				Stroke::default().with_color(colors::CLIP_OUTLINE).with_width(1.0),
+				&body,
+				Stroke::default().with_color(CLIP_SHRINKING_OUTLINE).with_width(2.0),
 			);
+		}
 
-			if is_selected {
-				frame.stroke(
-					&clip_path,
-					Stroke::default().with_color(CLIP_SELECTED_OUTLINE).with_width(1.5),
-				);
-			}
+		self.draw_keyframes(frame, state, timeline_rect, clip, clip_rect, dim);
 
-			if is_shrinking {
-				frame.stroke(
-					&clip_path,
-					Stroke::default().with_color(CLIP_SHRINKING_OUTLINE).with_width(2.0),
-				);
-			}
+		if is_hovered && !is_duplicate {
+			self.draw_resize_handles(frame, clip_rect);
+		}
+	}
 
-			if is_hovered {
-				frame.stroke(
-					&clip_path,
-					Stroke::default().with_color(CLIP_HOVERED_OUTLINE).with_width(1.0),
-				);
-				self.draw_resize_handles(frame, clip_rect);
+	/// クリップ上にキーフレームの菱形を描く
+	fn draw_keyframes(
+		&self,
+		frame: &mut canvas::Frame,
+		state: &TimelineInteraction,
+		timeline_rect: Rectangle,
+		clip: &TimelineClip,
+		clip_rect: Rectangle,
+		dim: f32,
+	) {
+		let Some(times) = self.keyframes.get(&clip.id) else {
+			return;
+		};
+		let center_y = clip_rect.y + clip_rect.height * 0.5;
+		for &time in times {
+			if time < clip.start_time - f32::EPSILON || time > clip.end_time() + f32::EPSILON {
+				continue;
 			}
+			let x = state.time_to_x(time, timeline_rect.x);
+			let on_playhead = (time - self.current_time).abs() < 0.5 / self.fps.max(1.0);
+			let r = if on_playhead {
+				KEYFRAME_RADIUS + 1.0
+			} else {
+				KEYFRAME_RADIUS
+			};
+			let diamond = Path::new(|builder| {
+				builder.move_to(Point::new(x, center_y - r));
+				builder.line_to(Point::new(x + r, center_y));
+				builder.line_to(Point::new(x, center_y + r));
+				builder.line_to(Point::new(x - r, center_y));
+				builder.close();
+			});
+			frame.fill(
+				&diamond,
+				Color {
+					a: dim,
+					..colors::KEYFRAME
+				},
+			);
+			frame.stroke(
+				&diamond,
+				Stroke::default()
+					.with_color(Color::from_rgba(0.0, 0.0, 0.0, 0.55 * dim))
+					.with_width(1.0),
+			);
 		}
 	}
 
 	fn draw_resize_handles(&self, frame: &mut canvas::Frame, clip_rect: Rectangle) {
-		let handle_thickness = 2.0;
-		let handle_height = clip_rect.height - CLIP_CORNER_RADIUS + handle_thickness;
-		let handle_margin = CLIP_CORNER_RADIUS / 2.0 - handle_thickness / 2.0;
-
-		// Left handle
-		let left_handle_path = Path::rounded_rectangle(
-			Point::new(clip_rect.x + handle_margin, clip_rect.y + handle_margin),
-			Size::new(handle_thickness, handle_height),
-			handle_thickness.into(),
-		);
-		frame.fill(&left_handle_path, CLIP_RESIZE_HANDLE);
-
-		// Right handle
-		let right_handle_path = Path::rounded_rectangle(
-			Point::new(
-				clip_rect.x + clip_rect.width - handle_margin - handle_thickness,
-				clip_rect.y + handle_margin,
-			),
-			Size::new(handle_thickness, handle_height),
-			handle_thickness.into(),
-		);
-		frame.fill(&right_handle_path, CLIP_RESIZE_HANDLE);
+		let height = (clip_rect.height - 8.0).max(4.0);
+		for x in [clip_rect.x + 4.0, clip_rect.x + clip_rect.width - 6.0] {
+			let handle = rounded_rect(
+				Rectangle::new(Point::new(x, clip_rect.y + 4.0), Size::new(2.0, height)),
+				1.0,
+			);
+			frame.fill(&handle, CLIP_RESIZE_HANDLE);
+		}
 	}
 
 	fn draw_playhead(
@@ -730,27 +786,41 @@ impl TimelineWidget<'_> {
 			return;
 		}
 
-		let head_width = 12.0;
-		let head_height = 14.0;
-		let head_bottom = ruler_rect.y + ruler_rect.height;
+		// 線
+		let line = Path::line(
+			Point::new(x, ruler_rect.y + ruler_rect.height - 4.0),
+			Point::new(x, timeline_rect.y + timeline_rect.height),
+		);
+		frame.stroke(
+			&line,
+			Stroke::default()
+				.with_color(colors::PLAYHEAD)
+				.with_width(1.5)
+				.with_line_cap(LineCap::Round),
+		);
 
-		let head = Path::new(|builder| {
-			builder.move_to(Point::new(x - head_width / 2.0, head_bottom - head_height));
-			builder.line_to(Point::new(x + head_width / 2.0, head_bottom - head_height));
-			builder.line_to(Point::new(x + head_width / 2.0, head_bottom - 4.0));
-			builder.line_to(Point::new(x, head_bottom));
-			builder.line_to(Point::new(x - head_width / 2.0, head_bottom - 4.0));
-			builder.close();
-		});
-		frame.fill(&head, colors::PLAYHEAD);
-
-		self.draw_vertical_line_with_width(
-			frame,
-			x,
-			timeline_rect.y,
-			timeline_rect.y + timeline_rect.height,
-			colors::PLAYHEAD,
-			2.0,
+		// ルーラー上のカプセル型ハンドル
+		let head = Rectangle {
+			x: x - 5.5,
+			y: ruler_rect.y + 3.0,
+			width: 11.0,
+			height: ruler_rect.height - 6.0,
+		};
+		let head_path = rounded_rect(head, 4.0);
+		frame.fill(&head_path, colors::PLAYHEAD);
+		frame.stroke(
+			&head_path,
+			Stroke::default()
+				.with_color(Color::from_rgba(1.0, 1.0, 1.0, 0.35))
+				.with_width(1.0),
+		);
+		let grip = Path::line(Point::new(x, head.y + 4.0), Point::new(x, head.y + head.height - 4.0));
+		frame.stroke(
+			&grip,
+			Stroke::default()
+				.with_color(Color::from_rgba(1.0, 1.0, 1.0, 0.85))
+				.with_width(1.0)
+				.with_line_cap(LineCap::Round),
 		);
 	}
 
@@ -760,9 +830,15 @@ impl TimelineWidget<'_> {
 
 	fn draw_visibility_btn(&self, frame: &mut canvas::Frame, rect: Rectangle, display: TrackVisibilityDisplay) {
 		let (icon_color, draw_slash) = match display {
-			TrackVisibilityDisplay::Shown => (colors::TEXT_PRIMARY, false),
-			TrackVisibilityDisplay::Hidden => (colors::TEXT_MUTED, false),
-			// 可視だがソロ除外: アクセント色＋斜線で第3状態を明示
+			TrackVisibilityDisplay::Shown => (colors::TEXT_SECONDARY, false),
+			TrackVisibilityDisplay::Hidden => (
+				Color {
+					a: 0.45,
+					..colors::TEXT_MUTED
+				},
+				true,
+			),
+			// 可視だがソロ除外: アクセント色で第3状態を明示
 			TrackVisibilityDisplay::SoloExcluded => (colors::PLAYHEAD, true),
 		};
 
@@ -770,26 +846,27 @@ impl TimelineWidget<'_> {
 
 		if draw_slash {
 			let slash = Path::line(
-				Point::new(rect.x + 2.0, rect.y + rect.height - 2.0),
-				Point::new(rect.x + rect.width - 2.0, rect.y + 2.0),
+				Point::new(rect.x + 4.0, rect.y + rect.height - 4.0),
+				Point::new(rect.x + rect.width - 4.0, rect.y + 4.0),
 			);
 			frame.stroke(
 				&slash,
 				Stroke::default()
-					.with_color(Color {
-						a: 0.95,
-						..colors::PLAYHEAD
-					})
-					.with_width(1.5),
+					.with_color(icon_color)
+					.with_width(1.25)
+					.with_line_cap(LineCap::Round),
 			);
 		}
 	}
 
 	fn draw_solo_btn(&self, frame: &mut canvas::Frame, rect: Rectangle, active: bool, enabled: bool) {
 		let icon_color = if !enabled {
-			Color::from_rgba(colors::TEXT_MUTED.r, colors::TEXT_MUTED.g, colors::TEXT_MUTED.b, 0.35)
+			Color {
+				a: 0.3,
+				..colors::TEXT_MUTED
+			}
 		} else if active {
-			colors::TEXT_PRIMARY
+			constants::style::WARNING_COLOR
 		} else {
 			colors::TEXT_MUTED
 		};
@@ -804,19 +881,6 @@ impl TimelineWidget<'_> {
 	fn draw_vertical_line(&self, frame: &mut canvas::Frame, x: f32, y1: f32, y2: f32, color: Color) {
 		let line = Path::line(Point::new(x, y1), Point::new(x, y2));
 		frame.stroke(&line, Stroke::default().with_color(color).with_width(1.0));
-	}
-
-	fn draw_vertical_line_with_width(
-		&self,
-		frame: &mut canvas::Frame,
-		x: f32,
-		y1: f32,
-		y2: f32,
-		color: Color,
-		width: f32,
-	) {
-		let line = Path::line(Point::new(x, y1), Point::new(x, y2));
-		frame.stroke(&line, Stroke::default().with_color(color).with_width(width));
 	}
 
 	#[inline]

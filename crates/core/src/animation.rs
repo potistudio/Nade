@@ -178,6 +178,28 @@ impl AnimationCurve {
 		}
 	}
 
+	/// Key sitting on `time` (within the key time tolerance).
+	pub fn key_at(&self, time: f32) -> Option<&Keyframe> {
+		self.keys.iter().find(|key| (key.time - time).abs() <= KEY_TIME_EPSILON)
+	}
+
+	/// Time of the closest key strictly before `time`.
+	pub fn previous_key_time(&self, time: f32) -> Option<f32> {
+		self.keys
+			.iter()
+			.rev()
+			.find(|key| key.time < time - KEY_TIME_EPSILON)
+			.map(|key| key.time)
+	}
+
+	/// Time of the closest key strictly after `time`.
+	pub fn next_key_time(&self, time: f32) -> Option<f32> {
+		self.keys
+			.iter()
+			.find(|key| key.time > time + KEY_TIME_EPSILON)
+			.map(|key| key.time)
+	}
+
 	pub fn bounds(&self) -> Option<([f32; 2], [f32; 2])> {
 		let first = self.keys.first()?;
 		let mut min = [first.time, first.value];
@@ -292,5 +314,19 @@ mod tests {
 			curve.key(first).expect("key").handle_position(HandleSide::Right)[0],
 			2.0
 		);
+	}
+
+	#[test]
+	fn finds_neighbouring_keys() {
+		let mut curve = AnimationCurve::default();
+		curve.add_key(1.0, 0.0);
+		curve.add_key(3.0, 1.0);
+
+		assert!(curve.key_at(1.0).is_some());
+		assert!(curve.key_at(2.0).is_none());
+		assert_eq!(curve.previous_key_time(3.0), Some(1.0));
+		assert_eq!(curve.next_key_time(1.0), Some(3.0));
+		assert_eq!(curve.next_key_time(3.0), None);
+		assert_eq!(curve.previous_key_time(0.5), None);
 	}
 }

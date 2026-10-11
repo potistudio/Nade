@@ -1,10 +1,12 @@
 use crate::{ObjectId, ProjectPaneMessage, ProjectPaneState};
+use constants::icons::{Icon, icon};
 use constants::style::*;
-use constants::widgets;
+use constants::tree::{Disclosure, TreeRow};
+use constants::widgets::{self, button_body_center, ui_label};
 use core::CompositionId;
 use domain::{Composition, Instance, Project};
-use iced::widget::{button, column, container, mouse_area, row, scrollable, text};
-use iced::{Element, Length};
+use iced::widget::{Space, button, column, container, mouse_area, row, scrollable, tooltip};
+use iced::{Alignment, Element, Length};
 
 #[derive(Debug)]
 pub struct ProjectPaneWidget<'a> {
@@ -21,45 +23,69 @@ impl<'a> ProjectPaneWidget<'a> {
 		let project = self.project;
 
 		let toolbar = row![
-			tool_button("Comp", ProjectPaneMessage::NewComposition),
-			tool_button("Object", ProjectPaneMessage::AddObject),
+			ui_label("COMPOSITIONS", FONT_TINY).color(TEXT_MUTED_COLOR),
+			Space::new().width(Length::Fill),
+			tool_button(Icon::Comp, "New Composition", ProjectPaneMessage::NewComposition),
+			tool_button(Icon::LayerText, "New Text Layer", ProjectPaneMessage::AddObject),
 		]
 		.spacing(SPACE_1)
-		.padding([SPACE_1, SPACE_2]);
+		.align_y(Alignment::Center)
+		.padding([SPACE_2, SPACE_4 + 2.0]);
 
 		let mut composition_ids = project.compositions();
 		composition_ids.sort_by_key(|id| id.value());
 
-		let tree = column(
-			composition_ids
-				.iter()
-				.filter_map(|id| project.composition(id).map(|comp| view_composition(comp, state))),
-		)
-		.spacing(0);
+		let body: Element<'a, ProjectPaneMessage> = if composition_ids.is_empty() {
+			empty_state()
+		} else {
+			let tree = column(
+				composition_ids
+					.iter()
+					.filter_map(|id| project.composition(id).map(|comp| view_composition(comp, state))),
+			)
+			.spacing(1);
 
-		let clear_area = mouse_area(container(text("")).width(Length::Fill).height(Length::Fill))
-			.on_press(ProjectPaneMessage::ClearSelection);
+			let clear_area = mouse_area(container(Space::new()).width(Length::Fill).height(Length::Fill))
+				.on_press(ProjectPaneMessage::ClearSelection);
 
-		let body = scrollable(column![tree, clear_area].width(Length::Fill)).height(Length::Fill);
+			scrollable(column![tree, clear_area].width(Length::Fill))
+				.height(Length::Fill)
+				.style(widgets::scrollable)
+				.into()
+		};
 
-		container(column![toolbar, body].spacing(SPACE_1))
+		container(column![toolbar, body])
 			.width(Length::Fill)
 			.height(Length::Fill)
-			.padding([SPACE_1, 0.0])
 			.style(widgets::panel_surface)
 			.into()
 	}
 }
 
 //* -------- Private API -------- */
-fn tool_button<'a>(label: &'a str, message: ProjectPaneMessage) -> Element<'a, ProjectPaneMessage> {
-	button(widgets::button_body(
-		widgets::ui_label(label, FONT_TINY).color(TEXT_PRIMARY_COLOR),
-	))
-	.height(ROW_HEIGHT + SPACE_1 * 2.0)
-	.padding([0.0, SPACE_2])
-	.style(widgets::button_ghost)
-	.on_press(message)
+fn tool_button<'a>(glyph: Icon, label: &'a str, message: ProjectPaneMessage) -> Element<'a, ProjectPaneMessage> {
+	widgets::tip(
+		button(button_body_center(icon(glyph, 13.0, TEXT_SECONDARY_COLOR)))
+			.padding(0)
+			.width(24)
+			.height(22)
+			.style(widgets::button_ghost)
+			.on_press(message),
+		label,
+		tooltip::Position::Bottom,
+	)
+}
+
+fn empty_state<'a>() -> Element<'a, ProjectPaneMessage> {
+	container(
+		column![
+			icon(Icon::Comp, 24.0, TEXT_MUTED_COLOR),
+			ui_label("No Compositions", FONT_UI).color(TEXT_SECONDARY_COLOR),
+		]
+		.spacing(SPACE_3)
+		.align_x(Alignment::Center),
+	)
+	.center(Length::Fill)
 	.into()
 }
 
@@ -67,27 +93,33 @@ fn view_composition<'a>(composition: &'a Composition, state: &'a ProjectPaneStat
 	let id = composition.id();
 	let object_id = ObjectId::Composition(id);
 	let is_expanded = state.expanded_ids.contains(&id);
-	let is_selected = state.selected_id == Some(object_id);
-	let has_children = composition.has_objects();
 
-	let mut children = vec![view_row(
-		0,
-		"COMP",
-		composition.name(),
-		has_children,
-		is_expanded,
-		is_selected,
-		Some(ProjectPaneMessage::ToggleExpand(id)),
-		object_id,
-	)];
+	let mut children = vec![
+		TreeRow {
+			depth: 0,
+			disclosure: composition.has_objects().then_some(Disclosure {
+				expanded: is_expanded,
+				on_toggle: ProjectPaneMessage::ToggleExpand(id),
+			}),
+			icon: Icon::Comp,
+			icon_color: ACCENT_BRIGHT_COLOR,
+			label: composition.name(),
+			meta: Some(format!("{}×{}", composition.width(), composition.height())),
+			selected: state.selected_id == Some(object_id),
+			on_select: ProjectPaneMessage::Select(object_id),
+			on_open: ProjectPaneMessage::OpenItem(object_id),
+		}
+		.view(),
+	];
 
 	if is_expanded {
-		for instance in composition.all_objects() {
-			children.push(view_instance(id, instance, state));
-		}
+		// AE と同じくレイヤー順（上のトラックほど前面）で並べる
+		let mut layers: Vec<&Instance> = composition.all_objects().collect();
+		layers.sort_by_key(|instance| (instance.track_index(), instance.id()));
+		children.extend(layers.into_iter().map(|instance| view_instance(id, instance, state)));
 	}
 
-	column(children).into()
+	column(children).spacing(1).into()
 }
 
 fn view_instance<'a>(
@@ -99,92 +131,22 @@ fn view_instance<'a>(
 		composition,
 		instance: instance.id(),
 	};
-	let is_selected = state.selected_id == Some(object_id);
 
-	view_row(
-		1,
-		kind_tag(instance),
-		instance.name(),
-		false,
-		false,
-		is_selected,
-		None,
-		object_id,
-	)
-}
+	let glyph = match instance.content() {
+		domain::InstanceContent::Text { .. } => Icon::LayerText,
+		domain::InstanceContent::Empty => Icon::LayerNull,
+	};
 
-fn kind_tag(instance: &Instance) -> &'static str {
-	match instance.content() {
-		domain::InstanceContent::Text { .. } => "TXT",
-		domain::InstanceContent::Empty => "OBJ",
+	TreeRow {
+		depth: 1,
+		disclosure: None,
+		icon: glyph,
+		icon_color: label_color(instance.track_index()),
+		label: instance.name(),
+		meta: Some(format!("{}", instance.track_index() + 1)),
+		selected: state.selected_id == Some(object_id),
+		on_select: ProjectPaneMessage::Select(object_id),
+		on_open: ProjectPaneMessage::OpenItem(object_id),
 	}
-}
-
-fn view_row<'a>(
-	depth: usize,
-	kind_tag: &'a str,
-	name: &'a str,
-	has_children: bool,
-	is_expanded: bool,
-	is_selected: bool,
-	expand_message: Option<ProjectPaneMessage>,
-	object_id: ObjectId,
-) -> Element<'a, ProjectPaneMessage> {
-	let expander_symbol = if has_children {
-		if is_expanded { "▾" } else { "▸" }
-	} else {
-		" "
-	};
-
-	let text_color = if is_selected {
-		TEXT_PRIMARY_COLOR_INVERTED
-	} else {
-		TEXT_PRIMARY_COLOR
-	};
-	let meta_color = if is_selected {
-		TEXT_PRIMARY_COLOR_INVERTED
-	} else {
-		TEXT_SECONDARY_COLOR
-	};
-
-	let expander = container(constants::widgets::ui_label(expander_symbol, FONT_UI).color(meta_color))
-		.height(ROW_HEIGHT)
-		.center_y(ROW_HEIGHT);
-	let expander_element: Element<'a, ProjectPaneMessage> = if let Some(message) = expand_message {
-		mouse_area(expander).on_press(message).into()
-	} else {
-		expander.into()
-	};
-
-	let row_content = row![
-		container(text("")).width((depth as f32 * TREE_INDENT) + SPACE_2),
-		expander_element,
-		//
-		// Kind tag
-		container(constants::widgets::ui_label(kind_tag, FONT_TINY).color(meta_color))
-			.width(36.0)
-			.height(ROW_HEIGHT)
-			.align_y(iced::Alignment::Center),
-		//
-		// Name
-		container(constants::widgets::ui_label(name, FONT_LABEL).color(text_color))
-			.width(Length::Fill)
-			.height(ROW_HEIGHT)
-			.align_y(iced::Alignment::Center),
-	]
-	.align_y(iced::Alignment::Center)
-	.spacing(SPACE_2)
-	.height(ROW_HEIGHT);
-
-	let row_container = container(row_content)
-		.width(Length::Fill)
-		.height(ROW_HEIGHT + SPACE_1 * 2.0)
-		.padding([SPACE_1, SPACE_2])
-		.align_y(iced::Alignment::Center)
-		.style(widgets::list_row(is_selected));
-
-	mouse_area(row_container)
-		.on_press(ProjectPaneMessage::Select(object_id))
-		.on_double_click(ProjectPaneMessage::OpenItem(object_id))
-		.into()
+	.view()
 }

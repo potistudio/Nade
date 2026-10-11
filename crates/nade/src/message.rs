@@ -8,16 +8,49 @@ use std::path::PathBuf;
 use timeline_panel::TimelineMessage;
 
 use crate::panel_content::PanelContent;
-use core::FrameData;
+use crate::tool::Tool;
+use crate::viewer::Resolution;
+use crate::workspace::Workspace;
+use core::{FrameData, InstanceId};
 
 pub use asset_browser::AssetBrowserMessage;
 pub use browser_panel::ProjectPaneMessage;
 
-/// プレビューパネルメッセージ
+/// プレビュー（ビューア）パネルメッセージ
 #[derive(Debug, Clone)]
 pub enum PreviewMessage {
 	/// ビューポートのパン／ズームが変わった
-	ViewChanged { zoom: f32, offset: [f32; 2] },
+	ViewChanged {
+		zoom: f32,
+		offset: [f32; 2],
+	},
+	/// ビューア領域のサイズが変わった（倍率表示用）
+	ViewportSized(iced::Size),
+	/// コンポジション全体が収まるように表示
+	FitView,
+	/// 表示倍率を掛ける（ビューア中心基準）
+	ZoomBy(f32),
+	/// 実寸 (100%) 表示
+	ActualPixels,
+	ToggleGrid,
+	ToggleSafeAreas,
+	SetResolution(Resolution),
+	/// トランスポートバーの操作
+	Transport(TransportMessage),
+	/// ビューア上でレイヤーを選択（None で選択解除）
+	SelectLayer(Option<InstanceId>),
+	/// 選択レイヤーを移動（コンポジション座標の差分）
+	MoveLayer {
+		delta: [f32; 2],
+	},
+	/// 選択レイヤーを回転（度）
+	RotateLayer {
+		degrees: f32,
+	},
+	/// 文字ツールでテキストレイヤーを配置（コンポ中心基準の座標）
+	CreateText {
+		position: [f32; 2],
+	},
 }
 
 /// アプリケーションパネルメッセージ（ラッパー）
@@ -37,11 +70,42 @@ pub enum AppPanelMessage {
 	Preview(PreviewMessage),
 }
 
+/// 再生コントロール（ビューアのトランスポートとショートカット共通）
+#[derive(Debug, Clone, Copy)]
+pub enum TransportMessage {
+	TogglePlay,
+	GoToStart,
+	GoToEnd,
+	StepBackward,
+	StepForward,
+	ToggleLoop,
+}
+
+/// ウィンドウ上部のツールバー／タイトルストリップからの操作
+#[derive(Debug, Clone, Copy)]
+pub enum ShellMessage {
+	SelectTool(Tool),
+	SelectWorkspace(Workspace),
+	NewComposition,
+	NewTextLayer,
+	ImportMedia,
+	/// タイトルストリップのドラッグでウィンドウを移動
+	DragWindow,
+	/// タイトルストリップのダブルクリックで最大化を切り替え
+	ToggleMaximize,
+}
+
 /// アプリケーションメッセージ
 #[derive(Debug, Clone)]
 pub enum Message {
-	/// 再生/一時停止の切り替え
-	TogglePlay,
+	/// 再生コントロール
+	Transport(TransportMessage),
+	/// ツールバー操作
+	Shell(ShellMessage),
+	/// 選択中のレイヤーを削除
+	DeleteSelection,
+	/// ウィンドウサイズ変更
+	WindowResized(iced::Size),
 	/// 定期更新（再生中のアニメーション用）
 	Tick,
 	/// パネルシステムメッセージ
@@ -54,4 +118,7 @@ pub enum Message {
 	Timeline(TimelineMessage),
 	/// ファイルダイアログで選ばれたメディア（キャンセル時は None）
 	MediaImported(Option<PathBuf>),
+	/// デバッグ用スクリーンショットの取得結果
+	#[cfg(debug_assertions)]
+	DevScreenshot(iced::window::Screenshot),
 }

@@ -82,6 +82,7 @@ pub mod core;
 mod hash;
 pub mod object;
 pub mod ops;
+pub mod timecode;
 pub mod timeline;
 
 pub use animation::{AnimationCurve, HandleSide, Interpolation, Keyframe};

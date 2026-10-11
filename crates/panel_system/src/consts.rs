@@ -1,6 +1,6 @@
 //! パネルシステムの定数と色設定
 //!
-//! Colors and sizes follow `constants::style` (Catppuccin Mocha).
+//! Colors and sizes follow `constants::style` (Graphite).
 
 use constants::style;
 use iced::Color;
@@ -8,7 +8,7 @@ use iced::Color;
 pub use constants::style::HEADER_HEIGHT;
 
 /// Visible gutter between tiled panels.
-pub const PANEL_GAP: f32 = 4.0;
+pub const PANEL_GAP: f32 = 6.0;
 
 /// Width of the outline around panels (inside).
 pub const PANEL_OUTLINE_WIDTH: f32 = 1.0;
@@ -27,13 +27,24 @@ pub mod colors {
 
 	pub const PANEL_OUTLINE_COLOR: Color = style::BORDER_SUBTLE_COLOR;
 	pub const HEADER_BG: Color = style::HEADER_COLOR;
-	pub const TEXT_SECONDARY: Color = style::TEXT_SECONDARY_COLOR;
-	pub const ACCENT: Color = style::SELECTION_COLOR;
 	pub const RESIZE_HANDLE: Color = style::BACKGROUND_COLOR;
-	pub const CORNER: Color = Color::from_rgba(0.50, 0.52, 0.63, 0.85);
-	pub const CORNER_ACTIVE: Color = style::SELECTION_COLOR;
+	pub const CORNER: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.16);
+	pub const CORNER_ACTIVE: Color = style::ACCENT_COLOR;
 	pub const SPLIT_PREVIEW: Color = Color {
-		a: 0.22,
-		..style::SELECTION_COLOR
+		a: 0.16,
+		..style::ACCENT_COLOR
+	};
+	pub const SPLIT_PREVIEW_BORDER: Color = Color {
+		a: 0.7,
+		..style::ACCENT_COLOR
+	};
+	pub const HEADER_SEPARATOR: Color = Color::from_rgba(0.0, 0.0, 0.0, 0.28);
+	pub const FOCUS_RING: Color = Color {
+		a: 0.75,
+		..style::ACCENT_COLOR
+	};
+	pub const GUTTER_ACTIVE: Color = Color {
+		a: 0.85,
+		..style::ACCENT_COLOR
 	};
 }

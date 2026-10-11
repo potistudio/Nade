@@ -2,8 +2,10 @@
 
 mod app;
 mod engine;
+pub mod icons;
 pub mod style;
 pub mod timeline;
+pub mod tree;
 pub mod widgets;
 
 pub use app::*;

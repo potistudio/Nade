@@ -266,6 +266,37 @@ fn draw_rectangle(
 }
 
 /// テキストを描画（トランスフォーム適用）
+/// Unscaled layout box `[width, height]` of a text block, matching the
+/// rasterizer's layout (centered at the layer position). Used by the UI for
+/// selection gizmos and hit-testing.
+pub fn measure_text(font_path: &str, text: &str, font_size: f32, spacing: f32) -> Option<[f32; 2]> {
+	if text.is_empty() || font_size <= 0.0 {
+		return None;
+	}
+	let font_data = font_bytes(font_path)?;
+	let font = FontRef::from_index(font_data.as_ref(), 0)?;
+	let metrics = font.metrics(&[]).scale(font_size);
+	let glyph_metrics = font.glyph_metrics(&[]).scale(font_size);
+	let charmap = font.charmap();
+	let line_height = metrics.ascent + metrics.descent + metrics.leading;
+
+	let mut max_width = 0.0_f32;
+	let mut line_width = 0.0_f32;
+	let mut lines = 1_u32;
+	for ch in text.chars() {
+		if ch == '\n' {
+			max_width = max_width.max(line_width);
+			line_width = 0.0;
+			lines += 1;
+			continue;
+		}
+		line_width += glyph_metrics.advance_width(charmap.map(ch)) + spacing;
+	}
+	max_width = max_width.max(line_width);
+
+	Some([max_width, line_height * lines as f32 - metrics.leading])
+}
+
 fn draw_text(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, text: &TextObject, canvas_width: u32, canvas_height: u32) {
 	if text.text.is_empty() || text.font_size <= 0.0 {
 		return;
@@ -483,6 +514,19 @@ mod tests {
 			"{}/../../assets/fonts/Rubik/Rubik_regular.ttf",
 			env!("CARGO_MANIFEST_DIR")
 		)
+	}
+
+	#[test]
+	fn measures_text_like_the_rasterizer() {
+		let single = measure_text(&rubik_path(), "Title", 48.0, 0.0).expect("font loads");
+		let double = measure_text(&rubik_path(), "Title\nTitle", 48.0, 0.0).expect("font loads");
+		let spaced = measure_text(&rubik_path(), "Title", 48.0, 10.0).expect("font loads");
+
+		assert!(single[0] > 48.0 && single[1] > 30.0);
+		assert!((double[0] - single[0]).abs() < 0.01);
+		assert!(double[1] > single[1] * 1.8);
+		assert!((spaced[0] - single[0] - 50.0).abs() < 0.01);
+		assert!(measure_text(&rubik_path(), "", 48.0, 0.0).is_none());
 	}
 
 	#[test]

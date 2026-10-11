@@ -2,6 +2,7 @@
 //!
 //! パネルに表示するコンテンツの種類を定義します。
 
+use constants::icons::Icon;
 use iced::widget::svg;
 use panel_system::AreaKind;
 
@@ -35,24 +36,24 @@ impl AreaKind for PanelContent {
 	}
 
 	fn icon(&self) -> svg::Handle {
-		let bytes: &'static [u8] = match self {
-			Self::MainPreview => include_bytes!("../../../assets/icons/panels/preview.svg"),
-			Self::Timeline => include_bytes!("../../../assets/icons/panels/timeline.svg"),
-			Self::CurveEditor => include_bytes!("../../../assets/icons/panels/timeline.svg"),
-			Self::Inspector => include_bytes!("../../../assets/icons/panels/inspector.svg"),
-			Self::Project => include_bytes!("../../../assets/icons/panels/project.svg"),
-			Self::Assets => include_bytes!("../../../assets/icons/panels/project.svg"),
+		let icon = match self {
+			Self::MainPreview => Icon::PanelViewer,
+			Self::Timeline => Icon::PanelTimeline,
+			Self::CurveEditor => Icon::PanelCurves,
+			Self::Inspector => Icon::PanelInspector,
+			Self::Project => Icon::PanelLayers,
+			Self::Assets => Icon::PanelAssets,
 		};
-		svg::Handle::from_memory(bytes)
+		icon.handle()
 	}
 
 	fn label(&self) -> &'static str {
 		match self {
-			Self::MainPreview => "Preview",
+			Self::MainPreview => "Viewer",
 			Self::Timeline => "Timeline",
 			Self::CurveEditor => "Curve Editor",
-			Self::Inspector => "Inspector",
-			Self::Project => "Objects",
+			Self::Inspector => "Properties",
+			Self::Project => "Layers",
 			Self::Assets => "Assets",
 		}
 	}

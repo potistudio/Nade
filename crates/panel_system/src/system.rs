@@ -6,12 +6,12 @@ use std::time::Instant;
 
 use iced::{
 	Color, Element, Length, Point, Rectangle, Size, Vector, mouse,
-	widget::{Space, button, column, container, float, mouse_area, row, rule, stack, svg, text},
+	widget::{Canvas, Space, button, column, container, float, mouse_area, row, stack, svg},
 };
 
 use crate::{
 	AreaKind,
-	chrome::{PanelChrome, squircle_panel_stack},
+	chrome::{CornerGrip, PanelChrome, squircle_panel_stack},
 	consts::{
 		CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, MIN_PANEL_SIZE, MOVE_CENTER_ZONE, PANEL_GAP,
 		PANEL_OUTLINE_WIDTH, RESIZE_HIT_SIZE, colors,
@@ -25,6 +25,8 @@ use crate::{
 const EDITOR_MENU_ANIM_SECS: f32 = 0.14;
 /// Vertical slide distance (px) while the menu fades in.
 const EDITOR_MENU_SLIDE_Y_PX: f32 = 6.0;
+/// Focus ring cross-fade duration.
+const FOCUS_ANIM_SECS: f32 = constants::style::MOTION_STANDARD_MS as f32 / 1000.0;
 
 #[derive(Debug, Clone)]
 struct EditorMenuState {
@@ -175,6 +177,12 @@ where
 	ResizeStart(Vec<usize>, SplitDirection),
 	ResizeEnd,
 	WindowResized(Size),
+	/// 現在のポインタ位置にあるエリアへフォーカスを移す（マウス押下時）
+	FocusPointer,
+	/// ポインタがパネルシステムの外へ出た
+	PointerExited,
+	/// リサイズガターのホバー開始／終了
+	GutterHover(Vec<usize>, bool),
 	/// アプリケーション固有のメッセージ
 	AppMessage(M),
 }
@@ -193,6 +201,16 @@ pub struct PanelSystem<C: AreaKind> {
 	window_size: Size,
 	/// エディタ種別メニュー（開閉アニメーション付き）
 	editor_menu: Option<EditorMenuState>,
+	/// フォーカス中のエリア（アクセントのリングで示す）
+	focused_area: Option<usize>,
+	/// 直前にフォーカスされていたエリア（リングのフェードアウト用）
+	previous_focus: Option<usize>,
+	/// フォーカスが切り替わった時刻
+	focus_changed: Instant,
+	/// ホバー中のガター (split path, 重なったヒット領域の数)
+	gutter_hover: Option<(Vec<usize>, u32)>,
+	/// ポインタがパネルシステム上にあるか
+	pointer_inside: bool,
 }
 
 impl<C: AreaKind> PanelSystem<C> {
@@ -204,12 +222,70 @@ impl<C: AreaKind> PanelSystem<C> {
 			last_mouse_pos: Point::ORIGIN,
 			window_size: Size::new(800.0, 600.0),
 			editor_menu: None,
+			focused_area: None,
+			previous_focus: None,
+			focus_changed: Instant::now(),
+			gutter_hover: None,
+			pointer_inside: false,
 		}
 	}
 
 	/// Whether the editor menu open/close animation still needs ticks.
 	pub fn is_editor_menu_animating(&self) -> bool {
 		self.editor_menu.as_ref().is_some_and(|menu| !menu.is_finished())
+	}
+
+	/// Whether any chrome animation (menu, focus ring) still needs ticks.
+	pub fn is_animating(&self) -> bool {
+		self.is_editor_menu_animating() || self.focus_changed.elapsed().as_secs_f32() < FOCUS_ANIM_SECS
+	}
+
+	/// Content of the focused area, if any.
+	pub fn focused_content(&self) -> Option<C> {
+		self.focused_area.and_then(|id| self.find_area_content(id))
+	}
+
+	/// Replace the whole layout (workspace switch). Ratios are materialized
+	/// against the current window size.
+	pub fn set_layout(&mut self, layout: DockNode<C>, next_area_id: usize) {
+		self.root = layout;
+		self.next_area_id = self.next_area_id.max(next_area_id);
+		self.drag_state = DragState::None;
+		self.editor_menu = None;
+		self.gutter_hover = None;
+		self.focused_area = None;
+		self.previous_focus = None;
+		self.materialize_split_sizes();
+	}
+
+	fn focus_area(&mut self, area_id: usize) {
+		if self.focused_area == Some(area_id) {
+			return;
+		}
+		self.previous_focus = self.focused_area;
+		self.focused_area = Some(area_id);
+		self.focus_changed = Instant::now();
+	}
+
+	/// Focus ring progress for an area (`0.0` → `1.0`).
+	fn focus_progress(&self, area_id: usize) -> f32 {
+		let t = ease_out_cubic(self.focus_changed.elapsed().as_secs_f32() / FOCUS_ANIM_SECS);
+		if self.focused_area == Some(area_id) {
+			t
+		} else if self.previous_focus == Some(area_id) {
+			1.0 - t
+		} else {
+			0.0
+		}
+	}
+
+	fn is_gutter_hot(&self, path: &[usize]) -> bool {
+		let resizing = matches!(&self.drag_state, DragState::Resizing { path: active, .. } if active == path);
+		let hovered = self
+			.gutter_hover
+			.as_ref()
+			.is_some_and(|(hover_path, count)| *count > 0 && hover_path == path);
+		resizing || (hovered && matches!(self.drag_state, DragState::None))
 	}
 
 	fn open_editor_menu(&mut self, area_id: usize) {
@@ -299,6 +375,7 @@ impl<C: AreaKind> PanelSystem<C> {
 
 			PanelSystemMessage::MouseMove(pos) => {
 				self.last_mouse_pos = pos;
+				self.pointer_inside = true;
 
 				match self.drag_state.clone() {
 					DragState::CornerDrag { area_id, start_pos, .. } => {
@@ -388,6 +465,27 @@ impl<C: AreaKind> PanelSystem<C> {
 			PanelSystemMessage::ResizeEnd => {
 				self.drag_state = DragState::None;
 			}
+
+			PanelSystemMessage::FocusPointer => {
+				if self.pointer_inside
+					&& let Some(area_id) = self.area_at_point(self.last_mouse_pos)
+				{
+					self.focus_area(area_id);
+				}
+			}
+
+			PanelSystemMessage::PointerExited => {
+				self.pointer_inside = false;
+			}
+
+			PanelSystemMessage::GutterHover(path, entered) => match (&mut self.gutter_hover, entered) {
+				(Some((hover_path, count)), true) if *hover_path == path => *count += 1,
+				(_, true) => self.gutter_hover = Some((path, 1)),
+				(Some((hover_path, count)), false) if *hover_path == path => {
+					*count = count.saturating_sub(1);
+				}
+				(_, false) => {}
+			},
 
 			PanelSystemMessage::AppMessage(_) => {}
 
@@ -757,7 +855,10 @@ impl<C: AreaKind> PanelSystem<C> {
 
 			stack![base, overlay].width(Length::Fill).height(Length::Fill).into()
 		} else {
-			mouse_area(base).on_move(PanelSystemMessage::MouseMove).into()
+			mouse_area(base)
+				.on_move(PanelSystemMessage::MouseMove)
+				.on_exit(PanelSystemMessage::PointerExited)
+				.into()
 		}
 	}
 
@@ -800,59 +901,60 @@ impl<C: AreaKind> PanelSystem<C> {
 	where
 		M: Clone + std::fmt::Debug + 'static,
 	{
-		const MENU_ICON: f32 = 12.0;
-		const COL_WIDTH: f32 = 104.0;
-		const ROW_HEIGHT: f32 = 18.0;
+		use constants::style::{
+			BORDER_SUBTLE_COLOR, FONT_TINY, FONT_UI, ICON_SIZE, SPACE_2, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR,
+		};
+
+		const COL_WIDTH: f32 = 136.0;
+		const ROW_HEIGHT: f32 = 24.0;
 
 		let columns = row(C::menu_columns()
 			.into_iter()
 			.map(|(category, kinds)| {
 				let content = content.clone();
-				let header = column![
-					constants::widgets::ui_label(category, constants::style::FONT_TINY)
-						.color(constants::style::TEXT_SECONDARY_COLOR.scale_alpha(anim)),
-					rule::horizontal(1).style(move |_theme| rule::Style {
-						color: constants::style::BORDER_SUBTLE_COLOR.scale_alpha(anim),
-						radius: 0.0.into(),
-						fill_mode: rule::FillMode::Full,
-						snap: true,
-					}),
-				]
-				.spacing(2)
-				.width(Length::Fill);
+				let header = container(
+					constants::widgets::ui_label(category.to_uppercase(), FONT_TINY)
+						.color(TEXT_MUTED_COLOR.scale_alpha(anim)),
+				)
+				.padding(iced::Padding {
+					top: 2.0,
+					right: 6.0,
+					bottom: 4.0,
+					left: 6.0,
+				});
 
 				let items = column(
 					kinds
 						.into_iter()
 						.map(move |kind| {
 							let selected = kind == content;
-							let icon_color = if selected {
-								constants::style::TEXT_PRIMARY_COLOR_INVERTED.scale_alpha(anim)
+							let check: Element<'_, PanelSystemMessage<C, M>> = if selected {
+								constants::icons::icon(
+									constants::icons::Icon::Check,
+									10.0,
+									TEXT_PRIMARY_COLOR.scale_alpha(anim),
+								)
 							} else {
-								constants::style::TEXT_PRIMARY_COLOR.scale_alpha(anim)
-							};
-							let label_color = if selected {
-								constants::style::TEXT_PRIMARY_COLOR_INVERTED.scale_alpha(anim)
-							} else {
-								constants::style::TEXT_PRIMARY_COLOR.scale_alpha(anim)
+								Space::new().width(10.0).into()
 							};
 
-							let row_content = constants::widgets::icon_label_row(
-								panel_icon_svg_colored(kind.icon(), MENU_ICON, icon_color, anim),
-								kind.label(),
-								constants::style::FONT_UI,
-								label_color,
-								MENU_ICON,
-								4.0,
-							);
+							let row_content = row![
+								panel_icon_svg_colored(
+									kind.icon(),
+									ICON_SIZE,
+									TEXT_PRIMARY_COLOR.scale_alpha(0.85 * anim),
+									anim
+								),
+								constants::widgets::ui_label(kind.label(), FONT_UI),
+								Space::new().width(Length::Fill),
+								check,
+							]
+							.spacing(8)
+							.align_y(iced::Alignment::Center)
+							.width(Length::Fill);
 
 							button(constants::widgets::button_body(row_content))
-								.padding(iced::Padding {
-									top: 0.0,
-									right: 4.0,
-									bottom: 0.0,
-									left: 2.0,
-								})
+								.padding([0.0, 6.0])
 								.width(Length::Fill)
 								.height(ROW_HEIGHT)
 								.style(constants::widgets::button_menu_item_faded(selected, anim))
@@ -861,18 +963,28 @@ impl<C: AreaKind> PanelSystem<C> {
 						})
 						.collect::<Vec<_>>(),
 				)
-				.spacing(0);
+				.spacing(1);
 
-				container(column![header, items].spacing(2).height(Length::Shrink))
+				container(column![header, items].height(Length::Shrink))
 					.width(COL_WIDTH)
 					.height(Length::Shrink)
-					.padding(iced::Padding {
-						top: 4.0,
-						right: 3.0,
-						bottom: 4.0,
-						left: 3.0,
-					})
+					.padding(SPACE_2)
 					.into()
+			})
+			.collect::<Vec<Element<'_, PanelSystemMessage<C, M>>>>()
+			.into_iter()
+			.enumerate()
+			.flat_map(|(index, column)| {
+				let divider: Option<Element<'_, PanelSystemMessage<C, M>>> = (index > 0).then(|| {
+					container(Space::new().width(1).height(Length::Fill))
+						.padding([8, 0])
+						.style(move |_| container::Style {
+							background: Some(BORDER_SUBTLE_COLOR.scale_alpha(anim).into()),
+							..Default::default()
+						})
+						.into()
+				});
+				divider.into_iter().chain(std::iter::once(column))
 			})
 			.collect::<Vec<_>>())
 		.spacing(0)
@@ -881,6 +993,7 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		container(columns)
 			.height(Length::Shrink)
+			.padding(2)
 			.style(move |theme| constants::widgets::editor_menu_panel_faded(theme, anim))
 			.into()
 	}
@@ -992,57 +1105,81 @@ impl<C: AreaKind> PanelSystem<C> {
 		F: Fn(usize, &C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
 		M: Clone + std::fmt::Debug + 'static,
 	{
+		use constants::style::{
+			FONT_UI, ICON_SIZE, SPACE_2, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR,
+		};
+
 		let area_id = area.id;
 		let can_join = self.area_has_sibling(area_id);
+		let focus = self.focus_progress(area_id);
+		let menu_open = self
+			.editor_menu
+			.as_ref()
+			.is_some_and(|menu| menu.area_id == area_id && menu.to > 0.0);
 
-		// Blender-style editor type chip: [icon] [▾]
-		const ICON_SIZE: f32 = 14.0;
-		const CHEVRON_SIZE: f32 = 7.0;
+		// Editor type chip: [icon] Title [⌄] — the chevron flips while the menu is open.
+		let title_color = constants::style::mix(TEXT_SECONDARY_COLOR, TEXT_PRIMARY_COLOR, focus);
+		let chevron_turn = self
+			.editor_menu
+			.as_ref()
+			.filter(|menu| menu.area_id == area_id)
+			.map_or(0.0, EditorMenuState::value);
 		let editor_picker = button(constants::widgets::button_body(
 			row![
-				constants::widgets::icon_slot(panel_icon_svg(area.content.icon(), ICON_SIZE), ICON_SIZE),
-				constants::widgets::icon_slot(panel_icon_svg(chevron_down_handle(), CHEVRON_SIZE), CHEVRON_SIZE),
+				panel_icon_svg_colored(area.content.icon(), ICON_SIZE, title_color, 1.0),
+				constants::widgets::ui_label(area.content.label(), FONT_UI).color(title_color),
+				constants::icons::icon_transformed(
+					constants::icons::Icon::ChevronDown,
+					10.0,
+					if menu_open {
+						TEXT_PRIMARY_COLOR
+					} else {
+						TEXT_MUTED_COLOR
+					},
+					chevron_turn * std::f32::consts::PI,
+					1.0,
+				),
 			]
-			.spacing(2)
+			.spacing(6)
 			.align_y(iced::Alignment::Center),
 		))
-		.padding(iced::Padding {
-			top: 0.0,
-			right: 4.0,
-			bottom: 0.0,
-			left: 3.0,
-		})
+		.padding([0.0, 6.0])
 		.width(Length::Shrink)
-		.height(18.0)
-		.style(|theme, status| constants::widgets::button_editor_type(theme, status))
+		.height(22.0)
+		.style(constants::widgets::button_editor_type)
 		.on_press(PanelSystemMessage::ToggleEditorMenu(area_id));
 
 		let join_button: Element<'_, PanelSystemMessage<C, M>> = if can_join {
-			button(constants::widgets::button_body(
-				constants::widgets::ui_label("Join", constants::style::FONT_UI)
-					.color(constants::style::TEXT_SECONDARY_COLOR),
-			))
-			.padding(constants::style::PAD_BUTTON)
-			.width(Length::Shrink)
-			.height(18.0)
-			.style(|theme, status| constants::widgets::button_ghost(theme, status))
-			.on_press(PanelSystemMessage::JoinArea(area_id))
-			.into()
+			constants::widgets::tip(
+				button(constants::widgets::button_body_center(
+					svg(constants::icons::Icon::Close.handle())
+						.width(12)
+						.height(12)
+						.style(|_theme, status| svg::Style {
+							color: Some(match status {
+								svg::Status::Hovered => TEXT_PRIMARY_COLOR,
+								svg::Status::Idle => TEXT_MUTED_COLOR,
+							}),
+						}),
+				))
+				.padding(0)
+				.width(20.0)
+				.height(20.0)
+				.style(constants::widgets::button_ghost)
+				.on_press(PanelSystemMessage::JoinArea(area_id)),
+				"Close Panel",
+				iced::widget::tooltip::Position::Bottom,
+			)
 		} else {
 			Space::new().width(0).into()
 		};
 
 		let header = container(
-			row![editor_picker, Space::new().width(Length::Fill), join_button,]
-				.spacing(constants::style::SPACE_2)
+			row![editor_picker, Space::new().width(Length::Fill), join_button]
+				.spacing(SPACE_2)
 				.align_y(iced::Alignment::Center)
 				.height(Length::Fill)
-				.padding(iced::Padding {
-					top: 0.0,
-					right: constants::style::SPACE_2,
-					bottom: 0.0,
-					left: 2.0,
-				}),
+				.padding([0.0, 4.0]),
 		)
 		.width(Length::Fill)
 		.height(HEADER_HEIGHT)
@@ -1084,7 +1221,16 @@ impl<C: AreaKind> PanelSystem<C> {
 				.height(Length::Fill)
 		};
 
-		let body_container = container(body_stack).width(Length::Fill).height(Length::Fill);
+		// Keep body content inside the rounded bottom corners.
+		let body_container = container(body_stack)
+			.width(Length::Fill)
+			.height(Length::Fill)
+			.padding(iced::Padding {
+				top: 0.0,
+				right: 0.0,
+				bottom: 3.0,
+				left: 0.0,
+			});
 
 		let chrome = PanelChrome {
 			header_height: HEADER_HEIGHT,
@@ -1095,6 +1241,9 @@ impl<C: AreaKind> PanelSystem<C> {
 			panel_color: constants::style::PANEL_COLOR,
 			header_color: colors::HEADER_BG,
 			outline_color: colors::PANEL_OUTLINE_COLOR,
+			separator_color: colors::HEADER_SEPARATOR,
+			focus_color: colors::FOCUS_RING,
+			focus,
 		};
 
 		squircle_panel_stack(
@@ -1104,7 +1253,6 @@ impl<C: AreaKind> PanelSystem<C> {
 				.height(Length::Fill)
 				.padding(PANEL_OUTLINE_WIDTH),
 		)
-		.into()
 	}
 
 	fn view_corner_overlay<'a, M>(
@@ -1137,14 +1285,9 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		let color = if active { colors::CORNER_ACTIVE } else { colors::CORNER };
 
-		// 右下の三角形っぽいコーナーウィジェット
-		let widget = container(text("◢").size(14).color(color))
-			.width(CORNER_SIZE)
-			.height(CORNER_SIZE)
-			.center_x(CORNER_SIZE)
-			.center_y(CORNER_SIZE);
+		let grip = Canvas::new(CornerGrip { color }).width(CORNER_SIZE).height(CORNER_SIZE);
 
-		mouse_area(widget)
+		mouse_area(grip)
 			.on_press(PanelSystemMessage::CornerDragStart(area_id))
 			.on_move(PanelSystemMessage::MouseMove)
 			.into()
@@ -1169,17 +1312,20 @@ impl<C: AreaKind> PanelSystem<C> {
 		M: Clone + std::fmt::Debug + 'static,
 	{
 		container(
-			container(text("Move").size(14).color(colors::TEXT_SECONDARY))
-				.padding([8, 14])
-				.style(|_| container::Style {
-					background: Some(colors::HEADER_BG.into()),
-					border: iced::Border {
-						color: colors::ACCENT,
-						width: 1.0,
-						radius: 4.0.into(),
-					},
-					..Default::default()
-				}),
+			container(
+				row![
+					constants::icons::icon(
+						constants::icons::Icon::Transform,
+						constants::style::ICON_SIZE,
+						constants::style::TEXT_PRIMARY_COLOR
+					),
+					constants::widgets::ui_label("Swap Panels", constants::style::FONT_UI),
+				]
+				.spacing(6)
+				.align_y(iced::Alignment::Center),
+			)
+			.padding([8, 14])
+			.style(constants::widgets::hud(1.0)),
 		)
 		.width(Length::Fill)
 		.height(Length::Fill)
@@ -1187,6 +1333,11 @@ impl<C: AreaKind> PanelSystem<C> {
 		.center_y(Length::Fill)
 		.style(|_| container::Style {
 			background: Some(colors::SPLIT_PREVIEW.into()),
+			border: iced::Border {
+				color: colors::SPLIT_PREVIEW_BORDER,
+				width: 1.5,
+				radius: constants::style::PANEL_INNER_RADIUS.into(),
+			},
 			..Default::default()
 		})
 		.into()
@@ -1211,8 +1362,18 @@ impl<C: AreaKind> PanelSystem<C> {
 			} else {
 				None
 			};
+			let border = if active {
+				iced::Border {
+					color: colors::SPLIT_PREVIEW_BORDER,
+					width: 1.5,
+					radius: constants::style::PANEL_INNER_RADIUS.into(),
+				}
+			} else {
+				iced::Border::default()
+			};
 			container(Space::new()).style(move |_| container::Style {
 				background: bg,
+				border,
 				..Default::default()
 			})
 		};
@@ -1268,6 +1429,39 @@ impl<C: AreaKind> PanelSystem<C> {
 			SplitDirection::Vertical => (Length::Fill, Length::Fixed(PANEL_GAP)),
 		};
 
+		// Hovering or dragging a split reveals a slim pill in the gutter.
+		let hot = self.is_gutter_hot(&path);
+		let indicator: Element<'a, PanelSystemMessage<C, M>> = if hot {
+			let (pill_w, pill_h): (Length, Length) = match direction {
+				SplitDirection::Horizontal => (Length::Fixed(2.0), Length::Fill),
+				SplitDirection::Vertical => (Length::Fill, Length::Fixed(2.0)),
+			};
+			container(
+				container(Space::new())
+					.width(pill_w)
+					.height(pill_h)
+					.style(|_| container::Style {
+						background: Some(colors::GUTTER_ACTIVE.into()),
+						border: iced::Border {
+							radius: 1.0.into(),
+							..Default::default()
+						},
+						..Default::default()
+					}),
+			)
+			.width(width)
+			.height(height)
+			.padding(match direction {
+				SplitDirection::Horizontal => iced::Padding::from([12.0, 0.0]),
+				SplitDirection::Vertical => iced::Padding::from([0.0, 12.0]),
+			})
+			.center_x(width)
+			.center_y(height)
+			.into()
+		} else {
+			Space::new().width(width).height(height).into()
+		};
+
 		stack![
 			container(Space::new())
 				.width(width)
@@ -1276,6 +1470,7 @@ impl<C: AreaKind> PanelSystem<C> {
 					background: Some(colors::RESIZE_HANDLE.into()),
 					..Default::default()
 				}),
+			indicator,
 			self.view_resize_hit(direction, path, width, height),
 		]
 		.width(width)
@@ -1313,6 +1508,8 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		let ma = mouse_area(hit)
 			.interaction(cursor)
+			.on_enter(PanelSystemMessage::GutterHover(path.clone(), true))
+			.on_exit(PanelSystemMessage::GutterHover(path.clone(), false))
 			.on_press(PanelSystemMessage::ResizeStart(path, direction))
 			.on_release(PanelSystemMessage::ResizeEnd);
 
@@ -1607,14 +1804,6 @@ impl<C: AreaKind> Default for PanelSystem<C> {
 	fn default() -> Self {
 		Self::new()
 	}
-}
-
-fn chevron_down_handle() -> svg::Handle {
-	svg::Handle::from_memory(include_bytes!("../../../assets/icons/panels/chevron_down.svg").as_slice())
-}
-
-fn panel_icon_svg<'a, Message: 'a>(handle: svg::Handle, size: f32) -> Element<'a, Message> {
-	panel_icon_svg_colored(handle, size, constants::style::TEXT_PRIMARY_COLOR, 1.0)
 }
 
 fn panel_icon_svg_colored<'a, Message: 'a>(

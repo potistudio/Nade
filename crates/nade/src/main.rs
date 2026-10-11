@@ -1,12 +1,18 @@
 //! # Nade - Entry Point
 
 mod app;
+#[cfg(debug_assertions)]
+mod devtools;
 mod message;
 mod panel_content;
 mod panels;
 mod services;
+mod shell;
 mod theme;
+mod tool;
+mod viewer;
 mod widgets;
+mod workspace;
 
 use app::NadeApp;
 
@@ -28,7 +34,15 @@ fn load_app_icon() -> Option<iced::window::Icon> {
 pub fn run_app() -> iced::Result {
 	let window_settings = iced::window::Settings {
 		icon: load_app_icon(),
-		size: iced::Size::new(1280.0, 720.0),
+		size: iced::Size::new(constants::WINDOW_WIDTH, constants::WINDOW_HEIGHT),
+		min_size: Some(iced::Size::new(960.0, 600.0)),
+		// 透明タイトルバー + フルサイズコンテンツで、ツールバーと地続きの一枚窓にする
+		#[cfg(target_os = "macos")]
+		platform_specific: iced::window::settings::PlatformSpecific {
+			title_hidden: true,
+			titlebar_transparent: true,
+			fullsize_content_view: true,
+		},
 		..Default::default()
 	};
 
