@@ -3,7 +3,7 @@
 //! `NADE_SCREENSHOT=out.png` saves the window as a PNG once the UI settles
 //! (`NADE_SCREENSHOT_DELAY_MS`, default 2500) and quits — handy for PR
 //! screenshots. `NADE_SCREENSHOT_SCENE` stages the UI first, e.g.
-//! `select=Title;workspace=graph;tool=t;time=1.5;loop=1;play=1`.
+//! `select=Title;workspace=graph;tool=t;time=1.5;loop=1;play=1;menu=2`.
 
 use std::path::PathBuf;
 
@@ -86,6 +86,11 @@ pub fn scene_messages(select_layer: impl Fn(&str) -> Option<AppPanelMessage>) ->
 				.ok()
 				.map(|time| Message::Timeline(timeline_panel::TimelineMessage::PlayheadChanged(time))),
 			"loop" => Some(Message::Transport(crate::message::TransportMessage::ToggleLoop)),
+			"menu" => value
+				.trim()
+				.parse()
+				.ok()
+				.map(|area| Message::PanelSystem(panel_system::PanelSystemMessage::ToggleEditorMenu(area))),
 			"play" => Some(Message::Transport(crate::message::TransportMessage::TogglePlay)),
 			_ => None,
 		})
