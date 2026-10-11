@@ -74,8 +74,8 @@ impl Workspace {
 
 				let left = LayoutBuilder::vsplit(assets, layers, 0.55);
 				let center = LayoutBuilder::vsplit(viewer, timeline, 0.52);
-				let main = LayoutBuilder::hsplit(center, properties, 0.74);
-				LayoutBuilder::hsplit(left, main, 0.2)
+				let main = LayoutBuilder::hsplit(center, properties, 0.7);
+				LayoutBuilder::hsplit(left, main, 0.18)
 			}
 		};
 		(layout, builder.next_area_id())

@@ -19,7 +19,7 @@ use crate::panel_content::PanelContent;
 use crate::viewer::CompositionSummary;
 use crate::widgets::draggable_number::{KeyState, number_field};
 
-const LABEL_WIDTH: f32 = 60.0;
+const LABEL_WIDTH: f32 = 56.0;
 const ROW_HEIGHT: f32 = 24.0;
 
 /// Panel-local UI state owned by the app (section disclosure, links, drafts).
@@ -607,13 +607,15 @@ fn text_rows<'a>(
 			.on_press(InspectorMessage::SetFillRgb([well.r, well.g, well.b]))
 			.into()
 	}))
-	.spacing(SPACE_2);
+	.spacing(SPACE_2)
+	.wrap()
+	.vertical_spacing(SPACE_2);
 
 	column![
 		labelled("Content", content.into()),
 		labelled("Font", metrics.into()),
 		labelled("Fill", fill_row.into()),
-		labelled("", wells.into()),
+		row![Space::new().width(42.0 + LABEL_WIDTH + SPACE_2 * 2.0), wells],
 	]
 	.spacing(SPACE_1 + 1.0)
 	.into()

@@ -214,7 +214,13 @@ where
 		let center_y = bounds.center_y();
 		let mut value_left = bounds.x + TEXT_PADDING;
 
-		if let Some((label, color)) = self.prefix {
+		// 狭くて値と重なる場合は軸ラベルを省く
+		let estimated = self.display().chars().count() as f32 * FONT_LABEL * 0.6;
+		let prefix = self
+			.prefix
+			.filter(|_| bounds.width - TEXT_PADDING * 2.0 >= estimated + 12.0);
+
+		if let Some((label, color)) = prefix {
 			renderer.fill_text(
 				text_spec(
 					label.to_string(),
@@ -293,7 +299,7 @@ where
 					KeyState::Static => TEXT_PRIMARY_COLOR,
 					KeyState::Animated | KeyState::OnKey => KEYFRAME_COLOR,
 				};
-				let (align, anchor_x) = if self.prefix.is_some() {
+				let (align, anchor_x) = if prefix.is_some() {
 					(advanced_text::Alignment::Right, value_area.x + value_area.width)
 				} else {
 					(advanced_text::Alignment::Center, value_area.center_x())
