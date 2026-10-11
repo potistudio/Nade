@@ -87,4 +87,7 @@ pub enum Message {
 	Timeline(TimelineMessage),
 	/// ファイルダイアログで選ばれたメディア（キャンセル時は None）
 	MediaImported(Option<PathBuf>),
+	/// デバッグ用スクリーンショットの取得結果
+	#[cfg(debug_assertions)]
+	DevScreenshot(iced::window::Screenshot),
 }

@@ -166,6 +166,9 @@ pub(super) struct NadeApp {
 	started: Instant,
 	/// ウィンドウの内寸
 	window_size: Size,
+	/// デバッグ用スクリーンショット（`NADE_SCREENSHOT`）
+	#[cfg(debug_assertions)]
+	capture: Option<crate::devtools::Capture>,
 }
 
 //==== Iced API ================================================================
@@ -209,6 +212,8 @@ impl NadeApp {
 			now: Instant::now(),
 			started: Instant::now(),
 			window_size,
+			#[cfg(debug_assertions)]
+			capture: crate::devtools::Capture::from_env(),
 		};
 
 		app.rebuild_timeline_for_composition(main_comp);
@@ -222,7 +227,29 @@ impl NadeApp {
 			.and_then(iced::window::size)
 			.map(Message::WindowResized);
 
+		#[cfg(debug_assertions)]
+		let initial_size = initial_size.chain(app.dev_scene());
+
 		(app, initial_size)
+	}
+
+	/// `NADE_SCREENSHOT_SCENE` で指定された UI 状態を再現する
+	#[cfg(debug_assertions)]
+	fn dev_scene(&self) -> Task<Message> {
+		let project = &self.project;
+		let scene = crate::devtools::scene_messages(|name| {
+			project.compositions().into_iter().find_map(|composition| {
+				let instance = project
+					.composition(&composition)?
+					.all_objects()
+					.find(|instance| instance.name() == name)?
+					.id();
+				Some(AppPanelMessage::Project(ProjectPaneMessage::Select(
+					ObjectId::Instance { composition, instance },
+				)))
+			})
+		});
+		Task::batch(scene.into_iter().map(Task::done))
 	}
 
 	fn create_sample_project() -> (Project, CompositionId, AssetId) {
@@ -374,6 +401,10 @@ impl NadeApp {
 				if self.toast.as_ref().is_some_and(|toast| !toast.is_active(self.now)) {
 					self.toast = None;
 				}
+				#[cfg(debug_assertions)]
+				if let Some(task) = self.capture.as_mut().and_then(|capture| capture.poll(self.now)) {
+					return task;
+				}
 				if self.panel_system.is_animating() {
 					self.panel_system
 						.update(PanelSystemMessage::<PanelContent, AppPanelMessage>::AnimTick);
@@ -411,6 +442,14 @@ impl NadeApp {
 				}
 				self.panel_system.update(msg);
 				task
+			}
+
+			#[cfg(debug_assertions)]
+			Message::DevScreenshot(screenshot) => {
+				if let Some(capture) = &self.capture {
+					capture.save(&screenshot);
+				}
+				self.update(Message::CloseRequested(iced::window::Id::unique()))
 			}
 
 			Message::MediaImported(path) => {

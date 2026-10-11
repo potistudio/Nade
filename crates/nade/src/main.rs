@@ -1,6 +1,8 @@
 //! # Nade - Entry Point
 
 mod app;
+#[cfg(debug_assertions)]
+mod devtools;
 mod message;
 mod panel_content;
 mod panels;
