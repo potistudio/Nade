@@ -1,21 +1,23 @@
 //! Iced animation curve editor panel.
 
 use constants::style::{
-	ACCENT_COLOR, BORDER_SUBTLE_COLOR, PANEL_COLOR, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR,
+	ACCENT_BRIGHT_COLOR, ACCENT_COLOR, AXIS_X_COLOR, AXIS_Y_COLOR, AXIS_Z_COLOR, BORDER_SUBTLE_COLOR, FONT_TINY,
+	FONT_UI, KEYFRAME_COLOR, LABEL_COLORS, SPACE_1, SPACE_3, SPACE_4, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR,
+	TEXT_SECONDARY_COLOR, WELL_COLOR,
 };
 use core::{AnimationCurve, HandleSide, Interpolation, Transform};
 use domain::{TransformAnimation, TransformProperty};
 use iced::{
-	Color, Element, Event, Length, Point, Rectangle, Size, Theme, Vector, keyboard, mouse,
+	Alignment, Border, Color, Element, Event, Font, Length, Point, Rectangle, Size, Theme, Vector, keyboard, mouse,
 	widget::{
-		button,
-		canvas::{self, Canvas, Geometry, Path, Stroke, Text},
-		column, container, row, text,
+		Space, button,
+		canvas::{self, Canvas, Geometry, LineCap, LineJoin, Path, Stroke, Text},
+		column, container, row, tooltip,
 	},
 };
 
-const SIDEBAR_WIDTH: f32 = 116.0;
-const TOOLBAR_HEIGHT: f32 = 28.0;
+const SIDEBAR_WIDTH: f32 = 148.0;
+const TOOLBAR_HEIGHT: f32 = 32.0;
 const HIT_RADIUS: f32 = 8.0;
 const KEY_RADIUS: f32 = 4.5;
 const HANDLE_RADIUS: f32 = 3.5;
@@ -317,15 +319,50 @@ impl<'a> CurveEditorWidget<'a> {
 	}
 
 	pub fn view(self) -> Element<'a, CurveEditorMessage> {
-		let sidebar = TransformProperty::ALL
+		use constants::icons::{Icon, icon};
+		use constants::widgets::{self, button_body, button_body_center, mono_label, ui_label};
+
+		let sidebar = EDITABLE_PROPERTIES
 			.into_iter()
 			.fold(column![].spacing(1), |column, property| {
-				let marker = text("●").color(property_color(property));
-				let label = text(property.label()).size(11);
+				let selected = property == self.state.selected_property;
+				let keys = self.animation.curve(property).keys().len();
+				let dot = container(Space::new().width(8).height(8)).style(move |_| container::Style {
+					background: Some(property_color(property).into()),
+					border: Border {
+						radius: 4.0.into(),
+						..Default::default()
+					},
+					..Default::default()
+				});
+				let mut content = row![
+					dot,
+					ui_label(property.label(), FONT_UI).color(if selected {
+						TEXT_PRIMARY_COLOR
+					} else {
+						TEXT_SECONDARY_COLOR
+					}),
+					Space::new().width(Length::Fill),
+				]
+				.spacing(SPACE_3 + 1.0)
+				.align_y(Alignment::Center);
+				if keys > 0 {
+					content = content.push(
+						row![
+							icon(Icon::KeyframeFilled, 8.0, KEYFRAME_COLOR),
+							mono_label(keys.to_string(), FONT_TINY).color(TEXT_MUTED_COLOR),
+						]
+						.spacing(SPACE_1 + 1.0)
+						.align_y(Alignment::Center),
+					);
+				}
 				column.push(
-					button(row![marker, label].spacing(4))
-						.on_press(CurveEditorMessage::SelectProperty(property))
-						.width(Length::Fill),
+					button(button_body(content))
+						.padding([0.0, SPACE_3 + 2.0])
+						.width(Length::Fill)
+						.height(24)
+						.style(widgets::button_toggle(selected))
+						.on_press(CurveEditorMessage::SelectProperty(property)),
 				)
 			});
 
@@ -334,29 +371,78 @@ impl<'a> CurveEditorWidget<'a> {
 			.selected_key
 			.and_then(|id| self.animation.curve(self.state.selected_property).key(id))
 			.map(|key| key.interpolation);
-		let interpolation_button = |label: &str, value: Interpolation| {
-			let title = if interpolation == Some(value) {
-				format!("[{label}]")
+		let has_selection = self.state.selected_key.is_some();
+
+		let icon_button = |glyph: Icon, label: &'static str, active: bool, message: Option<CurveEditorMessage>| {
+			let color = if active {
+				ACCENT_BRIGHT_COLOR
+			} else if message.is_some() {
+				TEXT_SECONDARY_COLOR
 			} else {
-				label.to_string()
+				Color {
+					a: 0.35,
+					..TEXT_MUTED_COLOR
+				}
 			};
-			button(text(title).size(11)).on_press(CurveEditorMessage::SetInterpolation(value))
+			widgets::tip(
+				button(button_body_center(icon(glyph, 14.0, color)))
+					.padding(0)
+					.width(28)
+					.height(24)
+					.style(widgets::button_toggle(active))
+					.on_press_maybe(message),
+				label,
+				tooltip::Position::Bottom,
+			)
 		};
+		let interpolation_button = |glyph, label, value: Interpolation| {
+			icon_button(
+				glyph,
+				label,
+				interpolation == Some(value),
+				has_selection.then_some(CurveEditorMessage::SetInterpolation(value)),
+			)
+		};
+
+		let selected_name = self.state.selected_property.label();
 		let toolbar = row![
-			button(text("+ Key").size(11)).on_press(CurveEditorMessage::AddKey),
-			button(text("Delete").size(11)).on_press(CurveEditorMessage::DeleteSelected),
-			interpolation_button("Bezier", Interpolation::Bezier),
-			interpolation_button("Linear", Interpolation::Linear),
-			interpolation_button("Hold", Interpolation::Hold),
-			button(text("Frame All").size(11)).on_press(CurveEditorMessage::FrameAll),
+			ui_label(selected_name, FONT_UI).color(TEXT_PRIMARY_COLOR),
+			Space::new().width(Length::Fill),
+			icon_button(
+				Icon::Keyframe,
+				"Add Key at Playhead",
+				false,
+				Some(CurveEditorMessage::AddKey)
+			),
+			icon_button(
+				Icon::Trash,
+				"Delete Key  ⌫",
+				false,
+				has_selection.then_some(CurveEditorMessage::DeleteSelected)
+			),
+			widgets::vertical_separator(14.0),
+			interpolation_button(Icon::InterpBezier, "Bezier", Interpolation::Bezier),
+			interpolation_button(Icon::InterpLinear, "Linear", Interpolation::Linear),
+			interpolation_button(Icon::InterpHold, "Hold", Interpolation::Hold),
+			widgets::vertical_separator(14.0),
+			icon_button(Icon::Fit, "Frame All", false, Some(CurveEditorMessage::FrameAll)),
 		]
-		.spacing(3)
+		.spacing(SPACE_1)
+		.align_y(Alignment::Center)
+		.padding([0.0, SPACE_4])
 		.height(TOOLBAR_HEIGHT);
 
 		let canvas: Element<'a, CurveEditorMessage> = Canvas::new(self).width(Length::Fill).height(Length::Fill).into();
 
 		row![
-			container(sidebar).width(SIDEBAR_WIDTH).height(Length::Fill).padding(3),
+			container(sidebar)
+				.width(SIDEBAR_WIDTH)
+				.height(Length::Fill)
+				.padding([SPACE_3, SPACE_3]),
+			container(Space::new().width(1).height(Length::Fill)).style(|_| container::Style {
+				background: Some(BORDER_SUBTLE_COLOR.into()),
+				..Default::default()
+			}),
 			column![toolbar, canvas].width(Length::Fill).height(Length::Fill),
 		]
 		.into()
@@ -381,7 +467,7 @@ impl canvas::Program<CurveEditorMessage> for CurveEditorWidget<'_> {
 		_cursor: mouse::Cursor,
 	) -> Vec<Geometry> {
 		let mut frame = canvas::Frame::new(renderer, bounds.size());
-		frame.fill_rectangle(Point::ORIGIN, bounds.size(), PANEL_COLOR);
+		frame.fill_rectangle(Point::ORIGIN, bounds.size(), WELL_COLOR);
 		self.draw_grid(&mut frame, bounds.size());
 		for property in TransformProperty::ALL {
 			self.draw_curve(
@@ -392,6 +478,9 @@ impl canvas::Program<CurveEditorMessage> for CurveEditorWidget<'_> {
 			);
 		}
 		self.draw_playhead(&mut frame, bounds.height);
+		if self.animation.curve(self.state.selected_property).is_empty() {
+			self.draw_empty_hint(&mut frame, bounds.size());
+		}
 		vec![frame.into_geometry()]
 	}
 
@@ -447,21 +536,24 @@ impl canvas::Program<CurveEditorMessage> for CurveEditorWidget<'_> {
 
 impl CurveEditorWidget<'_> {
 	fn draw_grid(&self, frame: &mut canvas::Frame, size: Size) {
-		let time_step = grid_step(self.state.x_scale, 70.0);
-		let value_step = grid_step(self.state.y_scale, 50.0);
+		let time_step = grid_step(self.state.x_scale, 80.0);
+		let value_step = grid_step(self.state.y_scale, 48.0);
+		let grid = Stroke::default()
+			.with_color(Color::from_rgba(1.0, 1.0, 1.0, 0.04))
+			.with_width(1.0);
+
 		let min_time = self.state.x_to_time(0.0).floor();
 		let max_time = self.state.x_to_time(size.width).ceil();
-		let first_time = (min_time / time_step).floor() * time_step;
-		let mut time = first_time;
+		let mut time = (min_time / time_step).floor() * time_step;
 		while time <= max_time {
 			let x = self.state.time_to_x(time);
-			let line = Path::line(Point::new(x, 0.0), Point::new(x, size.height));
-			frame.stroke(&line, Stroke::default().with_color(BORDER_SUBTLE_COLOR).with_width(1.0));
+			frame.stroke(&Path::line(Point::new(x, 0.0), Point::new(x, size.height)), grid);
 			frame.fill_text(Text {
 				content: format!("{time:.1}s"),
-				position: Point::new(x + 3.0, 3.0),
+				position: Point::new(x + 4.0, 4.0),
 				color: TEXT_MUTED_COLOR,
-				size: 10.0.into(),
+				size: 9.5.into(),
+				font: Font::MONOSPACE,
 				..Text::default()
 			});
 			time += time_step;
@@ -472,13 +564,20 @@ impl CurveEditorWidget<'_> {
 		let mut value = (bottom_value / value_step).floor() * value_step;
 		while value <= top_value {
 			let y = self.state.curve_to_screen(0.0, value).y;
-			let line = Path::line(Point::new(0.0, y), Point::new(size.width, y));
-			frame.stroke(&line, Stroke::default().with_color(BORDER_SUBTLE_COLOR).with_width(1.0));
+			let stroke = if value.abs() < value_step * 0.01 {
+				Stroke::default()
+					.with_color(Color::from_rgba(1.0, 1.0, 1.0, 0.12))
+					.with_width(1.0)
+			} else {
+				grid
+			};
+			frame.stroke(&Path::line(Point::new(0.0, y), Point::new(size.width, y)), stroke);
 			frame.fill_text(Text {
-				content: format!("{value:.2}"),
-				position: Point::new(3.0, y + 2.0),
+				content: format_value(value, value_step),
+				position: Point::new(4.0, y - 13.0),
 				color: TEXT_MUTED_COLOR,
-				size: 10.0.into(),
+				size: 9.5.into(),
+				font: Font::MONOSPACE,
 				..Text::default()
 			});
 			value += value_step;
@@ -516,39 +615,65 @@ impl CurveEditorWidget<'_> {
 				&path,
 				Stroke::default()
 					.with_color(Color {
-						a: if selected { 1.0 } else { 0.45 },
+						a: if selected { 1.0 } else { 0.32 },
 						..color
 					})
-					.with_width(if selected { 2.0 } else { 1.0 }),
+					.with_width(if selected { 2.0 } else { 1.25 })
+					.with_line_cap(LineCap::Round)
+					.with_line_join(LineJoin::Round),
 			);
 		}
 
-		for key in curve.keys() {
-			let position = self.state.curve_to_screen(key.time, key.value);
-			let key_path = Path::circle(position, KEY_RADIUS);
-			frame.fill(
-				&key_path,
-				if selected && self.state.selected_key == Some(key.id) {
-					TEXT_PRIMARY_COLOR
-				} else {
-					color
-				},
-			);
-		}
-
+		// 選択キーのハンドル（キーより先に描いて下に潜らせる）
 		if selected
 			&& let Some(id) = self.state.selected_key
 			&& let Some(key) = curve.key(id)
 		{
+			let anchor = self.state.curve_to_screen(key.time, key.value);
 			for side in [HandleSide::Left, HandleSide::Right] {
 				let handle = key.handle_position(side);
 				let handle_position = self.state.curve_to_screen(handle[0], handle[1]);
 				frame.stroke(
-					&Path::line(self.state.curve_to_screen(key.time, key.value), handle_position),
-					Stroke::default().with_color(TEXT_SECONDARY_COLOR).with_width(1.0),
+					&Path::line(anchor, handle_position),
+					Stroke::default()
+						.with_color(Color::from_rgba(1.0, 1.0, 1.0, 0.45))
+						.with_width(1.0),
 				);
-				frame.fill(&Path::circle(handle_position, HANDLE_RADIUS), TEXT_PRIMARY_COLOR);
+				let knob = Path::circle(handle_position, HANDLE_RADIUS);
+				frame.fill(&knob, Color::WHITE);
+				frame.stroke(&knob, Stroke::default().with_color(ACCENT_COLOR).with_width(1.0));
 			}
+		}
+
+		for key in curve.keys() {
+			let position = self.state.curve_to_screen(key.time, key.value);
+			let is_active = selected && self.state.selected_key == Some(key.id);
+			let radius = if is_active { KEY_RADIUS + 1.5 } else { KEY_RADIUS };
+			let diamond = Path::new(|builder| {
+				builder.move_to(Point::new(position.x, position.y - radius));
+				builder.line_to(Point::new(position.x + radius, position.y));
+				builder.line_to(Point::new(position.x, position.y + radius));
+				builder.line_to(Point::new(position.x - radius, position.y));
+				builder.close();
+			});
+			let fill = if is_active {
+				Color::WHITE
+			} else if selected {
+				color
+			} else {
+				Color { a: 0.45, ..color }
+			};
+			frame.fill(&diamond, fill);
+			frame.stroke(
+				&diamond,
+				Stroke::default()
+					.with_color(if is_active {
+						ACCENT_COLOR
+					} else {
+						Color::from_rgba(0.0, 0.0, 0.0, 0.55)
+					})
+					.with_width(if is_active { 1.5 } else { 1.0 }),
+			);
 		}
 	}
 
@@ -558,21 +683,54 @@ impl CurveEditorWidget<'_> {
 			&Path::line(Point::new(x, 0.0), Point::new(x, height)),
 			Stroke::default().with_color(ACCENT_COLOR).with_width(1.5),
 		);
+		let head = Path::rounded_rectangle(Point::new(x - 5.0, 0.0), Size::new(10.0, 12.0), 3.0.into());
+		frame.fill(&head, ACCENT_COLOR);
+	}
+
+	fn draw_empty_hint(&self, frame: &mut canvas::Frame, size: Size) {
+		frame.fill_text(Text {
+			content: "No keyframes on this channel — press ◇ to add one at the playhead".into(),
+			position: Point::new(size.width * 0.5, size.height * 0.5),
+			color: TEXT_MUTED_COLOR,
+			size: 11.0.into(),
+			align_x: iced::advanced::text::Alignment::Center,
+			align_y: iced::alignment::Vertical::Center,
+			..Text::default()
+		});
+	}
+}
+
+/// Channels editable on 2D layers, in panel order.
+const EDITABLE_PROPERTIES: [TransformProperty; 6] = [
+	TransformProperty::PositionX,
+	TransformProperty::PositionY,
+	TransformProperty::RotationZ,
+	TransformProperty::ScaleX,
+	TransformProperty::ScaleY,
+	TransformProperty::Opacity,
+];
+
+fn format_value(value: f32, step: f32) -> String {
+	if step >= 1.0 {
+		format!("{value:.0}")
+	} else if step >= 0.1 {
+		format!("{value:.1}")
+	} else {
+		format!("{value:.2}")
 	}
 }
 
 fn property_color(property: TransformProperty) -> Color {
 	match property {
-		TransformProperty::PositionX => Color::from_rgb8(243, 139, 168),
-		TransformProperty::PositionY => Color::from_rgb8(166, 227, 161),
-		TransformProperty::PositionZ => Color::from_rgb8(137, 180, 250),
-		TransformProperty::RotationX => Color::from_rgb8(250, 179, 135),
-		TransformProperty::RotationY => Color::from_rgb8(148, 226, 213),
-		TransformProperty::RotationZ => Color::from_rgb8(116, 199, 236),
-		TransformProperty::ScaleX => Color::from_rgb8(245, 194, 231),
-		TransformProperty::ScaleY => Color::from_rgb8(166, 227, 161),
-		TransformProperty::ScaleZ => Color::from_rgb8(137, 220, 235),
-		TransformProperty::Opacity => TEXT_SECONDARY_COLOR,
+		TransformProperty::PositionX => AXIS_X_COLOR,
+		TransformProperty::PositionY => AXIS_Y_COLOR,
+		TransformProperty::PositionZ => AXIS_Z_COLOR,
+		TransformProperty::RotationX | TransformProperty::RotationY => TEXT_SECONDARY_COLOR,
+		TransformProperty::RotationZ => LABEL_COLORS[1],
+		TransformProperty::ScaleX => LABEL_COLORS[3],
+		TransformProperty::ScaleY => LABEL_COLORS[5],
+		TransformProperty::ScaleZ => TEXT_SECONDARY_COLOR,
+		TransformProperty::Opacity => Color::from_rgb8(220, 220, 228),
 	}
 }
 
