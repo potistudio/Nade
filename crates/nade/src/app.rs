@@ -1105,6 +1105,32 @@ impl NadeApp {
 		}
 	}
 
+	/// タイムラインのクリップごとのキーフレーム時刻（全チャンネルを統合）
+	fn clip_keyframes(&self) -> std::collections::HashMap<usize, Vec<f32>> {
+		self.timeline
+			.model
+			.tracks
+			.iter()
+			.flat_map(|track| track.clips.iter())
+			.filter_map(|clip| {
+				let instance = self
+					.project
+					.composition(&clip.composition_id?)?
+					.get(clip.instance_id?)?;
+				let mut times: Vec<f32> = TransformProperty::ALL
+					.into_iter()
+					.flat_map(|property| instance.animation.curve(property).keys().iter().map(|key| key.time))
+					.collect();
+				if times.is_empty() {
+					return None;
+				}
+				times.sort_by(f32::total_cmp);
+				times.dedup_by(|a, b| (*a - *b).abs() < 1e-4);
+				Some((clip.id, times))
+			})
+			.collect()
+	}
+
 	fn play_hud_progress(&self) -> Option<f32> {
 		let started = self.play_hud?;
 		let progress = self.now.saturating_duration_since(started).as_secs_f32() / PLAY_HUD_SECS;
@@ -1419,9 +1445,14 @@ impl NadeApp {
 		match content {
 			PanelContent::Timeline => panels::timeline::view(
 				panel_id,
-				&self.timeline.state,
-				&self.timeline.model,
-				self.current_model.preview.time,
+				panels::timeline::TimelineProps {
+					state: &self.timeline.state,
+					model: &self.timeline.model,
+					current_time: self.current_model.preview.time,
+					fps: self.composition_fps(),
+					duration: self.composition_duration(),
+					keyframes: self.clip_keyframes(),
+				},
 			),
 			PanelContent::CurveEditor => panels::curve_editor::view(
 				panel_id,

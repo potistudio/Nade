@@ -35,16 +35,20 @@ pub fn format(seconds: f32, fps: f32) -> String {
 	format!("{hours:02}:{minutes:02}:{secs:02}:{frames:02}")
 }
 
-/// Compact ruler label: `S:FF` under a minute, `M:SS` beyond.
-pub fn format_short(seconds: f32, fps: f32) -> String {
+/// Ruler label: whole seconds as `2s` (`1:30` past a minute), other ticks as
+/// their frame within the second (`15f`).
+pub fn format_ruler(seconds: f32, fps: f32) -> String {
 	let fps = sanitize_fps(fps);
 	let whole_fps = fps.round().max(1.0) as u32;
 	let frame = frame_at(seconds, fps);
 	let total_seconds = frame / whole_fps;
-	if total_seconds >= 60 {
+	let frames = frame % whole_fps;
+	if frames != 0 {
+		format!("{frames}f")
+	} else if total_seconds >= 60 {
 		format!("{}:{:02}", total_seconds / 60, total_seconds % 60)
 	} else {
-		format!("{}:{:02}", total_seconds, frame % whole_fps)
+		format!("{total_seconds}s")
 	}
 }
 
@@ -68,9 +72,10 @@ mod tests {
 	}
 
 	#[test]
-	fn short_labels_switch_to_minutes() {
-		assert_eq!(format_short(2.5, 30.0), "2:15");
-		assert_eq!(format_short(75.0, 30.0), "1:15");
+	fn ruler_labels_use_seconds_and_frames() {
+		assert_eq!(format_ruler(2.0, 30.0), "2s");
+		assert_eq!(format_ruler(2.5, 30.0), "15f");
+		assert_eq!(format_ruler(90.0, 30.0), "1:30");
 	}
 
 	#[test]

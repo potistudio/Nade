@@ -409,15 +409,6 @@ impl TimelineInteraction {
 		track_y + TRACK_HEIGHT >= rect.y && track_y <= rect.y + rect.height
 	}
 
-	pub(crate) fn calculate_tick_interval(&self) -> f32 {
-		match self.time_scale {
-			s if s < 0.3 => 5.0,
-			s if s < 1.0 => 2.0,
-			s if s < 3.0 => 1.0,
-			_ => 0.5,
-		}
-	}
-
 	/// 現在のビューポートで見えている先頭の時間
 	pub fn visible_start_time(&self) -> f32 {
 		(-self.scroll_offset.x / (PIXELS_PER_SECOND * self.time_scale)).max(0.0)

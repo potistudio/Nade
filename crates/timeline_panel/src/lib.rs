@@ -5,7 +5,6 @@
 
 mod icons;
 mod interaction;
-mod utils;
 mod widget;
 
 pub use core::{TimelineClip, TimelineModel, TimelineTrack, TrackVisibilityDisplay};

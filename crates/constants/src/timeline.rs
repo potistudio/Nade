@@ -10,7 +10,7 @@ use crate::style;
 pub const TRACK_HEIGHT: f32 = 26.0;
 pub const TRACK_PADDING: f32 = 3.0;
 pub const TRACK_LABEL_WIDTH: f32 = 196.0;
-pub const TRACK_HANDLE_WIDTH: f32 = 6.0;
+pub const TRACK_HANDLE_WIDTH: f32 = 14.0;
 pub const TRACK_CTRL_BTN_SIZE: f32 = 18.0;
 pub const TRACK_CTRL_BTN_GAP: f32 = 2.0;
 pub const RULER_HEIGHT: f32 = 24.0;
@@ -39,7 +39,7 @@ pub fn track_solo_btn_rect(track_left: f32, track_y: f32) -> iced::Rectangle {
 
 /// トラック名テキスト開始 X
 pub fn track_name_x(track_left: f32) -> f32 {
-	track_left + TRACK_HANDLE_WIDTH + TRACK_CTRL_BTN_GAP * 3.0 + TRACK_CTRL_BTN_SIZE * 2.0 + 2.0
+	track_left + TRACK_HANDLE_WIDTH + TRACK_CTRL_BTN_GAP * 3.0 + TRACK_CTRL_BTN_SIZE * 2.0 + 6.0
 }
 
 // Zooming limits
