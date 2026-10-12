@@ -1,4 +1,4 @@
-//! Status bar: playback state, render rate, tool hint and comp summary.
+//! Status bar: playback state, render rate and comp summary.
 
 use constants::style::{
 	FONT_TINY, FONT_UI, SPACE_2, SPACE_4, SPACE_5, SUCCESS_COLOR, TEXT_MUTED_COLOR, TEXT_SECONDARY_COLOR,
@@ -16,21 +16,17 @@ pub struct StatusInfo<'a> {
 	/// Breathing phase of the playback dot (`0.0..=1.0`).
 	pub pulse: f32,
 	pub render_fps: f32,
-	pub hint: &'a str,
 	pub composition: Option<CompositionSummary<'a>>,
 }
 
 pub fn view<'a>(info: StatusInfo<'a>) -> Element<'a, Message> {
-	let (dot_color, state_label) = if info.playing {
-		(
-			Color {
-				a: 0.55 + 0.45 * info.pulse,
-				..SUCCESS_COLOR
-			},
-			"Playing",
-		)
+	let dot_color = if info.playing {
+		Color {
+			a: 0.55 + 0.45 * info.pulse,
+			..SUCCESS_COLOR
+		}
 	} else {
-		(TEXT_MUTED_COLOR, "Ready")
+		TEXT_MUTED_COLOR
 	};
 
 	let dot = container(Space::new().width(7).height(7)).style(move |_| container::Style {
@@ -42,7 +38,7 @@ pub fn view<'a>(info: StatusInfo<'a>) -> Element<'a, Message> {
 		..Default::default()
 	});
 
-	let mut left = row![dot, ui_label(state_label, FONT_UI).color(TEXT_SECONDARY_COLOR)]
+	let mut left = row![dot]
 		.spacing(SPACE_2 + 2.0)
 		.align_y(Alignment::Center);
 	// 停止中はシーク時にしか描画しないため、実測レートは再生中のみ意味がある
@@ -52,8 +48,6 @@ pub fn view<'a>(info: StatusInfo<'a>) -> Element<'a, Message> {
 			.push(mono_label(format!("{:.1}", info.render_fps), FONT_TINY + 1.0).color(TEXT_SECONDARY_COLOR))
 			.push(ui_label("fps rendered", FONT_TINY + 1.0).color(TEXT_MUTED_COLOR));
 	}
-
-	let hint = ui_label(info.hint, FONT_UI).color(TEXT_MUTED_COLOR);
 
 	let right: Element<'a, Message> = match info.composition {
 		Some(comp) => row![
@@ -69,13 +63,7 @@ pub fn view<'a>(info: StatusInfo<'a>) -> Element<'a, Message> {
 	};
 
 	container(
-		row![
-			left,
-			Space::new().width(Length::Fill),
-			hint,
-			Space::new().width(Length::Fill),
-			right
-		]
+		row![left, Space::new().width(Length::Fill), right]
 		.spacing(SPACE_5)
 		.align_y(Alignment::Center),
 	)

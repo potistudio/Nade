@@ -1,4 +1,4 @@
-//! Viewer overlay: guides, selection gizmo, playback HUD and all pointer
+//! Viewer overlay: guides, selection gizmo and all pointer
 //! input of the viewer (tools, pan, zoom). Drawn on top of the video shader.
 
 use constants::style::{ACCENT_BRIGHT_COLOR, ACCENT_COLOR};
@@ -8,7 +8,6 @@ use iced::{Color, Event, Point, Rectangle, Renderer, Size, Theme, Vector, keyboa
 
 use crate::message::PreviewMessage;
 use crate::tool::Tool;
-use crate::widgets::play_glyph::draw_play_glyph;
 use crate::widgets::viewport::Viewport;
 
 const SCROLL_LINE_PX: f32 = 20.0;
@@ -54,15 +53,6 @@ impl LayerBox {
 	}
 }
 
-/// Transient play/pause indicator in the middle of the viewer.
-#[derive(Debug, Clone, Copy)]
-pub struct PlaybackHud {
-	/// `1.0` shows the pause glyph, `0.0` the play glyph.
-	pub pause_amount: f32,
-	/// Animation progress `0.0..=1.0`.
-	pub progress: f32,
-}
-
 #[derive(Debug, Clone)]
 pub struct ViewerOverlay {
 	pub frame: Size,
@@ -74,7 +64,6 @@ pub struct ViewerOverlay {
 	pub selected: Option<InstanceId>,
 	pub show_grid: bool,
 	pub show_safe_areas: bool,
-	pub hud: Option<PlaybackHud>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -347,29 +336,6 @@ impl ViewerOverlay {
 			);
 		}
 	}
-
-	fn draw_hud(frame: &mut Frame, size: Size, hud: PlaybackHud) {
-		let t = hud.progress.clamp(0.0, 1.0);
-		let alpha = 1.0 - t * t;
-		let grow = 1.0 - (1.0 - t).powi(3);
-		let radius = 30.0 * (0.85 + 0.3 * grow);
-		let center = Point::new(size.width * 0.5, size.height * 0.5);
-
-		frame.fill(
-			&Path::circle(center, radius),
-			Color::from_rgba(0.0, 0.0, 0.0, 0.55 * alpha),
-		);
-		let glyph = radius * 0.95;
-		draw_play_glyph(
-			frame,
-			Rectangle::new(
-				Point::new(center.x - glyph * 0.5, center.y - glyph * 0.5),
-				Size::new(glyph, glyph),
-			),
-			hud.pause_amount,
-			Color::from_rgba(1.0, 1.0, 1.0, alpha),
-		);
-	}
 }
 
 impl Program<PreviewMessage> for ViewerOverlay {
@@ -464,10 +430,6 @@ impl Program<PreviewMessage> for ViewerOverlay {
 
 		if let Some(layer) = self.selected_layer() {
 			self.draw_gizmo(&mut frame, &viewport, layer);
-		}
-
-		if let Some(hud) = self.hud {
-			Self::draw_hud(&mut frame, bounds.size(), hud);
 		}
 
 		vec![frame.into_geometry()]

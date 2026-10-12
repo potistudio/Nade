@@ -132,10 +132,13 @@ pub const FONT_TITLE: f32 = 12.0;
 /// Large numeric readouts (timecode).
 pub const FONT_DISPLAY: f32 = 15.0;
 
-pub const ROW_HEIGHT: f32 = 22.0;
-pub const INPUT_HEIGHT: f32 = 20.0;
-pub const HEADER_HEIGHT: f32 = 28.0;
-pub const TOOLBAR_HEIGHT: f32 = 24.0;
+/// Usable control area, excluding vertical padding.
+pub const CONTROL_CONTENT_HEIGHT: f32 = 20.0;
+/// Outer height: 20px content plus 2px padding on each side.
+pub const ROW_HEIGHT: f32 = CONTROL_CONTENT_HEIGHT + SPACE_1 * 2.0;
+pub const INPUT_HEIGHT: f32 = ROW_HEIGHT;
+pub const HEADER_HEIGHT: f32 = ROW_HEIGHT;
+pub const TOOLBAR_HEIGHT: f32 = ROW_HEIGHT;
 /// Icon size inside compact controls.
 pub const ICON_SIZE: f32 = 14.0;
 pub const ICON_SIZE_SMALL: f32 = 12.0;

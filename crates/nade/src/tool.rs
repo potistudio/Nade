@@ -49,17 +49,6 @@ impl Tool {
 		}
 	}
 
-	/// Contextual help shown in the status bar.
-	pub fn hint(self) -> &'static str {
-		match self {
-			Self::Select => "Drag in the viewer to move the selected layer",
-			Self::Hand => "Drag to pan the viewer",
-			Self::Zoom => "Click to zoom in · Option-click to zoom out",
-			Self::Rotate => "Drag around the selected layer to rotate it",
-			Self::Text => "Click in the viewer to place a new text layer",
-		}
-	}
-
 	pub fn tooltip(self) -> String {
 		format!("{}  {}", self.label(), self.shortcut())
 	}

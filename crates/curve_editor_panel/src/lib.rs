@@ -17,7 +17,7 @@ use iced::{
 };
 
 const SIDEBAR_WIDTH: f32 = 148.0;
-const TOOLBAR_HEIGHT: f32 = 32.0;
+const TOOLBAR_HEIGHT: f32 = constants::style::ROW_HEIGHT;
 const HIT_RADIUS: f32 = 8.0;
 const KEY_RADIUS: f32 = 4.5;
 const HANDLE_RADIUS: f32 = 3.5;
@@ -360,7 +360,7 @@ impl<'a> CurveEditorWidget<'a> {
 					button(button_body(content))
 						.padding([0.0, SPACE_3 + 2.0])
 						.width(Length::Fill)
-						.height(24)
+						.height(TOOLBAR_HEIGHT)
 						.style(widgets::button_toggle(selected))
 						.on_press(CurveEditorMessage::SelectProperty(property)),
 				)
@@ -388,7 +388,7 @@ impl<'a> CurveEditorWidget<'a> {
 				button(button_body_center(icon(glyph, 14.0, color)))
 					.padding(0)
 					.width(28)
-					.height(24)
+					.height(TOOLBAR_HEIGHT)
 					.style(widgets::button_toggle(active))
 					.on_press_maybe(message),
 				label,

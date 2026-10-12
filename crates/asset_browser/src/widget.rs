@@ -26,7 +26,7 @@ impl<'a> AssetBrowserWidget<'a> {
 			text_input("Search", &state.filter)
 				.on_input(AssetBrowserMessage::FilterChanged)
 				.size(FONT_UI)
-				.padding([3, 8])
+				.padding([2, 8])
 				.width(Length::Fill)
 				.style(widgets::search_input),
 			tool_button(Icon::Import, "Import Media…", AssetBrowserMessage::ImportMedia),
@@ -35,7 +35,8 @@ impl<'a> AssetBrowserWidget<'a> {
 		]
 		.spacing(SPACE_1)
 		.align_y(Alignment::Center)
-		.padding([SPACE_2 + 1.0, SPACE_4 + 2.0]);
+		.padding([0.0, SPACE_4 + 2.0])
+		.height(ROW_HEIGHT);
 
 		let rows: Vec<Element<'a, AssetBrowserMessage>> = project
 			.root_assets()
@@ -70,7 +71,7 @@ fn tool_button<'a>(glyph: Icon, label: &'a str, message: AssetBrowserMessage) ->
 		button(button_body_center(icon(glyph, 13.0, TEXT_SECONDARY_COLOR)))
 			.padding(0)
 			.width(24)
-			.height(22)
+			.height(ROW_HEIGHT)
 			.style(widgets::button_ghost)
 			.on_press(message),
 		label,

@@ -147,6 +147,14 @@ impl TimelineLayout {
 #[derive(Debug)]
 pub struct TimelineInteraction {
 	pub scroll_offset: Vector,
+	scroll_min: Vector,
+	scroll_velocity: Vector,
+	scroll_target: Vector,
+	scroll_bounds: Option<Rectangle>,
+	scroll_gesture_active: bool,
+	scroll_input_is_momentum: bool,
+	last_scroll: Option<std::time::Instant>,
+	last_spring_tick: Option<std::time::Instant>,
 	pub time_scale: f32,
 	pub selected_clip: Option<(usize, usize)>,
 	pub selected_track_index: Option<usize>,
@@ -181,6 +189,14 @@ impl Default for TimelineInteraction {
 	fn default() -> Self {
 		Self {
 			scroll_offset: Vector::ZERO,
+			scroll_min: Vector::ZERO,
+			scroll_velocity: Vector::ZERO,
+			scroll_target: Vector::ZERO,
+			scroll_bounds: None,
+			scroll_gesture_active: false,
+			scroll_input_is_momentum: false,
+			last_scroll: None,
+			last_spring_tick: None,
 			time_scale: 1.0,
 			selected_clip: None,
 			selected_track_index: None,
@@ -324,6 +340,10 @@ impl TimelineInteraction {
 	pub fn clamp_scroll_offset(&mut self) {
 		self.scroll_offset.x = self.scroll_offset.x.min(0.0);
 		self.scroll_offset.y = self.scroll_offset.y.min(0.0);
+		self.scroll_target = self.scroll_offset;
+		self.scroll_velocity = Vector::ZERO;
+		self.last_scroll = None;
+		self.last_spring_tick = None;
 	}
 
 	/// Set the position of the timeline offset
@@ -536,7 +556,36 @@ impl TimelineInteraction {
 				}
 			}
 			TimelineCanvasEvent::MouseWheelScrolled { delta, bounds } => {
+				self.scroll_bounds = Some(bounds);
 				self.update_viewport_width(bounds.width);
+				let layout = TimelineLayout::from_bounds_absolute(bounds);
+				let duration = model.tracks.iter().flat_map(|track| &track.clips)
+					.map(|clip| clip.end_time()).fold(30.0_f32, f32::max);
+				self.scroll_min = Vector::new(
+					(layout.content.width - duration * PIXELS_PER_SECOND * self.time_scale).min(0.0),
+					(layout.content.height - model.tracks.len() as f32 * TRACK_HEIGHT).min(0.0),
+				);
+				if self.scroll_input_is_momentum {
+					let filter_axis = |position: f32, target: f32, min: f32, delta: f32| {
+						if position < min || position > 0.0 || target < min || target > 0.0 {
+							0.0
+						} else {
+							delta
+						}
+					};
+					let delta = match delta {
+						mouse::ScrollDelta::Lines { x, y } => mouse::ScrollDelta::Lines {
+							x: filter_axis(self.scroll_offset.x, self.scroll_target.x, self.scroll_min.x, x),
+							y: filter_axis(self.scroll_offset.y, self.scroll_target.y, self.scroll_min.y, y),
+						},
+						mouse::ScrollDelta::Pixels { x, y } => mouse::ScrollDelta::Pixels {
+							x: filter_axis(self.scroll_offset.x, self.scroll_target.x, self.scroll_min.x, x),
+							y: filter_axis(self.scroll_offset.y, self.scroll_target.y, self.scroll_min.y, y),
+						},
+					};
+					self.handle_scroll(delta, current_time);
+					return TimelineUpdate::default();
+				}
 				self.handle_scroll(delta, current_time);
 				TimelineUpdate::default()
 			}
@@ -853,7 +902,6 @@ impl TimelineInteraction {
 					return (true, None);
 				}
 
-				let mut track_id = track_id;
 				let cursor_time = self.x_to_time(pos.x, timeline_left);
 				let proposed = (cursor_time + offset).max(0.0);
 
@@ -864,50 +912,6 @@ impl TimelineInteraction {
 					.and_then(|t| t.clips.iter().find(|c| c.id == clip_id))
 					.map(|c| c.duration)
 					.unwrap_or(1.0);
-
-				// 縦方向ドラッグでトラック（レイヤー）を変更
-				if !model.tracks.is_empty() {
-					let timeline_top = bounds.y + RANGE_SLIDER_HEIGHT + RULER_HEIGHT;
-					let target_track = ((pos.y - timeline_top - self.scroll_offset.y) / TRACK_HEIGHT)
-						.floor()
-						.clamp(0.0, (model.tracks.len() - 1) as f32) as usize;
-
-					if target_track != track_id {
-						let can_move = model
-							.tracks
-							.get(target_track)
-							.is_some_and(|track| !track.overlaps(proposed, clip_duration, None));
-						if can_move {
-							let moved = model.tracks.get_mut(track_id).and_then(|track| {
-								track
-									.clips
-									.iter()
-									.position(|c| c.id == clip_id)
-									.map(|index| track.clips.remove(index))
-							});
-							if let Some(mut clip) = moved {
-								clip.start_time = proposed;
-								if let Some(dest) = model.tracks.get_mut(target_track) {
-									dest.add_clip(clip);
-								}
-								if self.selected_clip == Some((track_id, clip_id)) {
-									self.selected_clip = Some((target_track, clip_id));
-								}
-								for pair in &mut self.selected_clips {
-									if *pair == (track_id, clip_id) {
-										*pair = (target_track, clip_id);
-									}
-								}
-								self.drag_state = DragState::Clip {
-									track_id: target_track,
-									clip_id,
-									offset,
-								};
-								track_id = target_track;
-							}
-						}
-					}
-				}
 
 				// Get current start to determine drag direction
 				let current_start = model
@@ -1313,6 +1317,117 @@ impl TimelineInteraction {
 		self.pending_reorder.take()
 	}
 
+	fn apply_elastic_scroll(&mut self, x: f32, y: f32) {
+		fn advance(position: f32, delta: f32, min: f32) -> f32 {
+			let proposed = position + delta;
+			let edge = proposed.clamp(min, 0.0);
+			if proposed == edge {
+				proposed
+			} else {
+				let previous = position - position.clamp(min, 0.0);
+				let excess = proposed - edge;
+				let resisted = if previous * delta > 0.0 || previous == 0.0 {
+					// Integrate resistance that approaches zero at an 80px excursion.
+					// The offset approaches the limit smoothly instead of being clamped.
+					const SPRING_REACH: f32 = 80.0;
+					let distance = previous.abs();
+					let outward = (excess.abs() - distance).max(0.0);
+					let resistance = (1.0 - distance / SPRING_REACH).powi(3);
+					let travel = (SPRING_REACH - distance)
+						* -(-outward * resistance / SPRING_REACH).exp_m1();
+					excess.signum() * (distance + travel)
+				} else {
+					excess
+				};
+				edge + resisted
+			}
+		}
+		let now = std::time::Instant::now();
+		if self.last_scroll.is_none() {
+			self.scroll_target = self.scroll_offset;
+			self.last_spring_tick = Some(now);
+		}
+		self.scroll_target.x = advance(self.scroll_target.x, x, self.scroll_min.x);
+		self.scroll_target.y = advance(self.scroll_target.y, y, self.scroll_min.y);
+		// Inside the bounds, retain direct input. Outside, only the spring writes
+		// the displayed offset; wheel events modify its target, never its position.
+		fn direct(position: &mut f32, target: f32, velocity: &mut f32, min: f32) {
+			if *position >= min && *position <= 0.0 && target >= min && target <= 0.0 {
+				*position = target;
+				*velocity = 0.0;
+			}
+		}
+		direct(&mut self.scroll_offset.x, self.scroll_target.x, &mut self.scroll_velocity.x, self.scroll_min.x);
+		direct(&mut self.scroll_offset.y, self.scroll_target.y, &mut self.scroll_velocity.y, self.scroll_min.y);
+		if self.scroll_gesture_active {
+			self.scroll_offset = self.scroll_target;
+			self.scroll_velocity = Vector::ZERO;
+		}
+		self.last_scroll = Some(now);
+	}
+
+	pub fn set_scroll_gesture_active(&mut self, active: bool) {
+		if active == self.scroll_gesture_active {
+			return;
+		}
+		self.scroll_gesture_active = active;
+		self.scroll_velocity = Vector::ZERO;
+		self.last_spring_tick = Some(std::time::Instant::now());
+		if active && self.last_scroll.is_some() {
+			self.scroll_offset = self.scroll_target;
+		}
+	}
+
+	pub fn set_scroll_input_is_momentum(&mut self, momentum: bool) {
+		self.scroll_input_is_momentum = momentum;
+	}
+
+	pub fn scroll_bounds(&self) -> Option<Rectangle> {
+		self.scroll_bounds
+	}
+
+	pub fn is_scroll_animating(&self) -> bool {
+		!self.scroll_gesture_active && self.last_scroll.is_some() && (
+			self.scroll_offset.x < self.scroll_min.x || self.scroll_offset.x > 0.0
+			|| self.scroll_offset.y < self.scroll_min.y || self.scroll_offset.y > 0.0
+			|| (self.scroll_target.x - self.scroll_offset.x).abs() > 0.001
+			|| (self.scroll_target.y - self.scroll_offset.y).abs() > 0.001
+			|| self.scroll_velocity.x.abs() > 0.1 || self.scroll_velocity.y.abs() > 0.1
+		)
+	}
+
+	pub fn tick_scroll_spring(&mut self, now: std::time::Instant) {
+		if self.scroll_gesture_active || self.last_scroll.is_none() {
+			return;
+		}
+		let previous = self.last_spring_tick.replace(now).unwrap_or(now);
+		let dt = now.saturating_duration_since(previous).as_secs_f32().min(0.032);
+		fn step(position: &mut f32, target: &mut f32, velocity: &mut f32, min: f32, dt: f32) {
+			let edge = target.clamp(min, 0.0);
+			// Consume input once as a velocity impulse, not a moving spring target.
+			// Only the spring integrates the displayed position.
+			if *target != edge {
+				*velocity += (*target - *position) * 24.0;
+			}
+			// Analytic critically damped spring aimed directly at the edge.
+			let displacement = *position - edge;
+			let coefficient = *velocity + 24.0 * displacement;
+			let decay = (-24.0 * dt).exp();
+			*position = edge + (displacement + coefficient * dt) * decay;
+			*velocity = (*velocity - 24.0 * coefficient * dt) * decay;
+			if (*position - edge).abs() < 0.01 && velocity.abs() < 0.1 {
+				*position = edge;
+				*velocity = 0.0;
+			}
+			*target = *position;
+		}
+		step(&mut self.scroll_offset.x, &mut self.scroll_target.x, &mut self.scroll_velocity.x, self.scroll_min.x, dt);
+		step(&mut self.scroll_offset.y, &mut self.scroll_target.y, &mut self.scroll_velocity.y, self.scroll_min.y, dt);
+		if !self.is_scroll_animating() {
+			self.last_scroll = None;
+		}
+	}
+
 	pub(crate) fn handle_scroll(&mut self, delta: mouse::ScrollDelta, current_time: f32) -> bool {
 		match delta {
 			_ if self.ctrl_pressed => {
@@ -1327,10 +1442,10 @@ impl TimelineInteraction {
 				}
 			}
 			mouse::ScrollDelta::Lines { x, y } => {
-				self.apply_scroll_delta(x * SCROLL_MULTIPLIER, y * SCROLL_MULTIPLIER);
+				self.apply_elastic_scroll(x * SCROLL_MULTIPLIER, y * SCROLL_MULTIPLIER);
 			}
 			mouse::ScrollDelta::Pixels { x, y } => {
-				self.apply_scroll_delta(x, y);
+				self.apply_elastic_scroll(x, y);
 			}
 		}
 		true

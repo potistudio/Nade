@@ -20,7 +20,7 @@ use crate::viewer::CompositionSummary;
 use crate::widgets::draggable_number::{KeyState, number_field};
 
 const LABEL_WIDTH: f32 = 56.0;
-const ROW_HEIGHT: f32 = 24.0;
+const ROW_HEIGHT: f32 = constants::style::ROW_HEIGHT;
 
 /// Panel-local UI state owned by the app (section disclosure, links, drafts).
 #[derive(Debug)]
@@ -222,8 +222,9 @@ fn layer_view<'a>(layer: LayerTarget<'a>, ui: &'a InspectorUi, now: Instant) -> 
 fn badge<'a>(glyph: Icon, color: Color) -> Element<'a, InspectorMessage> {
 	container(icon(glyph, 15.0, color))
 		.width(30)
-		.height(30)
-		.center(30)
+		.height(ROW_HEIGHT)
+		.center_y(ROW_HEIGHT)
+		.center_x(30)
 		.style(widgets::chip_tinted(color))
 		.into()
 }
@@ -287,7 +288,7 @@ fn section<'a>(
 	))
 	.padding([0.0, SPACE_2])
 	.width(Length::Fill)
-	.height(26)
+	.height(ROW_HEIGHT)
 	.style(widgets::button_ghost)
 	.on_press(InspectorMessage::ToggleSection(kind));
 
@@ -313,7 +314,7 @@ fn reset_button<'a>() -> Element<'a, InspectorMessage> {
 		button(button_body_center(icon(Icon::Reset, 12.0, TEXT_SECONDARY_COLOR)))
 			.padding(0)
 			.width(24)
-			.height(24)
+			.height(ROW_HEIGHT)
 			.style(widgets::button_ghost)
 			.on_press(InspectorMessage::ResetTransform),
 		"Reset Transform",
@@ -355,7 +356,7 @@ fn key_cluster<'a>(layer: &LayerTarget<'a>, group: PropertyGroup) -> Element<'a,
 		button(button_body_center(icon(glyph, 12.0, color)))
 			.padding(0)
 			.width(18)
-			.height(ROW_HEIGHT - 2.0)
+			.height(ROW_HEIGHT)
 			.style(widgets::button_ghost)
 			.on_press(InspectorMessage::ToggleKeyframe(group)),
 		label,
@@ -386,7 +387,7 @@ fn key_cluster<'a>(layer: &LayerTarget<'a>, group: PropertyGroup) -> Element<'a,
 		button(button_body_center(icon(glyph, 9.0, color)))
 			.padding(0)
 			.width(12)
-			.height(ROW_HEIGHT - 2.0)
+			.height(ROW_HEIGHT)
 			.style(widgets::button_ghost)
 			.on_press_maybe(exists.then_some(InspectorMessage::JumpToKey { group, forward }))
 			.into()
@@ -443,7 +444,7 @@ fn property_row<'a>(layer: &LayerTarget<'a>, group: PropertyGroup, ui: &Inspecto
 				)))
 				.padding(0)
 				.width(20)
-				.height(ROW_HEIGHT - 2.0)
+				.height(ROW_HEIGHT)
 				.style(widgets::button_toggle(ui.scale_linked))
 				.on_press(InspectorMessage::ToggleScaleLink),
 				"Constrain Proportions",
@@ -540,7 +541,7 @@ fn text_rows<'a>(
 	let content = text_input("Text", text)
 		.on_input(InspectorMessage::SetText)
 		.size(FONT_UI)
-		.padding([3, 7])
+		.padding([2, 7])
 		.style(widgets::text_input);
 
 	let metrics = row![
@@ -569,7 +570,7 @@ fn text_rows<'a>(
 			.on_submit(InspectorMessage::HexSubmitted)
 			.font(iced::Font::MONOSPACE)
 			.size(FONT_UI)
-			.padding([3, 6])
+			.padding([2, 6])
 			.width(Length::Fill)
 			.style(widgets::text_input),
 		number_field(fill[3], |value| InspectorMessage::SetFillChannel { index: 3, value })

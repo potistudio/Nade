@@ -34,21 +34,6 @@ const MIN_LABEL_SPACING: f32 = 76.0;
 const RULER_SUBDIVISIONS: u32 = 5;
 const KEYFRAME_RADIUS: f32 = 4.5;
 
-/// Truncate `label` with an ellipsis to fit `width` px (approximate glyph width).
-fn fit_label(label: &str, width: f32, glyph_width: f32) -> Option<String> {
-	let capacity = (width / glyph_width).floor() as usize;
-	let length = label.chars().count();
-	if capacity == 0 {
-		None
-	} else if length <= capacity {
-		Some(label.to_string())
-	} else if capacity <= 1 {
-		None
-	} else {
-		Some(label.chars().take(capacity - 1).chain(std::iter::once('…')).collect())
-	}
-}
-
 fn rounded_rect(rect: Rectangle, radius: f32) -> Path {
 	Path::rounded_rectangle(rect.position(), rect.size(), radius.min(rect.height * 0.5).into())
 }
@@ -174,7 +159,7 @@ impl<'a> TimelineWidget<'a> {
 impl TimelineWidget<'_> {
 	fn zoom_control_view(time_scale: f32) -> Element<'static, TimelineMessage> {
 		use constants::icons::{Icon, icon};
-		use constants::style::{FONT_TINY, SPACE_1, SPACE_2, SPACE_4, TEXT_SECONDARY_COLOR, TOOLBAR_HEIGHT};
+		use constants::style::{FONT_TINY, SPACE_1, SPACE_4, TEXT_SECONDARY_COLOR, TOOLBAR_HEIGHT};
 		use constants::widgets;
 
 		let icon_button = |glyph: Icon, label: &'static str, message: TimelineMessage| {
@@ -211,10 +196,10 @@ impl TimelineWidget<'_> {
 		.align_y(Alignment::Center);
 
 		container(controls)
-			.padding([SPACE_1, SPACE_4])
+			.padding([0.0, SPACE_4])
 			.width(Length::Fill)
-			.height(TOOLBAR_HEIGHT + SPACE_2 * 2.0)
-			.center_y(TOOLBAR_HEIGHT + SPACE_2 * 2.0)
+			.height(TOOLBAR_HEIGHT)
+			.center_y(TOOLBAR_HEIGHT)
 			.style(widgets::toolbar)
 			.into()
 	}
@@ -656,41 +641,16 @@ impl TimelineWidget<'_> {
 		let dim = if is_duplicate { dim * 0.5 } else { dim };
 
 		let body = rounded_rect(clip_rect, CLIP_CORNER_RADIUS);
-		let fill_alpha = if is_selected { 0.58 } else { 0.34 };
 		frame.fill(
 			&body,
 			Color {
-				a: fill_alpha * dim,
+				a: dim,
 				..constants::style::mix(label, Color::BLACK, 0.15)
 			},
 		);
 
-		// 左端のラベル帯（角丸に沿わせるため左側だけ丸める）
-		let strip = Path::rounded_rectangle(
-			clip_rect.position(),
-			Size::new(4.0_f32.min(clip_rect.width), clip_rect.height),
-			iced::border::Radius {
-				top_left: CLIP_CORNER_RADIUS,
-				top_right: 0.0,
-				bottom_right: 0.0,
-				bottom_left: CLIP_CORNER_RADIUS,
-			},
-		);
-		frame.fill(&strip, Color { a: dim, ..label });
-
-		if let Some(name) = fit_label(&clip.name, clip_rect.width - 18.0, 6.2) {
-			frame.fill_text(Text {
-				content: name,
-				position: Point::new(clip_rect.x + 10.0, clip_rect.y + clip_rect.height * 0.5),
-				color: Color::from_rgba(1.0, 1.0, 1.0, 0.92 * dim),
-				size: 11.0.into(),
-				align_y: Vertical::Center,
-				..Text::default()
-			});
-		}
-
 		let outline = if is_selected {
-			Stroke::default().with_color(CLIP_SELECTED_OUTLINE).with_width(1.5)
+			Stroke::default().with_color(CLIP_SELECTED_OUTLINE).with_width(1.0)
 		} else if is_hovered {
 			Stroke::default().with_color(CLIP_HOVERED_OUTLINE).with_width(1.0)
 		} else {
@@ -729,9 +689,8 @@ impl TimelineWidget<'_> {
 		};
 		let center_y = clip_rect.y + clip_rect.height * 0.5;
 		for &time in times {
-			if time < clip.start_time - f32::EPSILON || time > clip.end_time() + f32::EPSILON {
-				continue;
-			}
+			let outside_clip = time < clip.start_time - f32::EPSILON || time > clip.end_time() + f32::EPSILON;
+			let dim = if outside_clip { dim * 0.3 } else { dim };
 			let x = state.time_to_x(time, timeline_rect.x);
 			let on_playhead = (time - self.current_time).abs() < 0.5 / self.fps.max(1.0);
 			let r = if on_playhead {

@@ -3,7 +3,7 @@
 
 use constants::icons::{Icon, icon};
 use constants::style::{
-	FONT_DISPLAY, FONT_TINY, FONT_UI, ICON_SIZE, SPACE_1, SPACE_2, SPACE_4, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR,
+	FONT_TINY, FONT_UI, ICON_SIZE, SPACE_1, SPACE_2, SPACE_4, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR,
 	TEXT_SECONDARY_COLOR,
 };
 use constants::widgets::{self, button_body_center, mono_label, ui_label};
@@ -18,11 +18,11 @@ use crate::tool::Tool;
 use crate::viewer::{CompositionSummary, Resolution, ViewerSettings};
 use crate::widgets::play_glyph::PlayGlyph;
 use crate::widgets::video_view::VideoView;
-use crate::widgets::viewer_overlay::{LayerBox, PlaybackHud, ViewerOverlay};
+use crate::widgets::viewer_overlay::{LayerBox, ViewerOverlay};
 use crate::widgets::viewport::Viewport;
 
-const BAR_HEIGHT: f32 = 32.0;
-const TRANSPORT_HEIGHT: f32 = 44.0;
+const BAR_HEIGHT: f32 = constants::style::ROW_HEIGHT;
+const TRANSPORT_HEIGHT: f32 = constants::style::ROW_HEIGHT;
 
 pub struct ViewerProps<'a> {
 	pub preview: &'a PreviewModel,
@@ -34,8 +34,6 @@ pub struct ViewerProps<'a> {
 	/// Size of the viewport area (last reported by the overlay).
 	pub viewport_size: Size,
 	/// Morph of the play button (`1.0` = pause glyph).
-	pub pause_amount: f32,
-	pub hud: Option<PlaybackHud>,
 	pub loop_playback: bool,
 }
 
@@ -89,7 +87,7 @@ fn header<'a>(props: &ViewerProps<'a>) -> Element<'a, PreviewMessage> {
 			button(button_body_center(mono_label(zoom_label, FONT_TINY + 1.0)))
 				.padding(0)
 				.width(46)
-				.height(24)
+				.height(BAR_HEIGHT)
 				.style(widgets::button_ghost)
 				.on_press(PreviewMessage::ActualPixels),
 			"Actual Pixels (100%)",
@@ -126,7 +124,6 @@ fn viewport<'a>(props: &ViewerProps<'a>) -> Element<'a, PreviewMessage> {
 		selected: props.selected,
 		show_grid: props.settings.show_grid,
 		show_safe_areas: props.settings.show_safe_areas,
-		hud: props.hud,
 	})
 	.width(Length::Fill)
 	.height(Length::Fill);
@@ -158,7 +155,7 @@ fn transport<'a>(props: &ViewerProps<'a>) -> Element<'a, PreviewMessage> {
 	let playing = props.preview.is_playing;
 
 	let timecode = row![
-		mono_label(core::timecode::format(props.preview.time, fps), FONT_DISPLAY).color(TEXT_PRIMARY_COLOR),
+		mono_label(core::timecode::format(props.preview.time, fps), FONT_UI).color(TEXT_PRIMARY_COLOR),
 		mono_label(format!("/ {}", core::timecode::format(duration, fps)), FONT_TINY + 1.0).color(TEXT_MUTED_COLOR),
 	]
 	.spacing(SPACE_2 + 2.0)
@@ -167,7 +164,7 @@ fn transport<'a>(props: &ViewerProps<'a>) -> Element<'a, PreviewMessage> {
 	let play = widgets::tip(
 		button(button_body_center(
 			Canvas::new(PlayGlyph {
-				pause_amount: props.pause_amount,
+				pause_amount: if playing { 1.0 } else { 0.0 },
 				color: TEXT_PRIMARY_COLOR,
 			})
 			.width(18)
@@ -175,7 +172,7 @@ fn transport<'a>(props: &ViewerProps<'a>) -> Element<'a, PreviewMessage> {
 		))
 		.padding(0)
 		.width(40)
-		.height(30)
+		.height(TRANSPORT_HEIGHT)
 		.style(widgets::button_tool)
 		.on_press(PreviewMessage::Transport(TransportMessage::TogglePlay)),
 		if playing { "Pause  Space" } else { "Play  Space" },
@@ -201,7 +198,7 @@ fn transport<'a>(props: &ViewerProps<'a>) -> Element<'a, PreviewMessage> {
 			)))
 			.padding(0)
 			.width(30)
-			.height(26)
+			.height(TRANSPORT_HEIGHT)
 			.style(widgets::button_toggle(props.loop_playback))
 			.on_press(PreviewMessage::Transport(TransportMessage::ToggleLoop)),
 			"Loop Playback",
@@ -219,7 +216,7 @@ fn transport<'a>(props: &ViewerProps<'a>) -> Element<'a, PreviewMessage> {
 			PreviewMessage::SetResolution
 		)
 		.text_size(FONT_UI)
-		.padding([3, 8])
+		.padding([2, 8])
 		.width(86)
 		.style(widgets::pick_list)
 		.menu_style(widgets::menu),
@@ -252,7 +249,7 @@ fn transport_button<'a>(glyph: Icon, label: &'a str, message: TransportMessage) 
 		button(button_body_center(icon(glyph, ICON_SIZE, TEXT_SECONDARY_COLOR)))
 			.padding(0)
 			.width(30)
-			.height(26)
+			.height(TRANSPORT_HEIGHT)
 			.style(widgets::button_ghost)
 			.on_press(PreviewMessage::Transport(message)),
 		label,
@@ -270,7 +267,7 @@ fn toggle<'a>(glyph: Icon, active: bool, label: &'a str, message: PreviewMessage
 		button(button_body_center(icon(glyph, ICON_SIZE, color)))
 			.padding(0)
 			.width(26)
-			.height(24)
+			.height(BAR_HEIGHT)
 			.style(widgets::button_toggle(active))
 			.on_press(message),
 		label,
@@ -287,7 +284,7 @@ fn ghost_icon<'a>(glyph: Icon, label: &'a str, message: PreviewMessage) -> Eleme
 		)))
 		.padding(0)
 		.width(24)
-		.height(24)
+		.height(BAR_HEIGHT)
 		.style(widgets::button_ghost)
 		.on_press(message),
 		label,

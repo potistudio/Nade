@@ -906,7 +906,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		};
 
 		const COL_WIDTH: f32 = 136.0;
-		const ROW_HEIGHT: f32 = 24.0;
+		const ROW_HEIGHT: f32 = constants::style::ROW_HEIGHT;
 
 		let columns = row(C::menu_columns()
 			.into_iter()
@@ -1145,7 +1145,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		))
 		.padding([0.0, 6.0])
 		.width(Length::Shrink)
-		.height(22.0)
+		.height(HEADER_HEIGHT)
 		.style(constants::widgets::button_editor_type)
 		.on_press(PanelSystemMessage::ToggleEditorMenu(area_id));
 

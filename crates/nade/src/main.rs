@@ -6,6 +6,7 @@ mod devtools;
 mod message;
 mod panel_content;
 mod panels;
+mod platform;
 mod services;
 mod shell;
 mod theme;
@@ -32,6 +33,16 @@ fn load_app_icon() -> Option<iced::window::Icon> {
 }
 
 pub fn run_app() -> iced::Result {
+	#[cfg(target_os = "macos")]
+	#[allow(unsafe_code)]
+	unsafe {
+		unsafe extern "C" {
+			fn nade_install_scroll_observer();
+		}
+		// Observe scroll phases without consuming native input events.
+		nade_install_scroll_observer();
+	}
+
 	let window_settings = iced::window::Settings {
 		icon: load_app_icon(),
 		size: iced::Size::new(constants::WINDOW_WIDTH, constants::WINDOW_HEIGHT),
@@ -73,9 +84,9 @@ pub fn main() -> iced::Result {
 			std::env::set_var("RUST_LOG", "nade=info");
 		}
 
-		// fifo = vsync。immediate はティアリングで描画が不安定に見える。
+		// 入力遅延を避けるため immediate を既定にする。外部指定は優先する。
 		if std::env::var("ICED_PRESENT_MODE").is_err() {
-			std::env::set_var("ICED_PRESENT_MODE", "fifo");
+			std::env::set_var("ICED_PRESENT_MODE", "immediate");
 		}
 	}
 

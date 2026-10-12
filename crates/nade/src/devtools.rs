@@ -36,6 +36,10 @@ impl Capture {
 		})
 	}
 
+	pub fn is_pending(&self) -> bool {
+		!self.requested
+	}
+
 	/// Screenshot task once the delay has elapsed (fires only once).
 	pub fn poll(&mut self, now: Instant) -> Option<Task<Message>> {
 		if self.requested || now < self.due {

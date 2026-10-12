@@ -30,12 +30,11 @@ use crate::shell::{self, toast::Toast};
 use crate::theme::{SHELL_GUTTER, STATUS_BAR_HEIGHT, TITLE_BAR_HEIGHT, panel_area};
 use crate::tool::Tool;
 use crate::viewer::ViewerSettings;
-use crate::widgets::viewer_overlay::{LayerBox, PlaybackHud};
+use crate::widgets::viewer_overlay::LayerBox;
 use crate::widgets::viewport::Viewport;
 use crate::workspace::Workspace;
 
 /// 再生/一時停止 HUD の表示時間
-const PLAY_HUD_SECS: f32 = 0.55;
 
 // =============================================================================
 // ウィンドウ・キーボードイベント
@@ -160,8 +159,6 @@ pub(super) struct NadeApp {
 	tool_pill: Animation<f32>,
 	/// 現在のワークスペース
 	workspace: Workspace,
-	/// ワークスペース切替の選択ピル位置
-	workspace_pill: Animation<f32>,
 	/// ループ再生
 	loop_playback: bool,
 	/// HUD 通知
@@ -178,10 +175,6 @@ pub(super) struct NadeApp {
 	viewer_size: Size,
 	/// プロパティパネルの UI 状態
 	inspector_ui: panels::inspector::InspectorUi,
-	/// 再生ボタンの ▶ ⇄ ❚❚ モーフ
-	play_morph: Animation<bool>,
-	/// 再生切替 HUD の開始時刻
-	play_hud: Option<Instant>,
 	/// デバッグ用スクリーンショット（`NADE_SCREENSHOT`）
 	#[cfg(debug_assertions)]
 	capture: Option<crate::devtools::Capture>,
@@ -222,7 +215,6 @@ impl NadeApp {
 			tool: Tool::default(),
 			tool_pill: pill_animation(Tool::default().index()),
 			workspace: Workspace::default(),
-			workspace_pill: pill_animation(Workspace::default().index()),
 			loop_playback: true,
 			toast: None,
 			now: Instant::now(),
@@ -230,10 +222,6 @@ impl NadeApp {
 			window_size,
 			viewer: ViewerSettings::default(),
 			viewer_size: Size::new(960.0, 540.0),
-			play_morph: Animation::new(false)
-				.duration(Duration::from_millis(constants::style::MOTION_STANDARD_MS))
-				.easing(Easing::EaseInOutCubic),
-			play_hud: None,
 			inspector_ui: panels::inspector::InspectorUi::default(),
 			#[cfg(debug_assertions)]
 			capture: crate::devtools::Capture::from_env(),
@@ -358,14 +346,9 @@ impl NadeApp {
 
 	/// CoreロジックをUIスレッドで適用し、副作用のみを非同期実行する
 	fn apply_core_msg(&mut self, msg: Msg) {
-		let toggles_playback = matches!(msg, Msg::TogglePlay);
 		let (next_model, effects) = update(self.current_model.clone(), msg);
 		self.current_model = next_model;
 		self.handle_effects(effects);
-		if toggles_playback {
-			self.play_morph
-				.go_mut(self.current_model.preview.is_playing, Instant::now());
-		}
 	}
 
 	/// CoreEffectの実行（重い処理のみバックグラウンドへ）
@@ -444,6 +427,13 @@ impl NadeApp {
 	}
 
 	pub(super) fn update(&mut self, message: Message) -> Task<Message> {
+		crate::platform::sync_scroll_phase(&mut self.timeline.state);
+		let task = self.update_inner(message);
+		crate::platform::sync_scroll_phase(&mut self.timeline.state);
+		task
+	}
+
+	fn update_inner(&mut self, message: Message) -> Task<Message> {
 		self.now = Instant::now();
 
 		match message {
@@ -474,6 +464,7 @@ impl NadeApp {
 			}
 
 			Message::Tick => {
+				self.timeline.state.tick_scroll_spring(self.now);
 				if self.current_model.preview.is_playing {
 					self.apply_core_msg(Msg::Tick);
 					self.wrap_playback();
@@ -564,7 +555,6 @@ impl NadeApp {
 			ShellMessage::SelectWorkspace(workspace) => {
 				if workspace != self.workspace {
 					self.workspace = workspace;
-					self.workspace_pill.go_mut(workspace.index() as f32, self.now);
 					self.panel_system = Self::create_panel_layout(workspace, self.window_size);
 				}
 				Task::none()
@@ -600,7 +590,6 @@ impl NadeApp {
 					self.apply_core_msg(Msg::SetTime(0.0));
 				}
 				self.apply_core_msg(Msg::TogglePlay);
-				self.play_hud = Some(self.now);
 				log::debug!("Toggling play/pause: {}", self.current_model.preview.is_playing);
 			}
 			TransportMessage::GoToStart => self.apply_core_msg(Msg::SetTime(0.0)),
@@ -670,12 +659,10 @@ impl NadeApp {
 
 	/// UI アニメーション（パネル・ピル・トースト）が進行中か
 	fn is_ui_animating(&self) -> bool {
-		self.panel_system.is_animating()
-			|| self.play_morph.is_animating(self.now)
-			|| self.play_hud_progress().is_some()
+		self.timeline.state.is_scroll_animating()
+			|| self.panel_system.is_animating()
 			|| self.inspector_ui.is_animating(self.now)
 			|| self.tool_pill.is_animating(self.now)
-			|| self.workspace_pill.is_animating(self.now)
 			|| self.toast.as_ref().is_some_and(|toast| toast.is_active(self.now))
 	}
 
@@ -1188,12 +1175,6 @@ impl NadeApp {
 			.collect()
 	}
 
-	fn play_hud_progress(&self) -> Option<f32> {
-		let started = self.play_hud?;
-		let progress = self.now.saturating_duration_since(started).as_secs_f32() / PLAY_HUD_SECS;
-		(progress < 1.0).then_some(progress)
-	}
-
 	/// 現在時刻で表示中のレイヤーのビューア上の境界（背面 → 前面）
 	fn viewer_layers(&self) -> Vec<LayerBox> {
 		let time = self.current_model.preview.time;
@@ -1232,8 +1213,6 @@ impl NadeApp {
 			Some(ObjectId::Instance { instance, .. }) => Some(instance),
 			_ => None,
 		};
-		let playing = self.current_model.preview.is_playing;
-
 		panels::preview::ViewerProps {
 			preview: &self.current_model.preview,
 			composition: composition.map(|comp| crate::viewer::CompositionSummary {
@@ -1248,11 +1227,6 @@ impl NadeApp {
 			selected,
 			settings: self.viewer,
 			viewport_size: self.viewer_size,
-			pause_amount: self.play_morph.interpolate(0.0, 1.0, self.now),
-			hud: self.play_hud_progress().map(|progress| PlaybackHud {
-				pause_amount: if playing { 0.0 } else { 1.0 },
-				progress,
-			}),
 			loop_playback: self.loop_playback,
 		}
 	}
@@ -1608,8 +1582,6 @@ impl NadeApp {
 			.push(shell::toolbar::view(shell::toolbar::ToolbarState {
 				tool: self.tool,
 				tool_pill: self.tool_pill.interpolate_with(|value| value, self.now),
-				workspace: self.workspace,
-				workspace_pill: self.workspace_pill.interpolate_with(|value| value, self.now),
 			}))
 			.push(
 				container(panel_view.map(Message::PanelSystem))
@@ -1621,7 +1593,6 @@ impl NadeApp {
 				playing: self.current_model.preview.is_playing,
 				pulse,
 				render_fps: self.render_fps,
-				hint: self.tool.hint(),
 				composition: composition.map(|comp| crate::viewer::CompositionSummary {
 					name: comp.name(),
 					width: comp.width(),
@@ -1683,13 +1654,15 @@ impl NadeApp {
 
 		let events = iced::event::listen_with(on_window_event);
 
-		// 再生中・UI アニメ中は ~60fps、それ以外は間引き
-		let tick_ms = if self.current_model.preview.is_playing || self.is_ui_animating() {
-			16
+		// Only subscribe while something needs time-based updates; idle has no timer.
+		let needs_tick = self.current_model.preview.is_playing || self.is_ui_animating();
+		#[cfg(debug_assertions)]
+		let needs_tick = needs_tick || self.capture.as_ref().is_some_and(|capture| capture.is_pending());
+		let tick = if needs_tick {
+			iced::time::every(std::time::Duration::from_millis(16)).map(|_| Message::Tick)
 		} else {
-			50
+			Subscription::none()
 		};
-		let tick = iced::time::every(std::time::Duration::from_millis(tick_ms)).map(|_| Message::Tick);
 		let close = iced::window::close_requests().map(Message::CloseRequested);
 
 		Subscription::batch([render_subscription, events, tick, close])

@@ -5,16 +5,14 @@
 /// Other platforms keep their native title bar.
 pub const TITLE_BAR_HEIGHT: f32 = if cfg!(target_os = "macos") { 28.0 } else { 0.0 };
 /// Height of the unified toolbar under the title strip.
-pub const SHELL_TOOLBAR_HEIGHT: f32 = 40.0;
+pub const SHELL_TOOLBAR_HEIGHT: f32 = constants::style::ROW_HEIGHT;
 /// Height of the status bar at the bottom of the window.
-pub const STATUS_BAR_HEIGHT: f32 = 26.0;
+pub const STATUS_BAR_HEIGHT: f32 = constants::style::ROW_HEIGHT;
 /// Gutter between the window edge and the panel grid.
 pub const SHELL_GUTTER: f32 = 6.0;
 
 /// Segment size of the tool palette (icon-only).
-pub const TOOL_SEGMENT: [f32; 2] = [32.0, 26.0];
-/// Segment size of the workspace switcher (text).
-pub const WORKSPACE_SEGMENT: [f32; 2] = [72.0, 26.0];
+pub const TOOL_SEGMENT: [f32; 2] = [32.0, constants::style::ROW_HEIGHT];
 
 /// How long a toast stays fully visible.
 pub const TOAST_HOLD_SECS: f32 = 1.8;

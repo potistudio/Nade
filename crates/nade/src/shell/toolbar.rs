@@ -1,36 +1,22 @@
-//! Unified toolbar: workspace switcher, tool palette and create actions.
+//! Unified toolbar: tool palette and create actions.
 
 use constants::icons::{Icon, icon};
-use constants::style::{FONT_UI, SPACE_1, SPACE_4, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
-use constants::widgets::{self, button_body_center, ui_label};
+use constants::style::{SPACE_1, SPACE_4, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
+use constants::widgets::{self, button_body_center};
 use iced::widget::{Space, button, container, row, stack, tooltip};
 use iced::{Alignment, Element, Length};
 
 use crate::message::{Message, ShellMessage};
-use crate::theme::{SHELL_GUTTER, SHELL_TOOLBAR_HEIGHT, TOOL_SEGMENT, WORKSPACE_SEGMENT};
+use crate::theme::{SHELL_GUTTER, SHELL_TOOLBAR_HEIGHT, TOOL_SEGMENT};
 use crate::tool::Tool;
 use crate::widgets::segmented::{Segment, segmented};
-use crate::workspace::Workspace;
 
 pub struct ToolbarState {
 	pub tool: Tool,
 	pub tool_pill: f32,
-	pub workspace: Workspace,
-	pub workspace_pill: f32,
 }
 
 pub fn view<'a>(state: ToolbarState) -> Element<'a, Message> {
-	let workspaces = segmented(
-		Workspace::ALL
-			.into_iter()
-			.map(|workspace| Segment::new(workspace, ui_label(workspace.label(), FONT_UI)))
-			.collect(),
-		state.workspace,
-		state.workspace_pill,
-		WORKSPACE_SEGMENT,
-		|workspace| Message::Shell(ShellMessage::SelectWorkspace(workspace)),
-	);
-
 	let tools = segmented(
 		Tool::ALL
 			.into_iter()
@@ -57,7 +43,7 @@ pub fn view<'a>(state: ToolbarState) -> Element<'a, Message> {
 	.spacing(SPACE_1)
 	.align_y(Alignment::Center);
 
-	let sides = row![workspaces, Space::new().width(Length::Fill), actions]
+	let sides = row![Space::new().width(Length::Fill), actions]
 		.align_y(Alignment::Center)
 		.height(Length::Fill);
 
@@ -84,7 +70,7 @@ fn action<'a>(glyph: Icon, label: &'a str, message: ShellMessage) -> Element<'a,
 		button(button_body_center(icon(glyph, 15.0, TEXT_SECONDARY_COLOR)))
 			.padding(0)
 			.width(30)
-			.height(26)
+			.height(constants::style::ROW_HEIGHT)
 			.style(widgets::button_ghost)
 			.on_press(Message::Shell(message)),
 		label,

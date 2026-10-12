@@ -30,7 +30,8 @@ impl<'a> ProjectPaneWidget<'a> {
 		]
 		.spacing(SPACE_1)
 		.align_y(Alignment::Center)
-		.padding([SPACE_2, SPACE_4 + 2.0]);
+		.padding([0.0, SPACE_4 + 2.0])
+		.height(ROW_HEIGHT);
 
 		let mut composition_ids = project.compositions();
 		composition_ids.sort_by_key(|id| id.value());
@@ -68,7 +69,7 @@ fn tool_button<'a>(glyph: Icon, label: &'a str, message: ProjectPaneMessage) -> 
 		button(button_body_center(icon(glyph, 13.0, TEXT_SECONDARY_COLOR)))
 			.padding(0)
 			.width(24)
-			.height(22)
+			.height(constants::style::ROW_HEIGHT)
 			.style(widgets::button_ghost)
 			.on_press(message),
 		label,
