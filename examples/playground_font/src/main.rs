@@ -7,7 +7,7 @@ struct FontPlaygroundApp {
 }
 
 impl eframe::App for FontPlaygroundApp {
-	fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
+	fn ui(&mut self, ui: &mut eframe::egui::Ui, _frame: &mut eframe::Frame) {
 		// ==== [BEGIN] Custom font ============================================
 		let mut fonts = egui::FontDefinitions::default();
 		let font_data = egui::FontData::from_static(include_bytes!("../../../assets/fonts/Rubik/Rubik_regular.ttf"));
@@ -20,12 +20,12 @@ impl eframe::App for FontPlaygroundApp {
 			.or_default()
 			.insert(0, "rubik".to_string());
 
-		ctx.set_fonts(fonts);
+		ui.ctx().set_fonts(fonts);
 		// ==== [END] Custom font ==============================================
 
 		eframe::egui::CentralPanel::default()
 			.frame(egui::Frame::default().inner_margin(0))
-			.show(ctx, |ui| {
+			.show(ui, |ui| {
 				self.playground_widget.ui(ui);
 			});
 	}
