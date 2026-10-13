@@ -30,8 +30,8 @@ path = "src/main.rs"
 anyhow.workspace = true
 env_logger.workspace = true
 log.workspace = true
-image = "0.25.8"
-iced = { version = "0.14", features = [
+image = "0.25.10"
+iced = { version = "0.14.0", features = [
 	"wgpu",
 	"image",
 	"svg",
@@ -48,19 +48,19 @@ domain.workspace = true
 panel_system = { path = "../panel_system" }
 timeline_panel = { path = "../timeline_panel" }
 inspector_panel = { path = "../inspector_panel" }
-rayon = "1.10"
-crossbeam-channel = "0.5.15"
-tokio = { version = "1.48.0", features = ["sync"] }
-bytes = "1.11.0"
-bytemuck = "1.16"
+rayon = "1.12.0"
+crossbeam-channel = "0.5.17"
+tokio = { version = "1.53.2", features = ["sync"] }
+bytes = "1.12.1"
+bytemuck = "1.25.2"
 wgpu = "27.0.1"
-iced_wgpu = "0.14"
+iced_wgpu = "0.14.0"
 renderer = { path = "../renderer" }
-rfd = "0.15"
-serde = "1.0.228"
+rfd = "0.17.2"
+serde = "1.0.229"
 
 [build-dependencies]
-cc = "1.2"
+cc = "1.8.0"
 
 [package.metadata.bundle]
 name = "Nade"
