@@ -425,7 +425,9 @@ impl<C: AreaKind> PanelSystem<C> {
 			}
 
 			PanelSystemMessage::ResizeStart(path, direction) => {
+				self.materialize_split_sizes();
 				if let Some(first_size) = self.get_first_size_at_path(&path) {
+					let first_size = leading_size(first_size, available_along(self.bounds_at_path(&path), direction));
 					self.drag_state = DragState::Resizing {
 						path,
 						direction,
@@ -1716,24 +1718,100 @@ impl<C: AreaKind> PanelSystem<C> {
 	}
 
 	fn set_first_size_at_path(&mut self, path: &[usize], new_size: f32) {
-		Self::set_first_size_recursive(&mut self.root, path, new_size);
+		let bounds = Rectangle::new(Point::ORIGIN, self.window_size);
+		Self::set_first_size_recursive(&mut self.root, path, new_size, bounds);
 	}
 
-	fn set_first_size_recursive(node: &mut DockNode<C>, path: &[usize], new_size: f32) {
-		if path.is_empty() {
-			if let DockNode::Split { first_size, .. } = node {
-				*first_size = new_size;
+	fn set_first_size_recursive(node: &mut DockNode<C>, path: &[usize], new_size: f32, bounds: Rectangle) {
+		let DockNode::Split {
+			direction,
+			first_size,
+			first,
+			second,
+		} = node
+		else {
+			return;
+		};
+		let (old_first, old_second) = split_child_bounds(bounds, *direction, *first_size);
+
+		if let Some(index) = path.first() {
+			match index {
+				0 => Self::set_first_size_recursive(first, &path[1..], new_size, old_first),
+				1 => Self::set_first_size_recursive(second, &path[1..], new_size, old_second),
+				_ => {}
 			}
 			return;
 		}
 
-		if let DockNode::Split { first, second, .. } = node {
-			match path.first() {
-				Some(0) => Self::set_first_size_recursive(first, &path[1..], new_size),
-				Some(1) => Self::set_first_size_recursive(second, &path[1..], new_size),
-				_ => {}
+		let current_size = leading_size(*first_size, available_along(bounds, *direction));
+		let (first_shrink, first_grow) = Self::edge_resize_capacity(first, old_first, *direction, false);
+		let (second_shrink, second_grow) = Self::edge_resize_capacity(second, old_second, *direction, true);
+		let min = current_size - first_shrink.min(second_grow);
+		let max = current_size + second_shrink.min(first_grow);
+		*first_size = new_size.clamp(min, max);
+		let (new_first, new_second) = split_child_bounds(bounds, *direction, *first_size);
+		Self::preserve_dividers(first, old_first, new_first);
+		Self::preserve_dividers(second, old_second, new_second);
+	}
+
+	fn edge_resize_capacity(node: &DockNode<C>, bounds: Rectangle, axis: SplitDirection, leading: bool) -> (f32, f32) {
+		if let DockNode::Split {
+			direction,
+			first_size,
+			first,
+			second,
+		} = node
+		{
+			let (first_bounds, second_bounds) = split_child_bounds(bounds, *direction, *first_size);
+			if *direction == axis {
+				let (moving, moving_bounds, fixed_bounds) = if leading {
+					(first, first_bounds, second_bounds)
+				} else {
+					(second, second_bounds, first_bounds)
+				};
+				let (shrink, grow) = Self::edge_resize_capacity(moving, moving_bounds, axis, leading);
+				let fixed_size = match axis {
+					SplitDirection::Horizontal => fixed_bounds.width,
+					SplitDirection::Vertical => fixed_bounds.height,
+				};
+				// Below the minimum, leading_size centers the divider; growing would move that fixed divider.
+				(shrink, if fixed_size < MIN_PANEL_SIZE { 0.0 } else { grow })
+			} else {
+				let (first_shrink, first_grow) = Self::edge_resize_capacity(first, first_bounds, axis, leading);
+				let (second_shrink, second_grow) = Self::edge_resize_capacity(second, second_bounds, axis, leading);
+				(first_shrink.min(second_shrink), first_grow.min(second_grow))
 			}
+		} else {
+			let size = match axis {
+				SplitDirection::Horizontal => bounds.width,
+				SplitDirection::Vertical => bounds.height,
+			};
+			((size - MIN_PANEL_SIZE).max(0.0), f32::INFINITY)
 		}
+	}
+
+	fn preserve_dividers(node: &mut DockNode<C>, old_bounds: Rectangle, new_bounds: Rectangle) {
+		if old_bounds == new_bounds {
+			return;
+		}
+		let DockNode::Split {
+			direction,
+			first_size,
+			first,
+			second,
+		} = node
+		else {
+			return;
+		};
+		let (old_first, old_second) = split_child_bounds(old_bounds, *direction, *first_size);
+		// Split sizes are relative to their parent; compensate for the parent's shifted origin.
+		*first_size = match direction {
+			SplitDirection::Horizontal => old_first.width + old_bounds.x - new_bounds.x,
+			SplitDirection::Vertical => old_first.height + old_bounds.y - new_bounds.y,
+		};
+		let (new_first, new_second) = split_child_bounds(new_bounds, *direction, *first_size);
+		Self::preserve_dividers(first, old_first, new_first);
+		Self::preserve_dividers(second, old_second, new_second);
 	}
 }
 
@@ -1841,3 +1919,7 @@ impl<C: AreaKind> Default for LayoutBuilder<C> {
 		Self::new()
 	}
 }
+
+#[cfg(test)]
+#[path = "resize_tests.rs"]
+mod resize_tests;
