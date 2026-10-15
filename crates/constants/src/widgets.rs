@@ -174,7 +174,7 @@ pub fn panel(_theme: &Theme) -> container::Style {
 	}
 }
 
-/// Panel interior fill without chrome — use inside [`panel_system`] areas.
+/// Interior surface for `panel_system` areas; panel chrome is supplied by the area.
 pub fn panel_surface(_theme: &Theme) -> container::Style {
 	container::Style {
 		background: Some(PANEL_COLOR.into()),
