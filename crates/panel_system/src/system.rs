@@ -13,7 +13,7 @@ use crate::{
 	AreaKind,
 	chrome::{CornerGrip, PanelChrome, squircle_panel_stack},
 	consts::{
-		CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, MIN_PANEL_SIZE, MOVE_CENTER_ZONE, PANEL_GAP,
+		CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, HEADER_PADDING, MIN_PANEL_SIZE, MOVE_CENTER_ZONE, PANEL_GAP,
 		PANEL_OUTLINE_WIDTH, RESIZE_HIT_SIZE, colors,
 	},
 	container::Area,
@@ -1106,7 +1106,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		M: Clone + std::fmt::Debug + 'static,
 	{
 		use constants::style::{
-			FONT_UI, ICON_SIZE, SPACE_2, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR,
+			CONTROL_CONTENT_HEIGHT, FONT_UI, ICON_SIZE, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR,
 		};
 
 		let area_id = area.id;
@@ -1140,12 +1140,12 @@ impl<C: AreaKind> PanelSystem<C> {
 					1.0,
 				),
 			]
-			.spacing(6)
+			.spacing(HEADER_PADDING)
 			.align_y(iced::Alignment::Center),
 		))
-		.padding([0.0, 6.0])
+		.padding([0.0, HEADER_PADDING])
 		.width(Length::Shrink)
-		.height(HEADER_HEIGHT)
+		.height(CONTROL_CONTENT_HEIGHT)
 		.style(constants::widgets::button_editor_type)
 		.on_press(PanelSystemMessage::ToggleEditorMenu(area_id));
 
@@ -1163,8 +1163,8 @@ impl<C: AreaKind> PanelSystem<C> {
 						}),
 				))
 				.padding(0)
-				.width(20.0)
-				.height(20.0)
+				.width(CONTROL_CONTENT_HEIGHT)
+				.height(CONTROL_CONTENT_HEIGHT)
 				.style(constants::widgets::button_ghost)
 				.on_press(PanelSystemMessage::JoinArea(area_id)),
 				"Close Panel",
@@ -1176,13 +1176,13 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		let header = container(
 			row![editor_picker, Space::new().width(Length::Fill), join_button]
-				.spacing(SPACE_2)
+				.spacing(HEADER_PADDING)
 				.align_y(iced::Alignment::Center)
-				.height(Length::Fill)
-				.padding([0.0, 4.0]),
+				.height(Length::Fill),
 		)
 		.width(Length::Fill)
 		.height(HEADER_HEIGHT)
+		.padding(HEADER_PADDING)
 		.align_y(iced::Alignment::Center);
 
 		let body = content_view(area.id, &area.content);
