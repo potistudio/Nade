@@ -4,8 +4,8 @@
 /// Height of the transparent title strip that hosts the traffic lights.
 /// Other platforms keep their native title bar.
 pub const TITLE_BAR_HEIGHT: f32 = if cfg!(target_os = "macos") { 28.0 } else { 0.0 };
-/// Height of the unified toolbar under the title strip.
-pub const SHELL_TOOLBAR_HEIGHT: f32 = constants::style::ROW_HEIGHT;
+/// Height of the unified toolbar under the title strip, including equal padding on all sides.
+pub const SHELL_TOOLBAR_HEIGHT: f32 = constants::style::ROW_HEIGHT + SHELL_GUTTER * 2.0;
 /// Height of the status bar at the bottom of the window.
 pub const STATUS_BAR_HEIGHT: f32 = constants::style::ROW_HEIGHT;
 /// Gutter between the window edge and the panel grid.

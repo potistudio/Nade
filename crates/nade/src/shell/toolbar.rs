@@ -1,7 +1,7 @@
 //! Unified toolbar: tool palette and create actions.
 
 use constants::icons::{Icon, icon};
-use constants::style::{SPACE_1, SPACE_4, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
+use constants::style::{SPACE_1, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
 use constants::widgets::{self, button_body_center};
 use iced::widget::{Space, button, container, row, tooltip};
 use iced::{Alignment, Element, Length};
@@ -51,7 +51,7 @@ pub fn view<'a>(state: ToolbarState) -> Element<'a, Message> {
 	)
 	.width(Length::Fill)
 	.height(SHELL_TOOLBAR_HEIGHT)
-	.padding([0.0, SHELL_GUTTER + SPACE_4])
+	.padding(SHELL_GUTTER)
 	.into()
 }
 
