@@ -15,6 +15,7 @@ pub const PANEL_GAP: f32 = 6.0;
 
 /// Width of the outline around panels (inside).
 pub const PANEL_OUTLINE_WIDTH: f32 = 1.0;
+pub const PANEL_FOCUS_OUTLINE_WIDTH: f32 = 2.0;
 
 /// Total resize hit target across the gutter (extends over panel edges; does not widen the gap).
 pub const RESIZE_HIT_SIZE: f32 = 12.0;

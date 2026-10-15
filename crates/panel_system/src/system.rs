@@ -13,8 +13,8 @@ use crate::{
 	AreaKind,
 	chrome::{CornerGrip, PanelChrome, squircle_panel_stack},
 	consts::{
-		CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, HEADER_PADDING, MIN_PANEL_SIZE, MOVE_CENTER_ZONE, PANEL_GAP,
-		PANEL_OUTLINE_WIDTH, RESIZE_HIT_SIZE, colors,
+		CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, HEADER_PADDING, MIN_PANEL_SIZE, MOVE_CENTER_ZONE,
+		PANEL_FOCUS_OUTLINE_WIDTH, PANEL_GAP, PANEL_OUTLINE_WIDTH, RESIZE_HIT_SIZE, colors,
 	},
 	container::Area,
 	drag::{CornerAction, CornerPreview, DragState},
@@ -1198,7 +1198,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			header_height: HEADER_HEIGHT,
 			outline_width: PANEL_OUTLINE_WIDTH,
 			outer_radius: constants::style::PANEL_RADIUS,
-			inner_radius: constants::style::PANEL_INNER_RADIUS,
+			inner_radius: constants::style::PANEL_RADIUS - PANEL_FOCUS_OUTLINE_WIDTH,
 			exponent: constants::style::PANEL_SQUIRCLE_EXPONENT,
 			panel_color: constants::style::PANEL_COLOR,
 			header_color: colors::HEADER_BG,
@@ -1213,7 +1213,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			container(column![header, body_container].spacing(0))
 				.width(Length::Fill)
 				.height(Length::Fill)
-				.padding(PANEL_OUTLINE_WIDTH),
+				.padding(PANEL_FOCUS_OUTLINE_WIDTH),
 		)
 	}
 
