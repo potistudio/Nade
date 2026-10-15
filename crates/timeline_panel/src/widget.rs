@@ -13,7 +13,7 @@ use iced::{
 	widget::{
 		Space, button,
 		canvas::{self, Canvas, Geometry, LineCap, Path, Stroke, Text},
-		container, row, slider,
+		container, row,
 	},
 };
 
@@ -175,11 +175,6 @@ impl TimelineWidget<'_> {
 			)
 		};
 
-		let zoom_slider = slider(MIN_SCALE..=MAX_SCALE, time_scale, TimelineMessage::ZoomChanged)
-			.step(0.1_f32)
-			.width(120)
-			.style(widgets::slider);
-
 		let zoom_label = widgets::mono_label(format!("{:.0}%", time_scale * 100.0), FONT_TINY + 1.0)
 			.color(TEXT_SECONDARY_COLOR)
 			.width(40);
@@ -187,7 +182,6 @@ impl TimelineWidget<'_> {
 		let controls = row![
 			Space::new().width(Length::Fill),
 			icon_button(Icon::Minus, "Zoom Out  −", TimelineMessage::ZoomOut),
-			zoom_slider,
 			icon_button(Icon::Plus, "Zoom In  +", TimelineMessage::ZoomIn),
 			zoom_label,
 			icon_button(Icon::Fit, "Reset Zoom", TimelineMessage::ResetZoom),
