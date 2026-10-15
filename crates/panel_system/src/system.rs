@@ -466,8 +466,17 @@ impl<C: AreaKind> PanelSystem<C> {
 			PanelSystemMessage::AppMessage(_) => {}
 
 			PanelSystemMessage::WindowResized(size) => {
-				self.window_size = size;
-				self.materialize_split_sizes();
+				if size.width.is_finite()
+					&& size.height.is_finite()
+					&& size.width > 0.0
+					&& size.height > 0.0
+					&& size != self.window_size
+				{
+					let bounds = Rectangle::new(Point::ORIGIN, self.window_size);
+					Self::relativize_node(&mut self.root, bounds);
+					self.window_size = size;
+					self.drag_state = DragState::None;
+				}
 			}
 		}
 	}
@@ -496,7 +505,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		(materialized + delta).clamp(min, max)
 	}
 
-	/// Convert ratio-sized splits to pixels and clamp to the current window.
+	/// Materialize split ratios for boundary dragging without resizing unrelated panels.
 	fn materialize_split_sizes(&mut self) {
 		let root_bounds = Rectangle::new(Point::ORIGIN, self.window_size);
 		Self::materialize_node(&mut self.root, root_bounds);
@@ -513,13 +522,32 @@ impl<C: AreaKind> PanelSystem<C> {
 			return;
 		};
 		let available = available_along(bounds, *direction);
-		// Only convert ratio → px. Keep stored px on window resize so the Fill side absorbs change.
 		if *first_size <= 1.0 {
 			*first_size = leading_size(*first_size, available);
 		}
 		let (first_bounds, second_bounds) = split_child_bounds(bounds, *direction, *first_size);
 		Self::materialize_node(first, first_bounds);
 		Self::materialize_node(second, second_bounds);
+	}
+
+	fn relativize_node(node: &mut DockNode<C>, bounds: Rectangle) {
+		let DockNode::Split {
+			direction,
+			first_size,
+			first,
+			second,
+		} = node
+		else {
+			return;
+		};
+		let (first_bounds, second_bounds) = split_child_bounds(bounds, *direction, *first_size);
+		let available = available_along(bounds, *direction);
+		if *first_size > 1.0 && available > 0.0 {
+			*first_size = leading_size(*first_size, available) / available;
+		}
+		// Keep ratios through window resizes so minimum-size clamping does not overwrite the layout proportions.
+		Self::relativize_node(first, first_bounds);
+		Self::relativize_node(second, second_bounds);
 	}
 
 	/// コーナードラッグ中の操作（分割 or 他エリアへの移動）を算出する
