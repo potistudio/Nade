@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use iced::{
-	Alignment, Color, Element, Event, Font, Length, Point, Rectangle, Size, Theme,
+	Alignment, Color, Element, Event, Length, Point, Rectangle, Size, Theme,
 	alignment::Vertical,
 	keyboard::{self, Key},
 	mouse,
@@ -22,6 +22,7 @@ use crate::{
 	icons::{draw_eye_icon, draw_solo_icon},
 	interaction::{TimelineInteraction, TimelineLayout},
 };
+use constants::style::MONOSPACE_FONT;
 use constants::timeline::{
 	colors::{CLIP_HOVERED_OUTLINE, CLIP_RESIZE_HANDLE, CLIP_SELECTED_OUTLINE, CLIP_SHRINKING_OUTLINE},
 	*,
@@ -224,7 +225,7 @@ impl TimelineWidget<'_> {
 			position: Point::new(rect.x + 10.0, rect.y + rect.height * 0.5),
 			color: constants::style::ACCENT_BRIGHT_COLOR,
 			size: 14.0.into(),
-			font: Font::MONOSPACE,
+			font: MONOSPACE_FONT,
 			align_y: Vertical::Center,
 			..Text::default()
 		});
@@ -380,7 +381,7 @@ impl TimelineWidget<'_> {
 					position: Point::new(x + 4.0, rect.y + 4.0),
 					color: colors::TEXT_SECONDARY,
 					size: 9.5.into(),
-					font: Font::MONOSPACE,
+					font: MONOSPACE_FONT,
 					..Text::default()
 				});
 			}
@@ -478,7 +479,7 @@ impl TimelineWidget<'_> {
 					position: Point::new(name_x, y + TRACK_HEIGHT * 0.5),
 					color: colors::TEXT_MUTED,
 					size: 10.0.into(),
-					font: Font::MONOSPACE,
+					font: MONOSPACE_FONT,
 					align_y: Vertical::Center,
 					..Text::default()
 				});

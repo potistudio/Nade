@@ -18,6 +18,7 @@ mod workspace;
 use app::NadeApp;
 
 const INTER_FONT: &[u8] = include_bytes!("../../../assets/fonts/Inter/Inter_regular.otf");
+const JETBRAINS_MONO_FONT: &[u8] = include_bytes!("../../../assets/fonts/JetBrainsMono/JetBrainsMono-Regular.ttf");
 
 fn load_app_icon() -> Option<iced::window::Icon> {
 	let icon_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -61,6 +62,7 @@ pub fn run_app() -> iced::Result {
 		.subscription(NadeApp::subscription)
 		.theme(constants::style::app_theme())
 		.font(INTER_FONT)
+		.font(JETBRAINS_MONO_FONT)
 		.default_font(iced::Font::with_name("Inter"))
 		.title("Nade")
 		.window(window_settings)

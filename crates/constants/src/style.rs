@@ -123,6 +123,8 @@ pub const SPACE_4: f32 = 8.0;
 pub const SPACE_5: f32 = 12.0;
 pub const SPACE_6: f32 = 16.0;
 
+pub const MONOSPACE_FONT: iced::Font = iced::Font::with_name("JetBrains Mono");
+
 /// Micro caps: section captions, unit suffixes.
 pub const FONT_TINY: f32 = 9.0;
 /// Default control text.

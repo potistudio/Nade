@@ -88,7 +88,7 @@ pub fn ui_label<'a>(label: impl text::IntoFragment<'a>, size: f32) -> text::Text
 
 /// Monospaced numeric readout (timecode, frame counters).
 pub fn mono_label<'a>(label: impl text::IntoFragment<'a>, size: f32) -> text::Text<'a> {
-	ui_label(label, size).font(iced::Font::MONOSPACE)
+	ui_label(label, size).font(MONOSPACE_FONT)
 }
 
 /// Fixed square slot that centers an icon widget.

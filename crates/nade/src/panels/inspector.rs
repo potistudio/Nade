@@ -3,8 +3,8 @@
 
 use constants::icons::{Icon, icon, icon_transformed};
 use constants::style::{
-	AXIS_X_COLOR, AXIS_Y_COLOR, FONT_TINY, FONT_TITLE, FONT_UI, KEYFRAME_COLOR, LABEL_COLORS, SPACE_1, SPACE_2,
-	SPACE_3, SPACE_4, SPACE_5, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR,
+	AXIS_X_COLOR, AXIS_Y_COLOR, FONT_TINY, FONT_TITLE, FONT_UI, KEYFRAME_COLOR, LABEL_COLORS, MONOSPACE_FONT, SPACE_1,
+	SPACE_2, SPACE_3, SPACE_4, SPACE_5, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR,
 };
 use constants::widgets::{self, button_body_center, mono_label, ui_label};
 use domain::{Instance, InstanceContent, TransformProperty};
@@ -568,7 +568,7 @@ fn text_rows<'a>(
 		text_input("#FFFFFF", &hex)
 			.on_input(InspectorMessage::HexEdited)
 			.on_submit(InspectorMessage::HexSubmitted)
-			.font(iced::Font::MONOSPACE)
+			.font(MONOSPACE_FONT)
 			.size(FONT_UI)
 			.padding([2, 6])
 			.width(Length::Fill)

@@ -2,13 +2,13 @@
 
 use constants::style::{
 	ACCENT_BRIGHT_COLOR, ACCENT_COLOR, AXIS_X_COLOR, AXIS_Y_COLOR, AXIS_Z_COLOR, BORDER_SUBTLE_COLOR, FONT_TINY,
-	FONT_UI, KEYFRAME_COLOR, LABEL_COLORS, SPACE_1, SPACE_3, SPACE_4, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR,
-	TEXT_SECONDARY_COLOR, WELL_COLOR,
+	FONT_UI, KEYFRAME_COLOR, LABEL_COLORS, MONOSPACE_FONT, SPACE_1, SPACE_3, SPACE_4, TEXT_MUTED_COLOR,
+	TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR, WELL_COLOR,
 };
 use core::{AnimationCurve, HandleSide, Interpolation, Transform};
 use domain::{TransformAnimation, TransformProperty};
 use iced::{
-	Alignment, Border, Color, Element, Event, Font, Length, Point, Rectangle, Size, Theme, Vector, keyboard, mouse,
+	Alignment, Border, Color, Element, Event, Length, Point, Rectangle, Size, Theme, Vector, keyboard, mouse,
 	widget::{
 		Space, button,
 		canvas::{self, Canvas, Geometry, LineCap, LineJoin, Path, Stroke, Text},
@@ -553,7 +553,7 @@ impl CurveEditorWidget<'_> {
 				position: Point::new(x + 4.0, 4.0),
 				color: TEXT_MUTED_COLOR,
 				size: 9.5.into(),
-				font: Font::MONOSPACE,
+				font: MONOSPACE_FONT,
 				..Text::default()
 			});
 			time += time_step;
@@ -577,7 +577,7 @@ impl CurveEditorWidget<'_> {
 				position: Point::new(4.0, y - 13.0),
 				color: TEXT_MUTED_COLOR,
 				size: 9.5.into(),
-				font: Font::MONOSPACE,
+				font: MONOSPACE_FONT,
 				..Text::default()
 			});
 			value += value_step;
