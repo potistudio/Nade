@@ -3,7 +3,7 @@
 use constants::icons::{Icon, icon};
 use constants::style::{SPACE_1, SPACE_4, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
 use constants::widgets::{self, button_body_center};
-use iced::widget::{Space, button, container, row, stack, tooltip};
+use iced::widget::{Space, button, container, row, tooltip};
 use iced::{Alignment, Element, Length};
 
 use crate::message::{Message, ShellMessage};
@@ -43,21 +43,11 @@ pub fn view<'a>(state: ToolbarState) -> Element<'a, Message> {
 	.spacing(SPACE_1)
 	.align_y(Alignment::Center);
 
-	let sides = row![Space::new().width(Length::Fill), actions]
-		.align_y(Alignment::Center)
-		.height(Length::Fill);
-
 	container(
-		stack![
-			sides,
-			container(tools)
-				.width(Length::Fill)
-				.height(Length::Fill)
-				.center_x(Length::Fill)
-				.center_y(Length::Fill),
-		]
-		.width(Length::Fill)
-		.height(Length::Fill),
+		row![tools, Space::new().width(Length::Fill), actions]
+			.align_y(Alignment::Center)
+			.width(Length::Fill)
+			.height(Length::Fill),
 	)
 	.width(Length::Fill)
 	.height(SHELL_TOOLBAR_HEIGHT)
