@@ -287,15 +287,13 @@ impl TimelineWidget<'_> {
 
 		// Keep both resize grips inside the handle, even at its minimum width.
 		let inset = ((handle_r - handle_l) * 0.25).min(4.0);
-		let grip_height = (track_rect.height - 2.0).max(0.0);
+		let grip_radius = 1.0;
+		let grip_y = track_rect.y + track_rect.height * 0.5;
 		for x in [handle_l + inset, handle_r - inset] {
-			let grip = Rectangle {
-				x: x - 0.75,
-				y: track_rect.y + 1.0,
-				width: 1.5,
-				height: grip_height,
-			};
-			frame.fill(&rounded_rect(grip, 0.75), colors::RANGE_SLIDER_GRIP);
+			frame.fill(
+				&Path::circle(Point::new(x, grip_y), grip_radius),
+				colors::RANGE_SLIDER_GRIP,
+			);
 		}
 	}
 
