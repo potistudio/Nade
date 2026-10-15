@@ -4,7 +4,6 @@ use iced::mouse;
 use iced::widget::canvas::{Canvas, Frame, Geometry, Program, Stroke};
 use iced::{Color, Element, Length, Point, Rectangle, Theme};
 
-use crate::consts::PANEL_FOCUS_OUTLINE_WIDTH;
 use crate::squircle::{SquircleCorners, squircle_rounded_rectangle};
 
 #[derive(Debug, Clone, Copy)]
@@ -42,10 +41,10 @@ impl<Message> Program<Message> for PanelChrome {
 
 		let mut frame = Frame::new(renderer, bounds.size());
 		let inner = Rectangle {
-			x: PANEL_FOCUS_OUTLINE_WIDTH,
-			y: PANEL_FOCUS_OUTLINE_WIDTH,
-			width: (bounds.width - PANEL_FOCUS_OUTLINE_WIDTH * 2.0).max(0.0),
-			height: (bounds.height - PANEL_FOCUS_OUTLINE_WIDTH * 2.0).max(0.0),
+			x: self.outline_width,
+			y: self.outline_width,
+			width: (bounds.width - self.outline_width * 2.0).max(0.0),
+			height: (bounds.height - self.outline_width * 2.0).max(0.0),
 		};
 
 		let header_height = self.header_height.min(inner.height);
@@ -84,7 +83,7 @@ impl<Message> Program<Message> for PanelChrome {
 
 		let focus = self.focus.clamp(0.0, 1.0);
 		let outline_color = constants::style::mix(self.outline_color, self.focus_color, focus);
-		let outline_width = self.outline_width + (PANEL_FOCUS_OUTLINE_WIDTH - self.outline_width) * focus;
+		let outline_width = self.outline_width;
 		let inset = outline_width * 0.5;
 		// Canvas strokes extend to both sides of the path; keep the outer edge inside its bounds.
 		let outline_bounds = Rectangle {
