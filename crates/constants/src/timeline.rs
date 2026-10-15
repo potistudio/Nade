@@ -99,6 +99,7 @@ pub mod colors {
 	pub const RANGE_SLIDER_TRACK: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.05);
 	pub const RANGE_SLIDER_HANDLE: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.16);
 	pub const RANGE_SLIDER_HANDLE_BORDER: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.10);
+	pub const RANGE_SLIDER_GRIP: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.60);
 
 	pub const SELECTION_FILL: Color = Color {
 		a: 0.12,

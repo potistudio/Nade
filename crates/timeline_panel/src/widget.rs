@@ -284,6 +284,19 @@ impl TimelineWidget<'_> {
 				.with_color(colors::RANGE_SLIDER_HANDLE_BORDER)
 				.with_width(1.0),
 		);
+
+		// Keep both resize grips inside the handle, even at its minimum width.
+		let inset = ((handle_r - handle_l) * 0.25).min(4.0);
+		let grip_height = (track_rect.height - 2.0).max(0.0);
+		for x in [handle_l + inset, handle_r - inset] {
+			let grip = Rectangle {
+				x: x - 0.75,
+				y: track_rect.y + 1.0,
+				width: 1.5,
+				height: grip_height,
+			};
+			frame.fill(&rounded_rect(grip, 0.75), colors::RANGE_SLIDER_GRIP);
+		}
 	}
 
 	fn draw_selection_rect(&self, frame: &mut canvas::Frame) {
