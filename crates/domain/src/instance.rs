@@ -102,9 +102,10 @@ impl TransformAnimation {
 }
 
 /// インスタンスが持つ描画コンテンツ
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum InstanceContent {
 	/// 中身のないプレースホルダ
+	#[default]
 	Empty,
 	/// テキストオブジェクト
 	Text {
@@ -114,12 +115,6 @@ pub enum InstanceContent {
 		spacing: f32,
 		fill_color: [f32; 4],
 	},
-}
-
-impl Default for InstanceContent {
-	fn default() -> Self {
-		Self::Empty
-	}
 }
 
 impl InstanceContent {

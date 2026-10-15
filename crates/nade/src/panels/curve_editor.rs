@@ -12,7 +12,6 @@ use iced::{
 use panel_system::PanelSystemMessage;
 
 pub fn view<'a>(
-	panel_id: usize,
 	state: &'a CurveEditorState,
 	animation: Option<&'a TransformAnimation>,
 	current_time: f32,
@@ -34,5 +33,5 @@ pub fn view<'a>(
 
 	CurveEditorWidget::new(state, animation, current_time)
 		.view()
-		.map(move |message| PanelSystemMessage::AppMessage(AppPanelMessage::CurveEditor { panel_id, message }))
+		.map(|message| PanelSystemMessage::AppMessage(AppPanelMessage::CurveEditor(message)))
 }

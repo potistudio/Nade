@@ -56,14 +56,8 @@ pub enum PreviewMessage {
 /// アプリケーションパネルメッセージ（ラッパー）
 #[derive(Debug, Clone)]
 pub enum AppPanelMessage {
-	Timeline {
-		panel_id: usize,
-		message: TimelineMessage,
-	},
-	CurveEditor {
-		panel_id: usize,
-		message: CurveEditorMessage,
-	},
+	Timeline(TimelineMessage),
+	CurveEditor(CurveEditorMessage),
 	Project(ProjectPaneMessage),
 	Assets(AssetBrowserMessage),
 	Inspector(inspector_panel::InspectorMessage),

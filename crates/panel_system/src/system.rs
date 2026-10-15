@@ -17,7 +17,7 @@ use crate::{
 		PANEL_OUTLINE_WIDTH, RESIZE_HIT_SIZE, colors,
 	},
 	container::Area,
-	drag::{CornerAction, DragState},
+	drag::{CornerAction, CornerPreview, DragState},
 	node::{DockNode, SplitDirection},
 };
 
@@ -546,78 +546,33 @@ impl<C: AreaKind> PanelSystem<C> {
 		Self::materialize_node(second, second_bounds);
 	}
 
-	fn size_at_path(&self, path: &[usize]) -> Size {
-		let mut size = self.window_size;
-		let mut node = &self.root;
-
-		for &index in path {
-			let DockNode::Split {
-				direction,
-				first_size,
-				first,
-				second,
-			} = node
-			else {
-				break;
-			};
-
-			match direction {
-				SplitDirection::Horizontal => {
-					let (first_bounds, second_bounds) =
-						split_child_bounds(Rectangle::new(Point::ORIGIN, size), *direction, *first_size);
-					if index == 0 {
-						size = first_bounds.size();
-						node = first;
-					} else {
-						size = second_bounds.size();
-						node = second;
-					}
-				}
-				SplitDirection::Vertical => {
-					let (first_bounds, second_bounds) =
-						split_child_bounds(Rectangle::new(Point::ORIGIN, size), *direction, *first_size);
-					if index == 0 {
-						size = first_bounds.size();
-						node = first;
-					} else {
-						size = second_bounds.size();
-						node = second;
-					}
-				}
-			}
-		}
-
-		size
-	}
-
 	/// コーナードラッグ中の操作（分割 or 他エリアへの移動）を算出する
 	fn corner_drag_update(&self, source_id: usize, start_pos: Point, pos: Point) -> CornerDragUpdate {
 		// 他エリア上 → 中央基準の移動（中央=全体 / 外側=その方向へ分割）
-		if let Some(target_id) = self.area_at_point(pos) {
-			if target_id != source_id {
-				if let Some(drop) = self.drop_layout_at(target_id, pos) {
-					return match drop {
-						DropLayout::FullMove => CornerDragUpdate {
-							action: Some(CornerAction::Move),
-							ratio: 0.5,
-							target_area_id: Some(target_id),
-							direction: None,
-							new_is_first: false,
-						},
-						DropLayout::Split {
-							direction,
-							ratio,
-							new_is_first,
-						} => CornerDragUpdate {
-							action: Some(CornerAction::Move),
-							ratio,
-							target_area_id: Some(target_id),
-							direction: Some(direction),
-							new_is_first,
-						},
-					};
-				}
-			}
+		if let Some(target_id) = self.area_at_point(pos)
+			&& target_id != source_id
+			&& let Some(drop) = self.drop_layout_at(target_id, pos)
+		{
+			return match drop {
+				DropLayout::FullMove => CornerDragUpdate {
+					action: Some(CornerAction::Move),
+					ratio: 0.5,
+					target_area_id: Some(target_id),
+					direction: None,
+					new_is_first: false,
+				},
+				DropLayout::Split {
+					direction,
+					ratio,
+					new_is_first,
+				} => CornerDragUpdate {
+					action: Some(CornerAction::Move),
+					ratio,
+					target_area_id: Some(target_id),
+					direction: Some(direction),
+					new_is_first,
+				},
+			};
 		}
 
 		let dx = pos.x - start_pos.x;
@@ -1188,7 +1143,14 @@ impl<C: AreaKind> PanelSystem<C> {
 		let body = content_view(area.id, &area.content);
 
 		let overlay_preview = self.drag_state.corner_preview().and_then(
-			|(source_id, action, ratio, target_id, direction, new_is_first)| match action {
+			|CornerPreview {
+			     source_id,
+			     action,
+			     ratio,
+			     target_id,
+			     direction,
+			     new_is_first,
+			 }| match action {
 				CornerAction::Move => {
 					if target_id == Some(area_id) {
 						if let Some(dir) = direction {
@@ -1738,20 +1700,17 @@ impl<C: AreaKind> PanelSystem<C> {
 	}
 
 	fn cleanup_recursive(node: &mut DockNode<C>) {
-		match node {
-			DockNode::Split { first, second, .. } => {
-				Self::cleanup_recursive(first);
-				Self::cleanup_recursive(second);
+		if let DockNode::Split { first, second, .. } = node {
+			Self::cleanup_recursive(first);
+			Self::cleanup_recursive(second);
 
-				if first.is_empty() && second.is_empty() {
-					*node = DockNode::Empty;
-				} else if first.is_empty() {
-					*node = std::mem::replace(second.as_mut(), DockNode::Empty);
-				} else if second.is_empty() {
-					*node = std::mem::replace(first.as_mut(), DockNode::Empty);
-				}
+			if first.is_empty() && second.is_empty() {
+				*node = DockNode::Empty;
+			} else if first.is_empty() {
+				*node = std::mem::take(second.as_mut());
+			} else if second.is_empty() {
+				*node = std::mem::take(first.as_mut());
 			}
-			_ => {}
 		}
 	}
 

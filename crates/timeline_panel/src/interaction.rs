@@ -24,7 +24,6 @@ pub(crate) enum DragState {
 	/// Dragging a clip with Shift held - shows ghost (original stays, drag preview moves)
 	ClipDuplicating {
 		track_id: usize,
-		clip_id: usize,
 		original_clip: TimelineClip,
 		offset: f32,
 	},
@@ -738,10 +737,10 @@ impl TimelineInteraction {
 			if let Some((track_id, clip_id)) = self.find_clip_at(model, pos, bounds) {
 				if self.ctrl_pressed {
 					// Cmd/Ctrl: 既存の単一選択を selected_clips に吸収してからトグル
-					if let Some(existing) = self.selected_clip.take() {
-						if !self.selected_clips.contains(&existing) {
-							self.selected_clips.push(existing);
-						}
+					if let Some(existing) = self.selected_clip.take()
+						&& !self.selected_clips.contains(&existing)
+					{
+						self.selected_clips.push(existing);
 					}
 					let pair = (track_id, clip_id);
 					if let Some(idx) = self.selected_clips.iter().position(|&c| c == pair) {
@@ -800,7 +799,6 @@ impl TimelineInteraction {
 				let time = self.x_to_time(pos.x, timeline_left);
 				self.drag_state = DragState::ClipDuplicating {
 					track_id,
-					clip_id,
 					original_clip: clip.clone(),
 					offset: clip.start_time - time,
 				};
@@ -896,10 +894,10 @@ impl TimelineInteraction {
 
 					if constrained_delta != 0.0 {
 						for (sel_track, sel_clip) in selected {
-							if let Some(track) = model.tracks.get_mut(sel_track) {
-								if let Some(clip) = track.clips.iter_mut().find(|c| c.id == sel_clip) {
-									clip.start_time += constrained_delta;
-								}
+							if let Some(track) = model.tracks.get_mut(sel_track)
+								&& let Some(clip) = track.clips.iter_mut().find(|c| c.id == sel_clip)
+							{
+								clip.start_time += constrained_delta;
 							}
 						}
 					}
@@ -929,13 +927,12 @@ impl TimelineInteraction {
 
 				if self.alt_pressed {
 					// まず前フレームで縮めたクリップを元のサイズに戻す
-					if let Some((orig_track, orig_id, orig_start, orig_dur)) = self.alt_shrinking_original.take() {
-						if let Some(track) = model.tracks.get_mut(orig_track) {
-							if let Some(c) = track.clips.iter_mut().find(|c| c.id == orig_id) {
-								c.start_time = orig_start;
-								c.duration = orig_dur;
-							}
-						}
+					if let Some((orig_track, orig_id, orig_start, orig_dur)) = self.alt_shrinking_original.take()
+						&& let Some(track) = model.tracks.get_mut(orig_track)
+						&& let Some(c) = track.clips.iter_mut().find(|c| c.id == orig_id)
+					{
+						c.start_time = orig_start;
+						c.duration = orig_dur;
 					}
 
 					let mut shrunk_clip_id: Option<usize> = None;
@@ -985,13 +982,12 @@ impl TimelineInteraction {
 					}
 				} else {
 					// Alt を離した場合は縮めていたクリップを復元する
-					if let Some((orig_track, orig_id, orig_start, orig_dur)) = self.alt_shrinking_original.take() {
-						if let Some(track) = model.tracks.get_mut(orig_track) {
-							if let Some(c) = track.clips.iter_mut().find(|c| c.id == orig_id) {
-								c.start_time = orig_start;
-								c.duration = orig_dur;
-							}
-						}
+					if let Some((orig_track, orig_id, orig_start, orig_dur)) = self.alt_shrinking_original.take()
+						&& let Some(track) = model.tracks.get_mut(orig_track)
+						&& let Some(c) = track.clips.iter_mut().find(|c| c.id == orig_id)
+					{
+						c.start_time = orig_start;
+						c.duration = orig_dur;
 					}
 					self.alt_shrinking_clip = None;
 					// Normal mode: snap to avoid overlap, don't place if no room
@@ -1133,7 +1129,6 @@ impl TimelineInteraction {
 			}
 			DragState::ClipDuplicating {
 				track_id,
-				clip_id: _,
 				original_clip,
 				offset,
 			} => {
@@ -1282,13 +1277,7 @@ impl TimelineInteraction {
 		}
 
 		// Handle ClipDuplicating -> finalize the duplicate
-		if let DragState::ClipDuplicating {
-			track_id: _,
-			clip_id: _,
-			original_clip: _,
-			offset: _,
-		} = &self.drag_state
-		{
+		if let DragState::ClipDuplicating { .. } = &self.drag_state {
 			// The duplicate was already added to model during drag (in handle_mouse_move)
 			// Just convert to regular Clip drag state for the final position
 			// The duplicate stays, original stays

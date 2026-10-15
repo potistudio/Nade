@@ -31,8 +31,9 @@ impl Clone for Box<dyn OperatorState> {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum NodeState {
+	#[default]
 	Empty,
 	DelayValue {
 		previous: Option<Value>,
@@ -43,10 +44,4 @@ pub enum NodeState {
 		previous_time: Option<f64>,
 	},
 	Custom(Box<dyn OperatorState>),
-}
-
-impl Default for NodeState {
-	fn default() -> Self {
-		Self::Empty
-	}
 }

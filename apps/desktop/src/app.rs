@@ -51,13 +51,11 @@ impl NadeApp {
 		// (ロジックは明確化のためここに切り出し)
 		let ticks_per_log = (status.sample_rate as f64 * LOG_INTERVAL_MS as f64) as u64;
 
-		if ticks_per_log > 0 {
-			let current_interval = status.ticks / ticks_per_log;
-
-			if current_interval > self.last_logged_interval {
-				println!("⏱ Time: {:.1} sec ({} ticks)", status.seconds, status.ticks);
-				self.last_logged_interval = current_interval;
-			}
+		if let Some(current_interval) = status.ticks.checked_div(ticks_per_log)
+			&& current_interval > self.last_logged_interval
+		{
+			println!("⏱ Time: {:.1} sec ({} ticks)", status.seconds, status.ticks);
+			self.last_logged_interval = current_interval;
 		}
 	}
 

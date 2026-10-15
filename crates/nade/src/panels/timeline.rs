@@ -16,14 +16,11 @@ pub struct TimelineProps<'a> {
 	pub keyframes: HashMap<usize, Vec<f32>>,
 }
 
-pub fn view<'a>(
-	panel_id: usize,
-	props: TimelineProps<'a>,
-) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
+pub fn view<'a>(props: TimelineProps<'a>) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
 	TimelineWidget::new(props.state, props.model)
 		.frame_rate(props.fps)
 		.duration(props.duration)
 		.keyframes(props.keyframes)
 		.view(props.current_time)
-		.map(move |message| PanelSystemMessage::AppMessage(AppPanelMessage::Timeline { panel_id, message }))
+		.map(|message| PanelSystemMessage::AppMessage(AppPanelMessage::Timeline(message)))
 }

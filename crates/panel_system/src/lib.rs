@@ -12,7 +12,7 @@ mod squircle;
 mod system;
 
 pub use container::Area;
-pub use drag::{CornerAction, DragState};
+pub use drag::{CornerAction, CornerPreview, DragState};
 pub use node::{DockNode, SplitDirection};
 pub use system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
 

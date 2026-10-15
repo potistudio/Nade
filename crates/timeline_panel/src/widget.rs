@@ -932,7 +932,6 @@ impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
 						},
 					)))
 				}
-				_ => None,
 			},
 			_ => None,
 		}

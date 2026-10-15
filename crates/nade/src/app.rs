@@ -11,7 +11,7 @@ use iced::animation::Easing;
 use iced::keyboard;
 use iced::time::{Duration, Instant};
 use iced::widget::{column, container, stack};
-use iced::{Animation, Element, Length, Size, Subscription, Task, Theme};
+use iced::{Animation, Element, Length, Size, Subscription, Task};
 use inspector_panel::{InspectorMessage, PropertyGroup};
 use panel_system::{PanelSystem, PanelSystemMessage};
 use std::path::PathBuf;
@@ -33,8 +33,6 @@ use crate::viewer::ViewerSettings;
 use crate::widgets::viewer_overlay::LayerBox;
 use crate::widgets::viewport::Viewport;
 use crate::workspace::Workspace;
-
-/// 再生/一時停止 HUD の表示時間
 
 // =============================================================================
 // ウィンドウ・キーボードイベント
@@ -81,15 +79,6 @@ fn pill_animation(index: usize) -> Animation<f32> {
 	Animation::new(index as f32)
 		.duration(Duration::from_millis(constants::style::MOTION_STANDARD_MS))
 		.easing(Easing::EaseOutCubic)
-}
-
-// =============================================================================
-// テーマ設定
-// =============================================================================
-
-/// アプリケーションのテーマを返す
-pub fn theme(_state: &NadeApp) -> Theme {
-	constants::style::app_theme()
 }
 
 // =============================================================================
@@ -491,10 +480,10 @@ impl NadeApp {
 			Message::PanelSystem(msg) => {
 				let mut task = Task::none();
 				match &msg {
-					PanelSystemMessage::AppMessage(AppPanelMessage::Timeline { message, .. }) => {
+					PanelSystemMessage::AppMessage(AppPanelMessage::Timeline(message)) => {
 						self.apply_timeline_message(message.clone());
 					}
-					PanelSystemMessage::AppMessage(AppPanelMessage::CurveEditor { message, .. }) => {
+					PanelSystemMessage::AppMessage(AppPanelMessage::CurveEditor(message)) => {
 						self.apply_curve_editor_message(message.clone());
 					}
 					PanelSystemMessage::AppMessage(AppPanelMessage::Project(project_msg)) => {
@@ -1561,9 +1550,7 @@ impl NadeApp {
 	}
 
 	pub(super) fn view(&self) -> Element<'_, Message> {
-		let panel_view = self
-			.panel_system
-			.view(|panel_id, content| self.view_panel_content(panel_id, content));
+		let panel_view = self.panel_system.view(|_, content| self.view_panel_content(content));
 
 		let composition = self.target_composition().and_then(|id| self.project.composition(&id));
 
@@ -1618,23 +1605,18 @@ impl NadeApp {
 
 	fn view_panel_content<'a>(
 		&'a self,
-		panel_id: usize,
 		content: &PanelContent,
 	) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
 		match content {
-			PanelContent::Timeline => panels::timeline::view(
-				panel_id,
-				panels::timeline::TimelineProps {
-					state: &self.timeline.state,
-					model: &self.timeline.model,
-					current_time: self.current_model.preview.time,
-					fps: self.composition_fps(),
-					duration: self.composition_duration(),
-					keyframes: self.clip_keyframes(),
-				},
-			),
+			PanelContent::Timeline => panels::timeline::view(panels::timeline::TimelineProps {
+				state: &self.timeline.state,
+				model: &self.timeline.model,
+				current_time: self.current_model.preview.time,
+				fps: self.composition_fps(),
+				duration: self.composition_duration(),
+				keyframes: self.clip_keyframes(),
+			}),
 			PanelContent::CurveEditor => panels::curve_editor::view(
-				panel_id,
 				&self.curve_editor,
 				self.selected_transform_animation(),
 				self.current_model.preview.time,

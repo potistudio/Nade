@@ -79,7 +79,6 @@ pub struct RenderContext {
 
 pub mod animation;
 pub mod core;
-mod hash;
 pub mod object;
 pub mod ops;
 pub mod timecode;

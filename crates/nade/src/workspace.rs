@@ -18,10 +18,6 @@ pub enum Workspace {
 impl Workspace {
 	pub const ALL: [Self; 3] = [Self::Animate, Self::Graph, Self::Edit];
 
-	pub fn index(self) -> usize {
-		Self::ALL.iter().position(|workspace| *workspace == self).unwrap_or(0)
-	}
-
 	pub fn label(self) -> &'static str {
 		match self {
 			Self::Animate => "Animate",

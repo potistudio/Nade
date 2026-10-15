@@ -5,9 +5,10 @@
 use crate::container::Area;
 
 /// ドックノード（分割レイアウト）
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum DockNode<C: Clone + std::fmt::Debug> {
 	/// 空のノード
+	#[default]
 	Empty,
 	/// エリア（リーフ）
 	Leaf(Area<C>),
@@ -29,12 +30,6 @@ impl<C: Clone + std::fmt::Debug> DockNode<C> {
 			DockNode::Leaf(_) => false,
 			DockNode::Split { first, second, .. } => first.is_empty() && second.is_empty(),
 		}
-	}
-}
-
-impl<C: Clone + std::fmt::Debug> Default for DockNode<C> {
-	fn default() -> Self {
-		Self::Empty
 	}
 }
 
