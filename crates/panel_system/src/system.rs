@@ -25,8 +25,6 @@ use crate::{
 const EDITOR_MENU_ANIM_SECS: f32 = 0.14;
 /// Vertical slide distance (px) while the menu fades in.
 const EDITOR_MENU_SLIDE_Y_PX: f32 = 6.0;
-/// Focus ring cross-fade duration.
-const FOCUS_ANIM_SECS: f32 = constants::style::MOTION_STANDARD_MS as f32 / 1000.0;
 
 #[derive(Debug, Clone)]
 struct EditorMenuState {
@@ -203,10 +201,6 @@ pub struct PanelSystem<C: AreaKind> {
 	editor_menu: Option<EditorMenuState>,
 	/// フォーカス中のエリア（アクセントのリングで示す）
 	focused_area: Option<usize>,
-	/// 直前にフォーカスされていたエリア（リングのフェードアウト用）
-	previous_focus: Option<usize>,
-	/// フォーカスが切り替わった時刻
-	focus_changed: Instant,
 	/// ホバー中のガター (split path, 重なったヒット領域の数)
 	gutter_hover: Option<(Vec<usize>, u32)>,
 	/// ポインタがパネルシステム上にあるか
@@ -223,8 +217,6 @@ impl<C: AreaKind> PanelSystem<C> {
 			window_size: Size::new(800.0, 600.0),
 			editor_menu: None,
 			focused_area: None,
-			previous_focus: None,
-			focus_changed: Instant::now(),
 			gutter_hover: None,
 			pointer_inside: false,
 		}
@@ -235,9 +227,9 @@ impl<C: AreaKind> PanelSystem<C> {
 		self.editor_menu.as_ref().is_some_and(|menu| !menu.is_finished())
 	}
 
-	/// Whether any chrome animation (menu, focus ring) still needs ticks.
+	/// Reports whether panel chrome needs animation ticks.
 	pub fn is_animating(&self) -> bool {
-		self.is_editor_menu_animating() || self.focus_changed.elapsed().as_secs_f32() < FOCUS_ANIM_SECS
+		self.is_editor_menu_animating()
 	}
 
 	/// Content of the focused area, if any.
@@ -254,29 +246,11 @@ impl<C: AreaKind> PanelSystem<C> {
 		self.editor_menu = None;
 		self.gutter_hover = None;
 		self.focused_area = None;
-		self.previous_focus = None;
 		self.materialize_split_sizes();
 	}
 
 	fn focus_area(&mut self, area_id: usize) {
-		if self.focused_area == Some(area_id) {
-			return;
-		}
-		self.previous_focus = self.focused_area;
 		self.focused_area = Some(area_id);
-		self.focus_changed = Instant::now();
-	}
-
-	/// Focus ring progress for an area (`0.0` → `1.0`).
-	fn focus_progress(&self, area_id: usize) -> f32 {
-		let t = ease_out_cubic(self.focus_changed.elapsed().as_secs_f32() / FOCUS_ANIM_SECS);
-		if self.focused_area == Some(area_id) {
-			t
-		} else if self.previous_focus == Some(area_id) {
-			1.0 - t
-		} else {
-			0.0
-		}
 	}
 
 	fn is_gutter_hot(&self, path: &[usize]) -> bool {
@@ -1066,14 +1040,18 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		let area_id = area.id;
 		let can_join = self.area_has_sibling(area_id);
-		let focus = self.focus_progress(area_id);
+		let focused = self.focused_area == Some(area_id);
 		let menu_open = self
 			.editor_menu
 			.as_ref()
 			.is_some_and(|menu| menu.area_id == area_id && menu.to > 0.0);
 
 		// Editor type chip: [icon] Title [⌄] — the chevron flips while the menu is open.
-		let title_color = constants::style::mix(TEXT_SECONDARY_COLOR, TEXT_PRIMARY_COLOR, focus);
+		let title_color = if focused {
+			TEXT_PRIMARY_COLOR
+		} else {
+			TEXT_SECONDARY_COLOR
+		};
 		let chevron_turn = self
 			.editor_menu
 			.as_ref()
@@ -1205,7 +1183,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			outline_color: colors::PANEL_OUTLINE_COLOR,
 			separator_color: colors::HEADER_SEPARATOR,
 			focus_color: colors::FOCUS_RING,
-			focus,
+			focused,
 		};
 
 		squircle_panel_stack(

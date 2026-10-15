@@ -18,10 +18,8 @@ pub(crate) struct PanelChrome {
 	pub(crate) outline_color: Color,
 	/// Hairline between header and body.
 	pub(crate) separator_color: Color,
-	/// Focus ring color, blended in by `focus`.
 	pub(crate) focus_color: Color,
-	/// Focus transition progress (`0.0` idle → `1.0` focused).
-	pub(crate) focus: f32,
+	pub(crate) focused: bool,
 }
 
 impl<Message> Program<Message> for PanelChrome {
@@ -81,8 +79,11 @@ impl<Message> Program<Message> for PanelChrome {
 			);
 		}
 
-		let focus = self.focus.clamp(0.0, 1.0);
-		let outline_color = constants::style::mix(self.outline_color, self.focus_color, focus);
+		let outline_color = if self.focused {
+			self.focus_color
+		} else {
+			self.outline_color
+		};
 		let outline_width = self.outline_width;
 		let inset = outline_width * 0.5;
 		// Canvas strokes extend to both sides of the path; keep the outer edge inside its bounds.
