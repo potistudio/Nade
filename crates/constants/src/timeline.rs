@@ -14,7 +14,8 @@ pub const TRACK_HANDLE_WIDTH: f32 = 14.0;
 pub const TRACK_CTRL_BTN_SIZE: f32 = 18.0;
 pub const TRACK_CTRL_BTN_GAP: f32 = 2.0;
 pub const RULER_HEIGHT: f32 = style::ROW_HEIGHT;
-pub const RANGE_SLIDER_HEIGHT: f32 = style::ROW_HEIGHT;
+/// Compact range strip: 6px bar with 3px padding above and below.
+pub const RANGE_SLIDER_HEIGHT: f32 = 12.0;
 pub const PIXELS_PER_SECOND: f32 = 100.0;
 
 /// トラックラベル内の可視ボタン矩形
@@ -98,6 +99,7 @@ pub mod colors {
 	pub const RANGE_SLIDER_TRACK: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.05);
 	pub const RANGE_SLIDER_HANDLE: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.16);
 	pub const RANGE_SLIDER_HANDLE_BORDER: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.10);
+	pub const RANGE_SLIDER_GRIP: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.60);
 
 	pub const SELECTION_FILL: Color = Color {
 		a: 0.12,

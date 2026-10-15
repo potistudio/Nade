@@ -559,8 +559,12 @@ impl TimelineInteraction {
 				self.scroll_bounds = Some(bounds);
 				self.update_viewport_width(bounds.width);
 				let layout = TimelineLayout::from_bounds_absolute(bounds);
-				let duration = model.tracks.iter().flat_map(|track| &track.clips)
-					.map(|clip| clip.end_time()).fold(30.0_f32, f32::max);
+				let duration = model
+					.tracks
+					.iter()
+					.flat_map(|track| &track.clips)
+					.map(|clip| clip.end_time())
+					.fold(30.0_f32, f32::max);
 				self.scroll_min = Vector::new(
 					(layout.content.width - duration * PIXELS_PER_SECOND * self.time_scale).min(0.0),
 					(layout.content.height - model.tracks.len() as f32 * TRACK_HEIGHT).min(0.0),
@@ -1333,8 +1337,7 @@ impl TimelineInteraction {
 					let distance = previous.abs();
 					let outward = (excess.abs() - distance).max(0.0);
 					let resistance = (1.0 - distance / SPRING_REACH).powi(3);
-					let travel = (SPRING_REACH - distance)
-						* -(-outward * resistance / SPRING_REACH).exp_m1();
+					let travel = (SPRING_REACH - distance) * -(-outward * resistance / SPRING_REACH).exp_m1();
 					excess.signum() * (distance + travel)
 				} else {
 					excess
@@ -1357,8 +1360,18 @@ impl TimelineInteraction {
 				*velocity = 0.0;
 			}
 		}
-		direct(&mut self.scroll_offset.x, self.scroll_target.x, &mut self.scroll_velocity.x, self.scroll_min.x);
-		direct(&mut self.scroll_offset.y, self.scroll_target.y, &mut self.scroll_velocity.y, self.scroll_min.y);
+		direct(
+			&mut self.scroll_offset.x,
+			self.scroll_target.x,
+			&mut self.scroll_velocity.x,
+			self.scroll_min.x,
+		);
+		direct(
+			&mut self.scroll_offset.y,
+			self.scroll_target.y,
+			&mut self.scroll_velocity.y,
+			self.scroll_min.y,
+		);
 		if self.scroll_gesture_active {
 			self.scroll_offset = self.scroll_target;
 			self.scroll_velocity = Vector::ZERO;
@@ -1387,13 +1400,16 @@ impl TimelineInteraction {
 	}
 
 	pub fn is_scroll_animating(&self) -> bool {
-		!self.scroll_gesture_active && self.last_scroll.is_some() && (
-			self.scroll_offset.x < self.scroll_min.x || self.scroll_offset.x > 0.0
-			|| self.scroll_offset.y < self.scroll_min.y || self.scroll_offset.y > 0.0
-			|| (self.scroll_target.x - self.scroll_offset.x).abs() > 0.001
-			|| (self.scroll_target.y - self.scroll_offset.y).abs() > 0.001
-			|| self.scroll_velocity.x.abs() > 0.1 || self.scroll_velocity.y.abs() > 0.1
-		)
+		!self.scroll_gesture_active
+			&& self.last_scroll.is_some()
+			&& (self.scroll_offset.x < self.scroll_min.x
+				|| self.scroll_offset.x > 0.0
+				|| self.scroll_offset.y < self.scroll_min.y
+				|| self.scroll_offset.y > 0.0
+				|| (self.scroll_target.x - self.scroll_offset.x).abs() > 0.001
+				|| (self.scroll_target.y - self.scroll_offset.y).abs() > 0.001
+				|| self.scroll_velocity.x.abs() > 0.1
+				|| self.scroll_velocity.y.abs() > 0.1)
 	}
 
 	pub fn tick_scroll_spring(&mut self, now: std::time::Instant) {
@@ -1421,8 +1437,20 @@ impl TimelineInteraction {
 			}
 			*target = *position;
 		}
-		step(&mut self.scroll_offset.x, &mut self.scroll_target.x, &mut self.scroll_velocity.x, self.scroll_min.x, dt);
-		step(&mut self.scroll_offset.y, &mut self.scroll_target.y, &mut self.scroll_velocity.y, self.scroll_min.y, dt);
+		step(
+			&mut self.scroll_offset.x,
+			&mut self.scroll_target.x,
+			&mut self.scroll_velocity.x,
+			self.scroll_min.x,
+			dt,
+		);
+		step(
+			&mut self.scroll_offset.y,
+			&mut self.scroll_target.y,
+			&mut self.scroll_velocity.y,
+			self.scroll_min.y,
+			dt,
+		);
 		if !self.is_scroll_animating() {
 			self.last_scroll = None;
 		}

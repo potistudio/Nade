@@ -13,7 +13,7 @@ use iced::{
 	widget::{
 		Space, button,
 		canvas::{self, Canvas, Geometry, LineCap, Path, Stroke, Text},
-		container, row, slider,
+		container, row,
 	},
 };
 
@@ -175,11 +175,6 @@ impl TimelineWidget<'_> {
 			)
 		};
 
-		let zoom_slider = slider(MIN_SCALE..=MAX_SCALE, time_scale, TimelineMessage::ZoomChanged)
-			.step(0.1_f32)
-			.width(120)
-			.style(widgets::slider);
-
 		let zoom_label = widgets::mono_label(format!("{:.0}%", time_scale * 100.0), FONT_TINY + 1.0)
 			.color(TEXT_SECONDARY_COLOR)
 			.width(40);
@@ -187,7 +182,6 @@ impl TimelineWidget<'_> {
 		let controls = row![
 			Space::new().width(Length::Fill),
 			icon_button(Icon::Minus, "Zoom Out  −", TimelineMessage::ZoomOut),
-			zoom_slider,
 			icon_button(Icon::Plus, "Zoom In  +", TimelineMessage::ZoomIn),
 			zoom_label,
 			icon_button(Icon::Fit, "Reset Zoom", TimelineMessage::ResetZoom),
@@ -290,6 +284,17 @@ impl TimelineWidget<'_> {
 				.with_color(colors::RANGE_SLIDER_HANDLE_BORDER)
 				.with_width(1.0),
 		);
+
+		// Keep both resize grips inside the handle, even at its minimum width.
+		let inset = ((handle_r - handle_l) * 0.25).min(4.0);
+		let grip_radius = 2.0_f32.min(inset);
+		let grip_y = track_rect.y + track_rect.height * 0.5;
+		for x in [handle_l + inset, handle_r - inset] {
+			frame.fill(
+				&Path::circle(Point::new(x, grip_y), grip_radius),
+				colors::RANGE_SLIDER_GRIP,
+			);
+		}
 	}
 
 	fn draw_selection_rect(&self, frame: &mut canvas::Frame) {

@@ -1,9 +1,9 @@
 //! Unified toolbar: tool palette and create actions.
 
 use constants::icons::{Icon, icon};
-use constants::style::{SPACE_1, SPACE_4, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
+use constants::style::{SPACE_2, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
 use constants::widgets::{self, button_body_center};
-use iced::widget::{Space, button, container, row, stack, tooltip};
+use iced::widget::{Space, button, container, row, tooltip};
 use iced::{Alignment, Element, Length};
 
 use crate::message::{Message, ShellMessage};
@@ -32,6 +32,7 @@ pub fn view<'a>(state: ToolbarState) -> Element<'a, Message> {
 		state.tool,
 		state.tool_pill,
 		TOOL_SEGMENT,
+		SPACE_2,
 		|tool| Message::Shell(ShellMessage::SelectTool(tool)),
 	);
 
@@ -40,28 +41,18 @@ pub fn view<'a>(state: ToolbarState) -> Element<'a, Message> {
 		action(Icon::Comp, "New Composition", ShellMessage::NewComposition),
 		action(Icon::LayerText, "New Text Layer", ShellMessage::NewTextLayer),
 	]
-	.spacing(SPACE_1)
+	.spacing(SPACE_2)
 	.align_y(Alignment::Center);
 
-	let sides = row![Space::new().width(Length::Fill), actions]
-		.align_y(Alignment::Center)
-		.height(Length::Fill);
-
 	container(
-		stack![
-			sides,
-			container(tools)
-				.width(Length::Fill)
-				.height(Length::Fill)
-				.center_x(Length::Fill)
-				.center_y(Length::Fill),
-		]
-		.width(Length::Fill)
-		.height(Length::Fill),
+		row![tools, Space::new().width(Length::Fill), actions]
+			.align_y(Alignment::Center)
+			.width(Length::Fill)
+			.height(Length::Fill),
 	)
 	.width(Length::Fill)
 	.height(SHELL_TOOLBAR_HEIGHT)
-	.padding([0.0, SHELL_GUTTER + SPACE_4])
+	.padding(SHELL_GUTTER)
 	.into()
 }
 
@@ -69,8 +60,8 @@ fn action<'a>(glyph: Icon, label: &'a str, message: ShellMessage) -> Element<'a,
 	widgets::tip(
 		button(button_body_center(icon(glyph, 15.0, TEXT_SECONDARY_COLOR)))
 			.padding(0)
-			.width(30)
-			.height(constants::style::ROW_HEIGHT)
+			.width(TOOL_SEGMENT[0])
+			.height(TOOL_SEGMENT[1])
 			.style(widgets::button_ghost)
 			.on_press(Message::Shell(message)),
 		label,

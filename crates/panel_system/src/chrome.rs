@@ -73,9 +73,10 @@ impl<Message> Program<Message> for PanelChrome {
 			frame.fill(&header, self.header_color);
 		}
 
+		// Draw the separator on the body side so it does not consume header padding.
 		if header_rect.height > 0.0 && body_rect.height > 0.0 {
 			frame.fill_rectangle(
-				Point::new(header_rect.x, header_rect.y + header_rect.height - 1.0),
+				Point::new(body_rect.x, body_rect.y),
 				iced::Size::new(header_rect.width, 1.0),
 				self.separator_color,
 			);

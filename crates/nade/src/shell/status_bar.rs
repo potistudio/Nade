@@ -38,9 +38,7 @@ pub fn view<'a>(info: StatusInfo<'a>) -> Element<'a, Message> {
 		..Default::default()
 	});
 
-	let mut left = row![dot]
-		.spacing(SPACE_2 + 2.0)
-		.align_y(Alignment::Center);
+	let mut left = row![dot].spacing(SPACE_2 + 2.0).align_y(Alignment::Center);
 	// 停止中はシーク時にしか描画しないため、実測レートは再生中のみ意味がある
 	if info.playing {
 		left = left
@@ -64,8 +62,8 @@ pub fn view<'a>(info: StatusInfo<'a>) -> Element<'a, Message> {
 
 	container(
 		row![left, Space::new().width(Length::Fill), right]
-		.spacing(SPACE_5)
-		.align_y(Alignment::Center),
+			.spacing(SPACE_5)
+			.align_y(Alignment::Center),
 	)
 	.width(Length::Fill)
 	.height(STATUS_BAR_HEIGHT)
