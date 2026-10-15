@@ -14,7 +14,8 @@ pub const TRACK_HANDLE_WIDTH: f32 = 14.0;
 pub const TRACK_CTRL_BTN_SIZE: f32 = 18.0;
 pub const TRACK_CTRL_BTN_GAP: f32 = 2.0;
 pub const RULER_HEIGHT: f32 = style::ROW_HEIGHT;
-pub const RANGE_SLIDER_HEIGHT: f32 = style::ROW_HEIGHT;
+/// Compact range strip: 6px bar with 3px padding above and below.
+pub const RANGE_SLIDER_HEIGHT: f32 = 12.0;
 pub const PIXELS_PER_SECOND: f32 = 100.0;
 
 /// トラックラベル内の可視ボタン矩形
