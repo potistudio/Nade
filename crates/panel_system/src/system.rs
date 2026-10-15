@@ -1182,7 +1182,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		)
 		.width(Length::Fill)
 		.height(HEADER_HEIGHT)
-		.padding(HEADER_PADDING)
+		.padding([(HEADER_HEIGHT - CONTROL_CONTENT_HEIGHT) * 0.5, HEADER_PADDING])
 		.align_y(iced::Alignment::Center);
 
 		let body = content_view(area.id, &area.content);

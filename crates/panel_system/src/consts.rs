@@ -5,10 +5,10 @@
 use constants::style;
 use iced::Color;
 
-/// Equal padding around panel header controls.
+/// Horizontal padding and spacing between panel header controls.
 pub const HEADER_PADDING: f32 = style::SPACE_2;
-/// Header controls keep their 20px content height, with padding on all sides.
-pub const HEADER_HEIGHT: f32 = style::CONTROL_CONTENT_HEIGHT + HEADER_PADDING * 2.0;
+/// Header controls keep their 20px content height, with 2px padding above and below.
+pub const HEADER_HEIGHT: f32 = style::ROW_HEIGHT;
 
 /// Visible gutter between tiled panels.
 pub const PANEL_GAP: f32 = 6.0;
