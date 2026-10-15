@@ -39,6 +39,7 @@ pub fn segmented<'a, T, Message>(
 	selected: T,
 	pill_position: f32,
 	segment_size: [f32; 2],
+	spacing: f32,
 	on_select: impl Fn(T) -> Message + 'a,
 ) -> Element<'a, Message>
 where
@@ -50,7 +51,7 @@ where
 	let max_index = count.saturating_sub(1) as f32;
 
 	let pill = row![
-		Space::new().width(pill_position.clamp(0.0, max_index) * width),
+		Space::new().width(pill_position.clamp(0.0, max_index) * (width + spacing)),
 		container(Space::new())
 			.width(width)
 			.height(height)
@@ -84,12 +85,13 @@ where
 			Some(label) => widgets::tip(control, label, tooltip::Position::Bottom),
 			None => control,
 		}
-	}));
+	}))
+	.spacing(spacing);
 
 	// stack は先頭の子でサイズが決まるため、全セグメント分を明示する
 	container(
 		stack![pill, buttons]
-			.width(Length::Fixed(width * count as f32))
+			.width(Length::Fixed(width * count as f32 + spacing * max_index))
 			.height(Length::Fixed(height)),
 	)
 	.padding(TRACK_PADDING)
