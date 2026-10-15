@@ -287,7 +287,7 @@ impl TimelineWidget<'_> {
 
 		// Keep both resize grips inside the handle, even at its minimum width.
 		let inset = ((handle_r - handle_l) * 0.25).min(4.0);
-		let grip_radius = 1.0;
+		let grip_radius = 2.0_f32.min(inset);
 		let grip_y = track_rect.y + track_rect.height * 0.5;
 		for x in [handle_l + inset, handle_r - inset] {
 			frame.fill(
