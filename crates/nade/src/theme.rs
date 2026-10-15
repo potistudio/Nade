@@ -11,8 +11,8 @@ pub const STATUS_BAR_HEIGHT: f32 = constants::style::ROW_HEIGHT;
 /// Gutter between the window edge and the panel grid.
 pub const SHELL_GUTTER: f32 = 6.0;
 
-/// Segment size of the tool palette (icon-only).
-pub const TOOL_SEGMENT: [f32; 2] = [32.0, constants::style::ROW_HEIGHT];
+/// Square segment size of the tool palette (icon-only).
+pub const TOOL_SEGMENT: [f32; 2] = [constants::style::ROW_HEIGHT; 2];
 
 /// How long a toast stays fully visible.
 pub const TOAST_HOLD_SECS: f32 = 1.8;

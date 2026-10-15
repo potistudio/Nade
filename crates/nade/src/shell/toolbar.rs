@@ -59,8 +59,8 @@ fn action<'a>(glyph: Icon, label: &'a str, message: ShellMessage) -> Element<'a,
 	widgets::tip(
 		button(button_body_center(icon(glyph, 15.0, TEXT_SECONDARY_COLOR)))
 			.padding(0)
-			.width(30)
-			.height(constants::style::ROW_HEIGHT)
+			.width(TOOL_SEGMENT[0])
+			.height(TOOL_SEGMENT[1])
 			.style(widgets::button_ghost)
 			.on_press(Message::Shell(message)),
 		label,
