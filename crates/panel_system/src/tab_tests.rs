@@ -89,6 +89,25 @@ fn change_editor_replaces_only_the_active_tab() {
 }
 
 #[test]
+fn change_editor_activates_an_existing_tab_instead_of_duplicating() {
+	let mut system = system(tabs(0, vec![Kind::A, Kind::B], 1), tabs(1, vec![Kind::C], 0));
+	system.update(Msg::ChangeEditor(0, Kind::A));
+	assert_eq!(area(&system, 0), (vec![Kind::A, Kind::B], 0));
+}
+
+#[test]
+fn moving_a_tab_onto_the_same_editor_merges_it() {
+	let mut system = system(tabs(0, vec![Kind::A, Kind::C], 0), tabs(1, vec![Kind::B, Kind::C], 0));
+	system.apply_tab_drop(0, 1, TabDrop::Insert { area_id: 1, index: 0 });
+	assert_eq!(area(&system, 0), (vec![Kind::A], 0));
+	assert_eq!(area(&system, 1), (vec![Kind::B, Kind::C], 1));
+
+	system.apply_tab_drop(0, 0, TabDrop::Merge { area_id: 1 });
+	assert!(system.find_area(0).is_none());
+	assert_eq!(area(&system, 1), (vec![Kind::B, Kind::C, Kind::A], 2));
+}
+
+#[test]
 fn closing_the_last_tab_closes_the_area() {
 	let mut system = system(tabs(0, vec![Kind::A, Kind::B], 0), tabs(1, vec![Kind::C], 0));
 	system.update(Msg::CloseTab(0, 0));

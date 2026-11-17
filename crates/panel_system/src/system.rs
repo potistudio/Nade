@@ -1976,21 +1976,14 @@ impl<C: AreaKind> PanelSystem<C> {
 	// ツリー操作
 	// ==========================================================================
 
+	/// Replaces the active tab's editor, or activates the tab that already shows it.
 	fn set_area_content(&mut self, area_id: usize, content: C) {
-		Self::set_content_recursive(&mut self.root, area_id, content);
-	}
-
-	fn set_content_recursive(node: &mut DockNode<C>, area_id: usize, content: C) -> bool {
-		match node {
-			DockNode::Leaf(area) if area.id == area_id => {
-				area.set_content(content);
-				true
-			}
-			DockNode::Split { first, second, .. } => {
-				Self::set_content_recursive(first, area_id, content.clone())
-					|| Self::set_content_recursive(second, area_id, content)
-			}
-			_ => false,
+		let Some(area) = self.find_area_mut(area_id) else {
+			return;
+		};
+		match area.tabs().iter().position(|tab| *tab == content) {
+			Some(index) => area.activate(index),
+			None => area.set_content(content),
 		}
 	}
 
@@ -2116,8 +2109,11 @@ impl<C: AreaKind> PanelSystem<C> {
 			return;
 		};
 		if let Some(target) = self.find_area_mut(target_id) {
-			let index = index.unwrap_or(target.tabs().len());
-			target.insert_tab(index, content);
+			// The target already shows this editor: the moved tab merges into that tab.
+			match target.tabs().iter().position(|tab| *tab == content) {
+				Some(existing) => target.activate(existing),
+				None => target.insert_tab(index.unwrap_or(target.tabs().len()), content),
+			}
 			self.focus_area(target_id);
 		}
 	}
