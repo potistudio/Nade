@@ -1,6 +1,6 @@
 //! Blender 風エリアシステムのメイン実装
 //!
-//! 単一エディタのエリア分割・結合・種別切替・リサイズを提供します。
+//! タブ付きエリアの分割・結合・種別切替・リサイズ・タブ移動を提供します。
 
 use std::time::Instant;
 
@@ -14,10 +14,10 @@ use crate::{
 	chrome::{CornerGrip, PanelChrome, squircle_panel_stack},
 	consts::{
 		CORNER_DRAG_THRESHOLD, CORNER_SIZE, HEADER_HEIGHT, HEADER_PADDING, MIN_PANEL_SIZE, MOVE_CENTER_ZONE, PANEL_GAP,
-		PANEL_OUTLINE_WIDTH, RESIZE_HIT_SIZE, colors,
+		PANEL_OUTLINE_WIDTH, RESIZE_HIT_SIZE, TAB_DRAG_THRESHOLD, TAB_MAX_WIDTH, TAB_SPACING, colors,
 	},
 	container::Area,
-	drag::{CornerAction, CornerPreview, DragState},
+	drag::{CornerAction, CornerPreview, DragState, TabDrop},
 	node::{DockNode, SplitDirection},
 };
 
@@ -25,10 +25,30 @@ use crate::{
 const EDITOR_MENU_ANIM_SECS: f32 = 0.14;
 /// Vertical slide distance (px) while the menu fades in.
 const EDITOR_MENU_SLIDE_Y_PX: f32 = 6.0;
+/// Width of one category column in the editor menu.
+const EDITOR_MENU_COLUMN_WIDTH: f32 = 136.0;
+/// Padding around the editor menu's columns.
+const EDITOR_MENU_PADDING: f32 = 2.0;
+
+/// Editor menu width: fixed columns, 1px dividers, and the outer padding.
+fn editor_menu_width<C: AreaKind>() -> f32 {
+	let columns = C::menu_columns().len().max(1) as f32;
+	columns * EDITOR_MENU_COLUMN_WIDTH + (columns - 1.0) + EDITOR_MENU_PADDING * 2.0
+}
+
+/// What picking an editor in the menu does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EditorMenuMode {
+	/// Change the active tab's editor.
+	Replace,
+	/// Open the editor as a new tab.
+	AddTab,
+}
 
 #[derive(Debug, Clone)]
 struct EditorMenuState {
 	area_id: usize,
+	mode: EditorMenuMode,
 	/// Openness at animation start.
 	from: f32,
 	/// Openness target (`1.0` open, `0.0` closed).
@@ -56,12 +76,72 @@ fn ease_out_cubic(t: f32) -> f32 {
 	1.0 - (1.0 - t).powi(3)
 }
 
-fn editor_menu_transition(area_id: usize, from: f32, to: f32) -> EditorMenuState {
+fn editor_menu_transition(area_id: usize, mode: EditorMenuMode, from: f32, to: f32) -> EditorMenuState {
 	EditorMenuState {
 		area_id,
+		mode,
 		from,
 		to,
 		started: Instant::now(),
+	}
+}
+
+/// Horizontal placement of an area's header tabs, in panel-system coordinates.
+///
+/// The header row is `[tab]…[tab] [+] <fill> [close]`; tabs share the space left
+/// by the buttons, so their positions are known without measuring text.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct TabBarGeometry {
+	/// Left edge of the first tab.
+	origin_x: f32,
+	tab_width: f32,
+	tab_count: usize,
+}
+
+impl TabBarGeometry {
+	fn new(area_bounds: Rectangle, tab_count: usize, can_join: bool) -> Self {
+		use constants::style::CONTROL_CONTENT_HEIGHT;
+
+		let inset = PANEL_OUTLINE_WIDTH + HEADER_PADDING;
+		let inner_width = (area_bounds.width - inset * 2.0).max(0.0);
+		let count = tab_count.max(1) as f32;
+		// Add-tab button plus the gaps around the fill spacer, then the close button.
+		let buttons =
+			CONTROL_CONTENT_HEIGHT + HEADER_PADDING * 2.0 + if can_join { CONTROL_CONTENT_HEIGHT } else { 0.0 };
+		// One gap after every tab (between tabs and before the add-tab button).
+		let tabs_space = (inner_width - buttons - TAB_SPACING * count).max(0.0);
+		Self {
+			origin_x: area_bounds.x + inset,
+			tab_width: (tabs_space / count).min(TAB_MAX_WIDTH).floor(),
+			tab_count,
+		}
+	}
+
+	fn step(&self) -> f32 {
+		self.tab_width + TAB_SPACING
+	}
+
+	fn tab_x(&self, index: usize) -> f32 {
+		self.origin_x + self.step() * index as f32
+	}
+
+	/// Left edge of the add-tab button.
+	fn add_button_x(&self) -> f32 {
+		self.tab_x(self.tab_count)
+	}
+
+	/// Insertion slot (`0..=tab_count`) nearest to `x`.
+	fn slot_at(&self, x: f32) -> usize {
+		if self.step() <= 0.0 {
+			return 0;
+		}
+		let slot = ((x - self.origin_x) / self.step() + 0.5).floor().max(0.0) as usize;
+		slot.min(self.tab_count)
+	}
+
+	/// Center of the gap in front of `slot`.
+	fn slot_x(&self, slot: usize) -> f32 {
+		self.tab_x(slot) - TAB_SPACING * 0.5
 	}
 }
 
@@ -158,10 +238,22 @@ where
 	C: Clone + std::fmt::Debug,
 	M: Clone + std::fmt::Debug,
 {
-	/// エリアのエディタ種別を変更
+	/// エリアのアクティブなタブのエディタ種別を変更
 	ChangeEditor(usize, C),
-	/// エディタ種別メニューの開閉
+	/// アクティブなタブ用のエディタ種別メニューの開閉
 	ToggleEditorMenu(usize),
+	/// 新規タブ用のエディタ種別メニューの開閉
+	ToggleAddTabMenu(usize),
+	/// エディタを新しいタブで開く（同種のタブがあればそれをアクティブにする）
+	AddTab(usize, C),
+	/// タブの押下（アクティブ化してドラッグを待つ） `(area_id, tab_index)`
+	TabPress(usize, usize),
+	/// タブ押下の解放（ドロップ、またはクリックの確定）
+	TabDragEnd,
+	/// タブを閉じる。最後のタブならエリアごと閉じる `(area_id, tab_index)`
+	CloseTab(usize, usize),
+	/// タブのホバー開始／終了 `(area_id, tab_index, entered)`
+	TabHover(usize, usize, bool),
 	/// エディタ種別メニューを閉じる
 	CloseEditorMenu,
 	/// エディタ種別メニューの開閉アニメーションを進める
@@ -205,6 +297,8 @@ pub struct PanelSystem<C: AreaKind> {
 	gutter_hover: Option<(Vec<usize>, u32)>,
 	/// ポインタがパネルシステム上にあるか
 	pointer_inside: bool,
+	/// ホバー中のタブ (area_id, tab_index)
+	hovered_tab: Option<(usize, usize)>,
 }
 
 impl<C: AreaKind> PanelSystem<C> {
@@ -219,6 +313,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			focused_area: None,
 			gutter_hover: None,
 			pointer_inside: false,
+			hovered_tab: None,
 		}
 	}
 
@@ -245,6 +340,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		self.drag_state = DragState::None;
 		self.editor_menu = None;
 		self.gutter_hover = None;
+		self.hovered_tab = None;
 		self.focused_area = None;
 		self.materialize_split_sizes();
 	}
@@ -262,14 +358,19 @@ impl<C: AreaKind> PanelSystem<C> {
 		resizing || (hovered && matches!(self.drag_state, DragState::None))
 	}
 
-	fn open_editor_menu(&mut self, area_id: usize) {
-		if let Some(menu) = self.editor_menu.as_ref().filter(|menu| menu.area_id == area_id) {
+	/// Toggles the menu for `area_id` in `mode`; another open menu is replaced.
+	fn toggle_editor_menu(&mut self, area_id: usize, mode: EditorMenuMode) {
+		if let Some(menu) = self
+			.editor_menu
+			.as_ref()
+			.filter(|menu| menu.area_id == area_id && menu.mode == mode)
+		{
 			let current = menu.value();
 			let to = if menu.to > 0.0 { 0.0 } else { 1.0 };
-			self.editor_menu = Some(editor_menu_transition(area_id, current, to));
+			self.editor_menu = Some(editor_menu_transition(area_id, mode, current, to));
 			return;
 		}
-		self.editor_menu = Some(editor_menu_transition(area_id, 0.0, 1.0));
+		self.editor_menu = Some(editor_menu_transition(area_id, mode, 0.0, 1.0));
 	}
 
 	fn close_editor_menu(&mut self) {
@@ -279,9 +380,9 @@ impl<C: AreaKind> PanelSystem<C> {
 		if menu.to == 0.0 {
 			return;
 		}
-		let area_id = menu.area_id;
+		let (area_id, mode) = (menu.area_id, menu.mode);
 		let current = menu.value();
-		self.editor_menu = Some(editor_menu_transition(area_id, current, 0.0));
+		self.editor_menu = Some(editor_menu_transition(area_id, mode, current, 0.0));
 	}
 
 	fn tick_editor_menu(&mut self) {
@@ -323,7 +424,72 @@ impl<C: AreaKind> PanelSystem<C> {
 			}
 
 			PanelSystemMessage::ToggleEditorMenu(area_id) => {
-				self.open_editor_menu(area_id);
+				self.toggle_editor_menu(area_id, EditorMenuMode::Replace);
+			}
+
+			PanelSystemMessage::ToggleAddTabMenu(area_id) => {
+				self.toggle_editor_menu(area_id, EditorMenuMode::AddTab);
+			}
+
+			PanelSystemMessage::AddTab(area_id, content) => {
+				self.open_tab(area_id, content);
+				self.close_editor_menu();
+			}
+
+			PanelSystemMessage::TabPress(area_id, tab_index) => {
+				let Some(area) = self.find_area_mut(area_id) else {
+					return;
+				};
+				let was_active = area.active_index() == tab_index;
+				area.activate(tab_index);
+				let menu_on_area = self.editor_menu.as_ref().is_some_and(|menu| menu.area_id == area_id);
+				if !was_active || !menu_on_area {
+					self.close_editor_menu();
+				}
+				self.drag_state = DragState::TabDrag {
+					area_id,
+					tab_index,
+					start_pos: self.last_mouse_pos,
+					current_pos: self.last_mouse_pos,
+					dragging: false,
+					was_active,
+					drop: None,
+				};
+			}
+
+			PanelSystemMessage::TabDragEnd => {
+				if let DragState::TabDrag {
+					area_id,
+					tab_index,
+					dragging,
+					was_active,
+					drop,
+					..
+				} = self.drag_state.clone()
+				{
+					match drop {
+						Some(drop) if dragging => self.apply_tab_drop(area_id, tab_index, drop),
+						// Clicking the tab that was already active opens its editor menu.
+						None if !dragging && was_active => {
+							self.toggle_editor_menu(area_id, EditorMenuMode::Replace);
+						}
+						_ => {}
+					}
+				}
+				self.drag_state = DragState::None;
+			}
+
+			PanelSystemMessage::CloseTab(area_id, tab_index) => {
+				self.close_editor_menu();
+				self.close_tab(area_id, tab_index);
+			}
+
+			PanelSystemMessage::TabHover(area_id, tab_index, entered) => {
+				if entered {
+					self.hovered_tab = Some((area_id, tab_index));
+				} else if self.hovered_tab == Some((area_id, tab_index)) {
+					self.hovered_tab = None;
+				}
 			}
 
 			PanelSystemMessage::CloseEditorMenu => {
@@ -363,6 +529,34 @@ impl<C: AreaKind> PanelSystem<C> {
 							target_area_id: update.target_area_id,
 							direction: update.direction,
 							new_is_first: update.new_is_first,
+						};
+					}
+					DragState::TabDrag {
+						area_id,
+						tab_index,
+						start_pos,
+						dragging,
+						was_active,
+						..
+					} => {
+						let moved = (pos.x - start_pos.x).hypot(pos.y - start_pos.y) > TAB_DRAG_THRESHOLD;
+						let dragging = dragging || moved;
+						if dragging {
+							self.close_editor_menu();
+						}
+						let drop = if dragging {
+							self.tab_drop_at(area_id, tab_index, pos)
+						} else {
+							None
+						};
+						self.drag_state = DragState::TabDrag {
+							area_id,
+							tab_index,
+							start_pos,
+							current_pos: pos,
+							dragging,
+							was_active,
+							drop,
 						};
 					}
 					DragState::Resizing {
@@ -667,6 +861,47 @@ impl<C: AreaKind> PanelSystem<C> {
 		}
 	}
 
+	/// Tab bar layout of `area_id` as currently drawn.
+	fn tab_bar_geometry(&self, area_id: usize) -> Option<(Rectangle, TabBarGeometry)> {
+		let area = self.find_area(area_id)?;
+		let bounds = self.bounds_at_path(&self.area_path(area_id)?);
+		let geometry = TabBarGeometry::new(bounds, area.tabs().len(), self.area_has_sibling(area_id));
+		Some((bounds, geometry))
+	}
+
+	/// Where a dragged tab would land if released at `pos`. `None` when the drop changes nothing.
+	fn tab_drop_at(&self, source_id: usize, tab_index: usize, pos: Point) -> Option<TabDrop> {
+		let target_id = self.area_at_point(pos)?;
+		let (bounds, geometry) = self.tab_bar_geometry(target_id)?;
+		let same_area = target_id == source_id;
+
+		if pos.y < bounds.y + HEADER_HEIGHT {
+			let index = geometry.slot_at(pos.x);
+			let unchanged = same_area && (index == tab_index || index == tab_index + 1);
+			return (!unchanged).then_some(TabDrop::Insert {
+				area_id: target_id,
+				index,
+			});
+		}
+
+		match self.drop_layout_at(target_id, pos)? {
+			DropLayout::FullMove if same_area => None,
+			DropLayout::FullMove => Some(TabDrop::Merge { area_id: target_id }),
+			// Tearing out the only tab would leave the area where it is.
+			DropLayout::Split { .. } if same_area && geometry.tab_count <= 1 => None,
+			DropLayout::Split {
+				direction,
+				ratio,
+				new_is_first,
+			} => Some(TabDrop::Split {
+				area_id: target_id,
+				direction,
+				ratio,
+				new_is_first,
+			}),
+		}
+	}
+
 	fn area_at_point(&self, pos: Point) -> Option<usize> {
 		Self::find_area_at_point(&self.root, pos, Rectangle::new(Point::ORIGIN, self.window_size))
 	}
@@ -770,19 +1005,26 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		// Editor menu is drawn at the window root so short panels (timeline) cannot
 		// clip it — Float still inherits the leaf viewport when nested inside an area.
-		let base: Element<'_, PanelSystemMessage<C, M>> = if let Some(menu_layer) = self.view_editor_menu_layer() {
-			stack![base, menu_layer].width(Length::Fill).height(Length::Fill).into()
+		let mut layers: Vec<Element<'_, PanelSystemMessage<C, M>>> = vec![base.into()];
+		layers.extend(self.view_editor_menu_layer());
+		layers.extend(self.view_tab_drag_layers());
+		let base: Element<'_, PanelSystemMessage<C, M>> = if layers.len() > 1 {
+			iced::widget::Stack::with_children(layers)
+				.width(Length::Fill)
+				.height(Length::Fill)
+				.into()
 		} else {
-			base.into()
+			layers.remove(0)
 		};
 
 		// ドラッグ中は全面オーバーレイで他パネル上でも追従できるようにする
 		if matches!(
 			self.drag_state,
-			DragState::CornerDrag { .. } | DragState::Resizing { .. }
+			DragState::CornerDrag { .. } | DragState::Resizing { .. } | DragState::TabDrag { .. }
 		) {
 			let release = match &self.drag_state {
 				DragState::CornerDrag { .. } => PanelSystemMessage::CornerDragEnd,
+				DragState::TabDrag { .. } => PanelSystemMessage::TabDragEnd,
 				_ => PanelSystemMessage::ResizeEnd,
 			};
 
@@ -795,7 +1037,9 @@ impl<C: AreaKind> PanelSystem<C> {
 					direction: SplitDirection::Vertical,
 					..
 				} => mouse::Interaction::ResizingVertically,
-				DragState::CornerDrag { .. } => mouse::Interaction::Grabbing,
+				DragState::CornerDrag { .. } | DragState::TabDrag { dragging: true, .. } => {
+					mouse::Interaction::Grabbing
+				}
 				_ => mouse::Interaction::Idle,
 			};
 
@@ -831,10 +1075,16 @@ impl<C: AreaKind> PanelSystem<C> {
 		if anim <= 0.001 {
 			return None;
 		}
-		let area = Self::find_area_clone(&self.root, menu_state.area_id)?;
-		let path = self.area_path(menu_state.area_id)?;
-		let bounds = self.bounds_at_path(&path);
-		let menu = self.view_editor_menu(area.id, area.content, anim);
+		let area = self.find_area(menu_state.area_id)?;
+		let (bounds, geometry) = self.tab_bar_geometry(area.id)?;
+		let menu = self.view_editor_menu(area, menu_state.mode, anim);
+
+		// Anchor under the tab (or add-tab button) that opened it, kept inside the window.
+		let anchor_x = match menu_state.mode {
+			EditorMenuMode::Replace => geometry.tab_x(area.active_index()),
+			EditorMenuMode::AddTab => geometry.add_button_x(),
+		};
+		let menu_x = anchor_x.min(self.window_size.width - editor_menu_width::<C>()).max(0.0);
 
 		let slide_y = (1.0 - anim) * -EDITOR_MENU_SLIDE_Y_PX;
 		let floating = float(menu).translate(move |_bounds, _viewport| Vector::new(0.0, slide_y));
@@ -842,12 +1092,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		Some(
 			column![
 				Space::new().height(bounds.y + HEADER_HEIGHT),
-				row![
-					Space::new().width(bounds.x + constants::style::SPACE_2),
-					floating,
-					Space::new().width(Length::Fill),
-				]
-				.height(Length::Shrink),
+				row![Space::new().width(menu_x), floating, Space::new().width(Length::Fill),].height(Length::Shrink),
 				Space::new().height(Length::Fill),
 			]
 			.width(Length::Fill)
@@ -856,7 +1101,12 @@ impl<C: AreaKind> PanelSystem<C> {
 		)
 	}
 
-	fn view_editor_menu<'a, M>(&'a self, area_id: usize, content: C, anim: f32) -> Element<'a, PanelSystemMessage<C, M>>
+	fn view_editor_menu<'a, M>(
+		&'a self,
+		area: &'a Area<C>,
+		mode: EditorMenuMode,
+		anim: f32,
+	) -> Element<'a, PanelSystemMessage<C, M>>
 	where
 		M: Clone + std::fmt::Debug + 'static,
 	{
@@ -864,13 +1114,12 @@ impl<C: AreaKind> PanelSystem<C> {
 			BORDER_SUBTLE_COLOR, FONT_TINY, FONT_UI, ICON_SIZE, SPACE_2, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR,
 		};
 
-		const COL_WIDTH: f32 = 136.0;
 		const ROW_HEIGHT: f32 = constants::style::ROW_HEIGHT;
+		let area_id = area.id;
 
 		let columns = row(C::menu_columns()
 			.into_iter()
 			.map(|(category, kinds)| {
-				let content = content.clone();
 				let header = container(
 					constants::widgets::ui_label(category.to_uppercase(), FONT_TINY)
 						.color(TEXT_MUTED_COLOR.scale_alpha(anim)),
@@ -886,7 +1135,15 @@ impl<C: AreaKind> PanelSystem<C> {
 					kinds
 						.into_iter()
 						.map(move |kind| {
-							let selected = kind == content;
+							// Replace marks the active editor; AddTab marks every editor already open here.
+							let selected = match mode {
+								EditorMenuMode::Replace => kind == *area.content(),
+								EditorMenuMode::AddTab => area.tabs().contains(&kind),
+							};
+							let message = match mode {
+								EditorMenuMode::Replace => PanelSystemMessage::ChangeEditor(area_id, kind.clone()),
+								EditorMenuMode::AddTab => PanelSystemMessage::AddTab(area_id, kind.clone()),
+							};
 							let check: Element<'_, PanelSystemMessage<C, M>> = if selected {
 								constants::icons::icon(
 									constants::icons::Icon::Check,
@@ -917,7 +1174,7 @@ impl<C: AreaKind> PanelSystem<C> {
 								.width(Length::Fill)
 								.height(ROW_HEIGHT)
 								.style(constants::widgets::button_menu_item_faded(selected, anim))
-								.on_press(PanelSystemMessage::ChangeEditor(area_id, kind))
+								.on_press(message)
 								.into()
 						})
 						.collect::<Vec<_>>(),
@@ -925,7 +1182,7 @@ impl<C: AreaKind> PanelSystem<C> {
 				.spacing(1);
 
 				container(column![header, items].height(Length::Shrink))
-					.width(COL_WIDTH)
+					.width(EDITOR_MENU_COLUMN_WIDTH)
 					.height(Length::Shrink)
 					.padding(SPACE_2)
 					.into()
@@ -952,7 +1209,7 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		container(columns)
 			.height(Length::Shrink)
-			.padding(2)
+			.padding(EDITOR_MENU_PADDING)
 			.style(move |theme| constants::widgets::editor_menu_panel_faded(theme, anim))
 			.into()
 	}
@@ -1064,53 +1321,48 @@ impl<C: AreaKind> PanelSystem<C> {
 		F: Fn(usize, &C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
 		M: Clone + std::fmt::Debug + 'static,
 	{
-		use constants::style::{
-			CONTROL_CONTENT_HEIGHT, FONT_UI, ICON_SIZE, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR,
-		};
+		use constants::style::{CONTROL_CONTENT_HEIGHT, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR};
 
 		let area_id = area.id;
 		let can_join = self.area_has_sibling(area_id);
 		let focused = self.focused_area == Some(area_id);
-		let menu_open = self
-			.editor_menu
-			.as_ref()
-			.is_some_and(|menu| menu.area_id == area_id && menu.to > 0.0);
+		let area_bounds = self
+			.area_path(area_id)
+			.map_or(Rectangle::new(Point::ORIGIN, self.window_size), |path| {
+				self.bounds_at_path(&path)
+			});
+		let geometry = TabBarGeometry::new(area_bounds, area.tabs().len(), can_join);
 
-		// Editor type chip: [icon] Title [⌄] — the chevron flips while the menu is open.
-		let title_color = if focused {
-			TEXT_PRIMARY_COLOR
-		} else {
-			TEXT_SECONDARY_COLOR
-		};
-		let chevron_turn = self
+		let tabs = row(area
+			.tabs()
+			.iter()
+			.enumerate()
+			.map(|(index, content)| self.view_tab(area, index, content, focused, geometry.tab_width)))
+		.spacing(TAB_SPACING)
+		.align_y(iced::Alignment::Center);
+
+		let add_tab_open = self
 			.editor_menu
 			.as_ref()
-			.filter(|menu| menu.area_id == area_id)
-			.map_or(0.0, EditorMenuState::value);
-		let editor_picker = button(constants::widgets::button_body(
-			row![
-				panel_icon_svg_colored(area.content.icon(), ICON_SIZE, title_color, 1.0),
-				constants::widgets::ui_label(area.content.label(), FONT_UI).color(title_color),
-				constants::icons::icon_transformed(
-					constants::icons::Icon::ChevronDown,
-					10.0,
-					if menu_open {
-						TEXT_PRIMARY_COLOR
-					} else {
-						TEXT_MUTED_COLOR
-					},
-					chevron_turn * std::f32::consts::PI,
-					1.0,
-				),
-			]
-			.spacing(HEADER_PADDING)
-			.align_y(iced::Alignment::Center),
-		))
-		.padding([0.0, HEADER_PADDING])
-		.width(Length::Shrink)
-		.height(CONTROL_CONTENT_HEIGHT)
-		.style(constants::widgets::button_editor_type)
-		.on_press(PanelSystemMessage::ToggleEditorMenu(area_id));
+			.is_some_and(|menu| menu.area_id == area_id && menu.mode == EditorMenuMode::AddTab && menu.to > 0.0);
+		let add_tab_button = constants::widgets::tip(
+			button(constants::widgets::button_body_center(constants::icons::icon(
+				constants::icons::Icon::Plus,
+				12.0,
+				if add_tab_open {
+					TEXT_PRIMARY_COLOR
+				} else {
+					TEXT_MUTED_COLOR
+				},
+			)))
+			.padding(0)
+			.width(CONTROL_CONTENT_HEIGHT)
+			.height(CONTROL_CONTENT_HEIGHT)
+			.style(constants::widgets::button_toggle(add_tab_open))
+			.on_press(PanelSystemMessage::ToggleAddTabMenu(area_id)),
+			"New Tab",
+			iced::widget::tooltip::Position::Bottom,
+		);
 
 		let join_button: Element<'_, PanelSystemMessage<C, M>> = if can_join {
 			constants::widgets::tip(
@@ -1137,8 +1389,9 @@ impl<C: AreaKind> PanelSystem<C> {
 			Space::new().width(0).into()
 		};
 
+		// Spacing must match `TabBarGeometry`, which drag and menu placement rely on.
 		let header = container(
-			row![editor_picker, Space::new().width(Length::Fill), join_button]
+			row![tabs, add_tab_button, Space::new().width(Length::Fill), join_button]
 				.spacing(HEADER_PADDING)
 				.align_y(iced::Alignment::Center)
 				.height(Length::Fill),
@@ -1148,36 +1401,56 @@ impl<C: AreaKind> PanelSystem<C> {
 		.padding(HEADER_PADDING)
 		.align_y(iced::Alignment::Center);
 
-		let body = content_view(area.id, &area.content);
+		let body = content_view(area.id, area.content());
 
-		let overlay_preview = self.drag_state.corner_preview().and_then(
-			|CornerPreview {
-			     source_id,
-			     action,
-			     ratio,
-			     target_id,
-			     direction,
-			     new_is_first,
-			 }| match action {
-				CornerAction::Move => {
-					if target_id == Some(area_id) {
-						if let Some(dir) = direction {
-							Some(self.view_dock_preview(dir, ratio, new_is_first))
-						} else {
-							Some(self.view_full_move_preview())
-						}
-					} else if source_id == area_id {
-						Some(self.view_move_source_preview())
-					} else {
-						None
-					}
-				}
-				CornerAction::SplitHorizontal | CornerAction::SplitVertical if source_id == area_id => {
-					Some(self.view_split_preview(action, ratio))
-				}
-				_ => None,
+		let tab_preview = match &self.drag_state {
+			DragState::TabDrag {
+				dragging: true,
+				drop: Some(drop),
+				..
+			} if drop.area_id() == area_id => match *drop {
+				TabDrop::Merge { .. } => Some(self.view_full_move_preview("Add as Tab")),
+				TabDrop::Split {
+					direction,
+					ratio,
+					new_is_first,
+					..
+				} => Some(self.view_dock_preview(direction, ratio, new_is_first)),
+				TabDrop::Insert { .. } => None,
 			},
-		);
+			_ => None,
+		};
+
+		let overlay_preview = tab_preview.or_else(|| {
+			self.drag_state.corner_preview().and_then(
+				|CornerPreview {
+				     source_id,
+				     action,
+				     ratio,
+				     target_id,
+				     direction,
+				     new_is_first,
+				 }| match action {
+					CornerAction::Move => {
+						if target_id == Some(area_id) {
+							if let Some(dir) = direction {
+								Some(self.view_dock_preview(dir, ratio, new_is_first))
+							} else {
+								Some(self.view_full_move_preview("Swap Panels"))
+							}
+						} else if source_id == area_id {
+							Some(self.view_move_source_preview())
+						} else {
+							None
+						}
+					}
+					CornerAction::SplitHorizontal | CornerAction::SplitVertical if source_id == area_id => {
+						Some(self.view_split_preview(action, ratio))
+					}
+					_ => None,
+				},
+			)
+		});
 
 		let corner = self.view_corner(area_id);
 
@@ -1223,6 +1496,190 @@ impl<C: AreaKind> PanelSystem<C> {
 				.height(Length::Fill)
 				.padding(PANEL_OUTLINE_WIDTH),
 		)
+	}
+
+	/// One header tab: `[icon] Label … [⌄] [×]`. The chevron marks the active tab
+	/// (clicking it again opens the editor menu); the close button appears with 2+ tabs.
+	fn view_tab<'a, M>(
+		&'a self,
+		area: &'a Area<C>,
+		index: usize,
+		content: &'a C,
+		focused: bool,
+		width: f32,
+	) -> Element<'a, PanelSystemMessage<C, M>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
+		use constants::style::{
+			CONTROL_CONTENT_HEIGHT, FONT_UI, ICON_SIZE, SPACE_2, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR,
+			TEXT_SECONDARY_COLOR,
+		};
+
+		let area_id = area.id;
+		let active = area.active_index() == index;
+		let hovered = self.hovered_tab == Some((area_id, index));
+		let lifted = matches!(
+			&self.drag_state,
+			DragState::TabDrag { area_id: id, tab_index, dragging: true, .. } if *id == area_id && *tab_index == index
+		);
+		let alpha = if lifted { 0.4 } else { 1.0 };
+		let color = if active && focused {
+			TEXT_PRIMARY_COLOR
+		} else {
+			TEXT_SECONDARY_COLOR
+		}
+		.scale_alpha(alpha);
+
+		let mut label_row = row![
+			panel_icon_svg_colored(content.icon(), ICON_SIZE, color, 1.0),
+			constants::widgets::ui_label(content.label(), FONT_UI)
+				.color(color)
+				.wrapping(iced::widget::text::Wrapping::None),
+			Space::new().width(Length::Fill),
+		]
+		.spacing(HEADER_PADDING)
+		.align_y(iced::Alignment::Center);
+
+		if active {
+			let menu = self
+				.editor_menu
+				.as_ref()
+				.filter(|menu| menu.area_id == area_id && menu.mode == EditorMenuMode::Replace);
+			let menu_open = menu.is_some_and(|menu| menu.to > 0.0);
+			let turn = menu.map_or(0.0, EditorMenuState::value);
+			label_row = label_row.push(constants::icons::icon_transformed(
+				constants::icons::Icon::ChevronDown,
+				10.0,
+				if menu_open {
+					TEXT_PRIMARY_COLOR
+				} else {
+					TEXT_MUTED_COLOR
+				}
+				.scale_alpha(alpha),
+				turn * std::f32::consts::PI,
+				1.0,
+			));
+		}
+
+		if area.tabs().len() > 1 {
+			label_row = label_row.push(
+				button(constants::widgets::button_body_center(
+					svg(constants::icons::Icon::Close.handle())
+						.width(10)
+						.height(10)
+						.style(move |_theme, status| svg::Style {
+							color: Some(match status {
+								svg::Status::Hovered => TEXT_PRIMARY_COLOR,
+								svg::Status::Idle => TEXT_MUTED_COLOR.scale_alpha(alpha),
+							}),
+						}),
+				))
+				.padding(0)
+				.width(ICON_SIZE)
+				.height(ICON_SIZE)
+				.style(constants::widgets::button_ghost)
+				.on_press(PanelSystemMessage::CloseTab(area_id, index)),
+			);
+		}
+
+		let background = if lifted {
+			None
+		} else if active {
+			Some(colors::TAB_ACTIVE_BG)
+		} else if hovered {
+			Some(colors::TAB_HOVER_BG)
+		} else {
+			None
+		};
+
+		let body = container(label_row)
+			.padding([0.0, SPACE_2])
+			.width(width)
+			.height(CONTROL_CONTENT_HEIGHT)
+			.align_y(iced::Alignment::Center)
+			.clip(true)
+			.style(move |_| container::Style {
+				background: background.map(Into::into),
+				border: iced::Border {
+					radius: constants::style::BORDER_RADIUS.into(),
+					..Default::default()
+				},
+				..Default::default()
+			});
+
+		mouse_area(body)
+			.on_press(PanelSystemMessage::TabPress(area_id, index))
+			.on_middle_press(PanelSystemMessage::CloseTab(area_id, index))
+			.on_enter(PanelSystemMessage::TabHover(area_id, index, true))
+			.on_exit(PanelSystemMessage::TabHover(area_id, index, false))
+			.into()
+	}
+
+	/// Window-level tab drag feedback: the insertion marker and a ghost tab at the cursor.
+	fn view_tab_drag_layers<'a, M>(&'a self) -> Vec<Element<'a, PanelSystemMessage<C, M>>>
+	where
+		M: Clone + std::fmt::Debug + 'static,
+	{
+		use constants::style::{CONTROL_CONTENT_HEIGHT, FONT_UI, ICON_SIZE, SPACE_2, TEXT_PRIMARY_COLOR};
+
+		let DragState::TabDrag {
+			area_id,
+			tab_index,
+			current_pos,
+			dragging: true,
+			drop,
+			..
+		} = &self.drag_state
+		else {
+			return Vec::new();
+		};
+		let mut layers = Vec::new();
+
+		if let Some(TabDrop::Insert { area_id: target, index }) = drop
+			&& let Some((bounds, geometry)) = self.tab_bar_geometry(*target)
+		{
+			let marker = container(Space::new())
+				.width(2.0)
+				.height(CONTROL_CONTENT_HEIGHT)
+				.style(|_| container::Style {
+					background: Some(colors::TAB_INSERT_MARKER.into()),
+					border: iced::Border {
+						radius: 1.0.into(),
+						..Default::default()
+					},
+					..Default::default()
+				});
+			layers.push(positioned(
+				Point::new(
+					geometry.slot_x(*index) - 1.0,
+					bounds.y + PANEL_OUTLINE_WIDTH + HEADER_PADDING,
+				),
+				marker,
+			));
+		}
+
+		if let Some(content) = self.find_area(*area_id).and_then(|area| area.tabs().get(*tab_index)) {
+			let ghost = container(
+				row![
+					panel_icon_svg_colored(content.icon(), ICON_SIZE, TEXT_PRIMARY_COLOR, 1.0),
+					constants::widgets::ui_label(content.label(), FONT_UI).color(TEXT_PRIMARY_COLOR),
+				]
+				.spacing(HEADER_PADDING)
+				.align_y(iced::Alignment::Center),
+			)
+			.padding([0.0, SPACE_2 * 2.0])
+			.height(CONTROL_CONTENT_HEIGHT)
+			.align_y(iced::Alignment::Center)
+			.style(constants::widgets::editor_menu_panel);
+			// Offset so the ghost does not hide the insertion marker under the cursor.
+			layers.push(positioned(
+				Point::new(current_pos.x + 10.0, current_pos.y + 10.0),
+				ghost,
+			));
+		}
+
+		layers
 	}
 
 	fn view_corner_overlay<'a, M>(
@@ -1277,7 +1734,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			.into()
 	}
 
-	fn view_full_move_preview<'a, M>(&self) -> Element<'a, PanelSystemMessage<C, M>>
+	fn view_full_move_preview<'a, M>(&self, label: &'static str) -> Element<'a, PanelSystemMessage<C, M>>
 	where
 		M: Clone + std::fmt::Debug + 'static,
 	{
@@ -1289,7 +1746,7 @@ impl<C: AreaKind> PanelSystem<C> {
 						constants::style::ICON_SIZE,
 						constants::style::TEXT_PRIMARY_COLOR
 					),
-					constants::widgets::ui_label("Swap Panels", constants::style::FONT_UI),
+					constants::widgets::ui_label(label, constants::style::FONT_UI),
 				]
 				.spacing(6)
 				.align_y(iced::Alignment::Center),
@@ -1501,7 +1958,7 @@ impl<C: AreaKind> PanelSystem<C> {
 	fn set_content_recursive(node: &mut DockNode<C>, area_id: usize, content: C) -> bool {
 		match node {
 			DockNode::Leaf(area) if area.id == area_id => {
-				area.content = content;
+				area.set_content(content);
 				true
 			}
 			DockNode::Split { first, second, .. } => {
@@ -1512,13 +1969,140 @@ impl<C: AreaKind> PanelSystem<C> {
 		}
 	}
 
+	fn find_area(&self, area_id: usize) -> Option<&Area<C>> {
+		Self::find_area_recursive(&self.root, area_id)
+	}
+
+	fn find_area_recursive(node: &DockNode<C>, area_id: usize) -> Option<&Area<C>> {
+		match node {
+			DockNode::Leaf(area) if area.id == area_id => Some(area),
+			DockNode::Split { first, second, .. } => {
+				Self::find_area_recursive(first, area_id).or_else(|| Self::find_area_recursive(second, area_id))
+			}
+			_ => None,
+		}
+	}
+
+	fn find_area_mut(&mut self, area_id: usize) -> Option<&mut Area<C>> {
+		Self::find_area_mut_recursive(&mut self.root, area_id)
+	}
+
+	fn find_area_mut_recursive(node: &mut DockNode<C>, area_id: usize) -> Option<&mut Area<C>> {
+		match node {
+			DockNode::Leaf(area) if area.id == area_id => Some(area),
+			DockNode::Split { first, second, .. } => match Self::find_area_mut_recursive(first, area_id) {
+				Some(area) => Some(area),
+				None => Self::find_area_mut_recursive(second, area_id),
+			},
+			_ => None,
+		}
+	}
+
+	/// Opens `content` as a new tab, or activates the tab that already shows it.
+	fn open_tab(&mut self, area_id: usize, content: C) {
+		let Some(area) = self.find_area_mut(area_id) else {
+			return;
+		};
+		match area.tabs().iter().position(|tab| *tab == content) {
+			Some(index) => area.activate(index),
+			None => area.insert_tab(area.tabs().len(), content),
+		}
+	}
+
+	/// Closes one tab; closing the last tab closes the area when it has a sibling.
+	fn close_tab(&mut self, area_id: usize, tab_index: usize) {
+		let Some(area) = self.find_area(area_id) else {
+			return;
+		};
+		if area.tabs().len() > 1 {
+			if let Some(area) = self.find_area_mut(area_id) {
+				area.remove_tab(tab_index);
+			}
+			self.hovered_tab = None;
+		} else if self.area_has_sibling(area_id) {
+			self.join_area(area_id);
+		}
+	}
+
+	/// Removes a tab and closes the area once it has no tabs left.
+	fn take_tab(&mut self, area_id: usize, tab_index: usize) -> Option<C> {
+		let area = self.find_area_mut(area_id)?;
+		let content = area.remove_tab(tab_index)?;
+		if area.is_empty() {
+			self.join_area(area_id);
+			if self.focused_area == Some(area_id) {
+				self.focused_area = None;
+			}
+		}
+		Some(content)
+	}
+
+	fn apply_tab_drop(&mut self, source_id: usize, tab_index: usize, drop: TabDrop) {
+		self.hovered_tab = None;
+		match drop {
+			TabDrop::Insert { area_id, index } if area_id == source_id => {
+				if let Some(area) = self.find_area_mut(area_id) {
+					area.move_tab(tab_index, index);
+				}
+			}
+			TabDrop::Insert { area_id, index } => self.move_tab_to(source_id, tab_index, area_id, Some(index)),
+			TabDrop::Merge { area_id } => self.move_tab_to(source_id, tab_index, area_id, None),
+			TabDrop::Split {
+				area_id,
+				direction,
+				ratio,
+				new_is_first,
+			} => {
+				let Some(content) = self
+					.find_area(source_id)
+					.and_then(|area| area.tabs().get(tab_index).cloned())
+				else {
+					return;
+				};
+				let Some(path) = self.area_path(area_id) else {
+					return;
+				};
+				let available = available_along(self.bounds_at_path(&path), direction);
+				let first_size = leading_size(ratio.clamp(0.15, 0.85), available);
+				let new_id = self.next_area_id;
+				self.next_area_id += 1;
+				// Split before removing the tab: the target keeps its bounds while the new area is sized.
+				Self::split_area_recursive(
+					&mut self.root,
+					area_id,
+					Area::new(new_id, content),
+					direction,
+					first_size,
+					new_is_first,
+				);
+				self.take_tab(source_id, tab_index);
+				self.focus_area(new_id);
+			}
+		}
+	}
+
+	/// Moves a tab into another area at `index` (`None` appends).
+	fn move_tab_to(&mut self, source_id: usize, tab_index: usize, target_id: usize, index: Option<usize>) {
+		if self.find_area(target_id).is_none() {
+			return;
+		}
+		let Some(content) = self.take_tab(source_id, tab_index) else {
+			return;
+		};
+		if let Some(target) = self.find_area_mut(target_id) {
+			let index = index.unwrap_or(target.tabs().len());
+			target.insert_tab(index, content);
+			self.focus_area(target_id);
+		}
+	}
+
 	fn find_area_content(&self, area_id: usize) -> Option<C> {
 		Self::find_content_recursive(&self.root, area_id)
 	}
 
 	fn find_content_recursive(node: &DockNode<C>, area_id: usize) -> Option<C> {
 		match node {
-			DockNode::Leaf(area) if area.id == area_id => Some(area.content.clone()),
+			DockNode::Leaf(area) if area.id == area_id => Some(area.content().clone()),
 			DockNode::Split { first, second, .. } => {
 				Self::find_content_recursive(first, area_id).or_else(|| Self::find_content_recursive(second, area_id))
 			}
@@ -1557,7 +2141,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		if source_id == target_id {
 			return;
 		}
-		let Some(content) = self.find_area_content(source_id) else {
+		let Some(source) = self.find_area(source_id).cloned() else {
 			return;
 		};
 		let Some(path) = self.area_path(target_id) else {
@@ -1568,7 +2152,8 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		let new_id = self.next_area_id;
 		self.next_area_id += 1;
-		let new_area = Area::new(new_id, content);
+		// The whole area moves, tabs included.
+		let new_area = Area::with_tabs(new_id, source.tabs().to_vec(), source.active_index());
 
 		Self::split_area_recursive(&mut self.root, target_id, new_area, direction, first_size, new_is_first);
 		self.join_area(source_id);
@@ -1849,6 +2434,23 @@ impl<C: AreaKind> Default for PanelSystem<C> {
 	}
 }
 
+/// Places `content` with its top-left at `position` inside a full-size layer.
+fn positioned<'a, Message: 'a>(position: Point, content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+	column![
+		Space::new().height(position.y.max(0.0)),
+		row![
+			Space::new().width(position.x.max(0.0)),
+			content.into(),
+			Space::new().width(Length::Fill),
+		]
+		.height(Length::Shrink),
+		Space::new().height(Length::Fill),
+	]
+	.width(Length::Fill)
+	.height(Length::Fill)
+	.into()
+}
+
 fn panel_icon_svg_colored<'a, Message: 'a>(
 	handle: svg::Handle,
 	size: f32,
@@ -1919,6 +2521,17 @@ impl<C: AreaKind> LayoutBuilder<C> {
 		DockNode::Leaf(Area::new(id, content))
 	}
 
+	/// タブ付きエリアのリーフを作成（先頭のタブがアクティブ）
+	///
+	/// # Panics
+	///
+	/// `tabs` が空の場合。
+	pub fn tabs(&mut self, tabs: Vec<C>) -> DockNode<C> {
+		let id = self.next_area_id;
+		self.next_area_id += 1;
+		DockNode::Leaf(Area::with_tabs(id, tabs, 0))
+	}
+
 	pub fn hsplit(first: DockNode<C>, second: DockNode<C>, ratio: f32) -> DockNode<C> {
 		DockNode::Split {
 			direction: SplitDirection::Horizontal,
@@ -1951,3 +2564,7 @@ impl<C: AreaKind> Default for LayoutBuilder<C> {
 #[cfg(test)]
 #[path = "resize_tests.rs"]
 mod resize_tests;
+
+#[cfg(test)]
+#[path = "tab_tests.rs"]
+mod tab_tests;
