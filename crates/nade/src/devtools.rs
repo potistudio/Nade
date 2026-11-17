@@ -3,7 +3,7 @@
 //! `NADE_SCREENSHOT=out.png` saves the window as a PNG once the UI settles
 //! (`NADE_SCREENSHOT_DELAY_MS`, default 2500) and quits — handy for PR
 //! screenshots. `NADE_SCREENSHOT_SCENE` stages the UI first, e.g.
-//! `select=Title;workspace=graph;tool=t;time=1.5;loop=1;play=1;menu=2;tab=3:1;addtab=2`
+//! `select=Title;workspace=graph;tool=t;time=1.5;loop=1;play=1;menu=2;tab=2:1;addtab=2`
 //! (`tab=AREA:INDEX` clicks a header tab, `addtab=AREA` opens the new-tab menu).
 
 use std::path::PathBuf;
