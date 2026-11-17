@@ -3,7 +3,8 @@
 //! `NADE_SCREENSHOT=out.png` saves the window as a PNG once the UI settles
 //! (`NADE_SCREENSHOT_DELAY_MS`, default 2500) and quits — handy for PR
 //! screenshots. `NADE_SCREENSHOT_SCENE` stages the UI first, e.g.
-//! `select=Title;workspace=graph;tool=t;time=1.5;loop=1;play=1;menu=2`.
+//! `select=Title;workspace=graph;tool=t;time=1.5;loop=1;play=1;menu=2;tab=3:1;addtab=2`
+//! (`tab=AREA:INDEX` clicks a header tab, `addtab=AREA` opens the new-tab menu).
 
 use std::path::PathBuf;
 
@@ -69,6 +70,8 @@ impl Capture {
 
 /// Messages that stage the UI described by `NADE_SCREENSHOT_SCENE`.
 pub fn scene_messages(select_layer: impl Fn(&str) -> Option<AppPanelMessage>) -> Vec<Message> {
+	use panel_system::PanelSystemMessage;
+
 	let Ok(scene) = std::env::var("NADE_SCREENSHOT_SCENE") else {
 		return Vec::new();
 	};
@@ -76,27 +79,53 @@ pub fn scene_messages(select_layer: impl Fn(&str) -> Option<AppPanelMessage>) ->
 	scene
 		.split(';')
 		.filter_map(|step| step.split_once('='))
-		.filter_map(|(key, value)| match key.trim() {
-			"select" => select_layer(value.trim())
-				.map(|message| Message::PanelSystem(panel_system::PanelSystemMessage::AppMessage(message))),
-			"workspace" => Workspace::ALL
-				.into_iter()
-				.find(|workspace| workspace.label().eq_ignore_ascii_case(value.trim()))
-				.map(|workspace| Message::Shell(ShellMessage::SelectWorkspace(workspace))),
-			"tool" => Tool::from_key(value.trim()).map(|tool| Message::Shell(ShellMessage::SelectTool(tool))),
-			"time" => value
-				.trim()
-				.parse()
-				.ok()
-				.map(|time| Message::Timeline(timeline_panel::TimelineMessage::PlayheadChanged(time))),
-			"loop" => Some(Message::Transport(crate::message::TransportMessage::ToggleLoop)),
-			"menu" => value
-				.trim()
-				.parse()
-				.ok()
-				.map(|area| Message::PanelSystem(panel_system::PanelSystemMessage::ToggleEditorMenu(area))),
-			"play" => Some(Message::Transport(crate::message::TransportMessage::TogglePlay)),
-			_ => None,
+		.flat_map(|(key, value)| -> Vec<Message> {
+			let value = value.trim();
+			match key.trim() {
+				"select" => select_layer(value)
+					.map(|message| Message::PanelSystem(PanelSystemMessage::AppMessage(message)))
+					.into_iter()
+					.collect(),
+				"workspace" => Workspace::ALL
+					.into_iter()
+					.find(|workspace| workspace.label().eq_ignore_ascii_case(value))
+					.map(|workspace| Message::Shell(ShellMessage::SelectWorkspace(workspace)))
+					.into_iter()
+					.collect(),
+				"tool" => Tool::from_key(value)
+					.map(|tool| Message::Shell(ShellMessage::SelectTool(tool)))
+					.into_iter()
+					.collect(),
+				"time" => value
+					.parse()
+					.map(|time| Message::Timeline(timeline_panel::TimelineMessage::PlayheadChanged(time)))
+					.into_iter()
+					.collect(),
+				"loop" => vec![Message::Transport(crate::message::TransportMessage::ToggleLoop)],
+				"menu" => value
+					.parse()
+					.map(|area| Message::PanelSystem(PanelSystemMessage::ToggleEditorMenu(area)))
+					.into_iter()
+					.collect(),
+				"addtab" => value
+					.parse()
+					.map(|area| Message::PanelSystem(PanelSystemMessage::ToggleAddTabMenu(area)))
+					.into_iter()
+					.collect(),
+				// A click: press and release without moving.
+				"tab" => value
+					.split_once(':')
+					.and_then(|(area, index)| Some((area.parse().ok()?, index.parse().ok()?)))
+					.map(|(area, index)| {
+						vec![
+							Message::PanelSystem(PanelSystemMessage::TabPress(area, index)),
+							Message::PanelSystem(PanelSystemMessage::TabDragEnd),
+						]
+					})
+					.unwrap_or_default(),
+				"play" => vec![Message::Transport(crate::message::TransportMessage::TogglePlay)],
+				_ => Vec::new(),
+			}
 		})
 		.collect()
 }
