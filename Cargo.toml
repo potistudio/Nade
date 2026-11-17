@@ -6,6 +6,7 @@ default-members = ["crates/nade"]
 [workspace.package]
 version = "0.0.1"
 edition = "2024"
+rust-version = "1.100.0"
 authors = ["potistudio <potistudio@proton.me>"]
 license = "MIT"
 publish = false
@@ -19,6 +20,7 @@ lto = true
 # ピクセルループを持つ renderer のみ最適化して他はコンパイル速度を優先する。
 [profile.dev.package."*"]
 opt-level = 3
+debug = false
 
 [profile.dev.package.renderer]
 opt-level = 3
@@ -37,9 +39,9 @@ effects = { path = "crates/effects" }
 encoder = { path = "crates/encoder" }
 iced = { version = "0.14.0", features = ["advanced", "canvas", "svg"] }
 inspector_panel = { path = "crates/inspector_panel" }
-log = "0.4.34"
+log = "0.4.35"
 nade-engine = { path = "crates/engine" }
 nade-timeline = { path = "crates/timeline_panel" }
 operators = { path = "crates/operators" }
 serde = { version = "1.0.229", features = ["derive"] }
-uuid = { version = "1.28.0", features = ["v4", "serde"] }
+uuid = { version = "1.29.2", features = ["v4", "serde"] }
