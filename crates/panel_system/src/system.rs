@@ -51,6 +51,9 @@ enum EditorMenuMode {
 struct EditorMenuState {
 	area_id: usize,
 	mode: EditorMenuMode,
+	/// Tab the Replace menu hangs under, fixed while the menu is shown so it
+	/// does not jump when its choice activates another tab.
+	anchor_tab: usize,
 	/// Openness at animation start.
 	from: f32,
 	/// Openness target (`1.0` open, `0.0` closed).
@@ -78,10 +81,17 @@ fn ease_out_cubic(t: f32) -> f32 {
 	1.0 - (1.0 - t).powi(3)
 }
 
-fn editor_menu_transition(area_id: usize, mode: EditorMenuMode, from: f32, to: f32) -> EditorMenuState {
+fn editor_menu_transition(
+	area_id: usize,
+	mode: EditorMenuMode,
+	anchor_tab: usize,
+	from: f32,
+	to: f32,
+) -> EditorMenuState {
 	EditorMenuState {
 		area_id,
 		mode,
+		anchor_tab,
 		from,
 		to,
 		started: Instant::now(),
@@ -240,7 +250,7 @@ where
 	C: Clone + std::fmt::Debug,
 	M: Clone + std::fmt::Debug,
 {
-	/// エリアのアクティブなタブのエディタ種別を変更
+	/// エリアのアクティブなタブのエディタ種別を変更（同種のタブが別にあればそれをアクティブにする）
 	ChangeEditor(usize, C),
 	/// アクティブなタブ用のエディタ種別メニューの開閉
 	ToggleEditorMenu(usize),
@@ -370,11 +380,16 @@ impl<C: AreaKind> PanelSystem<C> {
 			.filter(|menu| menu.area_id == area_id && menu.mode == mode)
 		{
 			let current = menu.value();
-			let to = if menu.to > 0.0 { 0.0 } else { 1.0 };
-			self.editor_menu = Some(editor_menu_transition(area_id, mode, current, to));
+			let (to, anchor_tab) = if menu.to > 0.0 {
+				(0.0, menu.anchor_tab)
+			} else {
+				(1.0, self.active_tab_index(area_id))
+			};
+			self.editor_menu = Some(editor_menu_transition(area_id, mode, anchor_tab, current, to));
 			return;
 		}
-		self.editor_menu = Some(editor_menu_transition(area_id, mode, 0.0, 1.0));
+		let anchor_tab = self.active_tab_index(area_id);
+		self.editor_menu = Some(editor_menu_transition(area_id, mode, anchor_tab, 0.0, 1.0));
 	}
 
 	fn close_editor_menu(&mut self) {
@@ -384,9 +399,13 @@ impl<C: AreaKind> PanelSystem<C> {
 		if menu.to == 0.0 {
 			return;
 		}
-		let (area_id, mode) = (menu.area_id, menu.mode);
+		let (area_id, mode, anchor_tab) = (menu.area_id, menu.mode, menu.anchor_tab);
 		let current = menu.value();
-		self.editor_menu = Some(editor_menu_transition(area_id, mode, current, 0.0));
+		self.editor_menu = Some(editor_menu_transition(area_id, mode, anchor_tab, current, 0.0));
+	}
+
+	fn active_tab_index(&self, area_id: usize) -> usize {
+		self.find_area(area_id).map_or(0, Area::active_index)
 	}
 
 	fn tick_editor_menu(&mut self) {
@@ -876,6 +895,15 @@ impl<C: AreaKind> PanelSystem<C> {
 		}
 	}
 
+	/// Whether `target_id` already has a tab showing the editor of the given source tab.
+	fn tab_already_open(&self, source_id: usize, tab_index: usize, target_id: usize) -> bool {
+		let Some(content) = self.find_area(source_id).and_then(|area| area.tabs().get(tab_index)) else {
+			return false;
+		};
+		self.find_area(target_id)
+			.is_some_and(|area| area.tabs().contains(content))
+	}
+
 	/// Tab bar layout of `area_id` as currently drawn.
 	fn tab_bar_geometry(&self, area_id: usize) -> Option<(Rectangle, TabBarGeometry)> {
 		let area = self.find_area(area_id)?;
@@ -889,6 +917,11 @@ impl<C: AreaKind> PanelSystem<C> {
 		let target_id = self.area_at_point(pos)?;
 		let (bounds, geometry) = self.tab_bar_geometry(target_id)?;
 		let same_area = target_id == source_id;
+
+		// The target already shows this editor: wherever it lands, the tab merges into that one.
+		if !same_area && self.tab_already_open(source_id, tab_index, target_id) {
+			return Some(TabDrop::Merge { area_id: target_id });
+		}
 
 		if pos.y < bounds.y + PANEL_OUTLINE_WIDTH + HEADER_HEIGHT {
 			let index = geometry.slot_at(pos.x);
@@ -1097,7 +1130,7 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		// Anchor under the tab (or add-tab button) that opened it, kept inside the window.
 		let anchor_x = match menu_state.mode {
-			EditorMenuMode::Replace => geometry.tab_x(area.active_index()),
+			EditorMenuMode::Replace => geometry.tab_x(menu_state.anchor_tab.min(area.tabs().len() - 1)),
 			EditorMenuMode::AddTab => geometry.add_button_x(),
 		};
 		let menu_x = anchor_x.min(self.window_size.width - editor_menu_width::<C>()).max(0.0);
@@ -1421,10 +1454,15 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		let tab_preview = match &self.drag_state {
 			DragState::TabDrag {
+				area_id: source_id,
+				tab_index,
 				dragging: true,
 				drop: Some(drop),
 				..
 			} if drop.area_id() == area_id => match *drop {
+				TabDrop::Merge { .. } if self.tab_already_open(*source_id, *tab_index, area_id) => {
+					Some(self.view_full_move_preview("Merge with Tab"))
+				}
 				TabDrop::Merge { .. } => Some(self.view_full_move_preview("Add as Tab")),
 				TabDrop::Split {
 					direction,
@@ -2550,8 +2588,12 @@ impl<C: AreaKind> LayoutBuilder<C> {
 	///
 	/// # Panics
 	///
-	/// `tabs` が空の場合。
+	/// `tabs` が空の場合、または同じエディタを2つ以上含む場合。
 	pub fn tabs(&mut self, tabs: Vec<C>) -> DockNode<C> {
+		assert!(
+			tabs.iter().enumerate().all(|(i, tab)| !tabs[..i].contains(tab)),
+			"an area shows each editor in one tab at most"
+		);
 		let id = self.next_area_id;
 		self.next_area_id += 1;
 		DockNode::Leaf(Area::with_tabs(id, tabs, 0))

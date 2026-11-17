@@ -5,6 +5,7 @@
 pub struct Area<C: Clone + std::fmt::Debug> {
 	pub id: usize,
 	/// 常に1要素以上。空になったエリアはレイアウトから取り除く。
+	/// 同じエディタは1エリアに1タブまで（[`PanelSystem`](crate::PanelSystem) が重複を作らない）。
 	tabs: Vec<C>,
 	active: usize,
 }

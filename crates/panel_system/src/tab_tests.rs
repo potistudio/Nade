@@ -91,20 +91,51 @@ fn change_editor_replaces_only_the_active_tab() {
 #[test]
 fn change_editor_activates_an_existing_tab_instead_of_duplicating() {
 	let mut system = system(tabs(0, vec![Kind::A, Kind::B], 1), tabs(1, vec![Kind::C], 0));
+	system.update(Msg::ToggleEditorMenu(0));
 	system.update(Msg::ChangeEditor(0, Kind::A));
 	assert_eq!(area(&system, 0), (vec![Kind::A, Kind::B], 0));
+
+	// The closing menu stays under the tab that opened it.
+	let menu = system.editor_menu.as_ref().expect("menu is fading out");
+	assert_eq!((menu.to, menu.anchor_tab), (0.0, 1));
 }
 
 #[test]
-fn moving_a_tab_onto_the_same_editor_merges_it() {
+fn inserting_a_tab_next_to_the_same_editor_merges_it() {
 	let mut system = system(tabs(0, vec![Kind::A, Kind::C], 0), tabs(1, vec![Kind::B, Kind::C], 0));
 	system.apply_tab_drop(0, 1, TabDrop::Insert { area_id: 1, index: 0 });
 	assert_eq!(area(&system, 0), (vec![Kind::A], 0));
 	assert_eq!(area(&system, 1), (vec![Kind::B, Kind::C], 1));
+	assert_eq!(system.focused_area, Some(1));
+}
 
+#[test]
+fn merging_into_the_same_editor_activates_it() {
+	let mut system = system(tabs(0, vec![Kind::A], 0), tabs(1, vec![Kind::B, Kind::C, Kind::A], 0));
 	system.apply_tab_drop(0, 0, TabDrop::Merge { area_id: 1 });
 	assert!(system.find_area(0).is_none());
 	assert_eq!(area(&system, 1), (vec![Kind::B, Kind::C, Kind::A], 2));
+}
+
+#[test]
+fn dropping_onto_an_area_with_the_same_editor_previews_a_merge() {
+	let system = system(tabs(0, vec![Kind::A, Kind::C], 0), tabs(1, vec![Kind::B, Kind::C], 0));
+	let (bounds, geometry) = system.tab_bar_geometry(1).expect("area 1");
+
+	// Header and body both report a merge, so no insert marker is drawn.
+	let header = Point::new(geometry.tab_x(0) + 2.0, bounds.y + HEADER_HEIGHT * 0.5);
+	let center = Point::new(bounds.center_x(), bounds.center_y());
+	for pos in [header, center] {
+		assert_eq!(system.tab_drop_at(0, 1, pos), Some(TabDrop::Merge { area_id: 1 }));
+	}
+	assert!(system.tab_already_open(0, 1, 1));
+	assert!(!system.tab_already_open(0, 0, 1));
+}
+
+#[test]
+#[should_panic(expected = "one tab at most")]
+fn layout_builder_rejects_duplicate_tabs() {
+	LayoutBuilder::new().tabs(vec![Kind::A, Kind::B, Kind::A]);
 }
 
 #[test]
