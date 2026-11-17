@@ -46,6 +46,10 @@ fn on_window_event(event: iced::Event, status: iced::event::Status, _id: iced::w
 		iced::Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => {
 			Some(Message::PanelSystem(PanelSystemMessage::FocusPointer))
 		}
+		// パネル外での解放でもドラッグを終える（パネル内の解放はドラッグオーバーレイが処理する）
+		iced::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)) => {
+			Some(Message::PanelSystem(PanelSystemMessage::PointerReleased))
+		}
 		iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. })
 			if status == iced::event::Status::Ignored =>
 		{

@@ -213,6 +213,61 @@ fn dragging_a_tab_drops_it_on_release() {
 }
 
 #[test]
+fn releasing_outside_the_panels_cancels_the_drag() {
+	let mut system = system(tabs(0, vec![Kind::A, Kind::B], 0), tabs(1, vec![Kind::C], 0));
+	let (bounds, _) = system.tab_bar_geometry(1).expect("area 1");
+
+	system.update(Msg::MouseMove(Point::new(20.0, 10.0)));
+	system.update(Msg::TabPress(0, 0));
+	system.update(Msg::MouseMove(Point::new(bounds.center_x(), bounds.center_y())));
+	system.update(Msg::PointerExited);
+	system.update(Msg::PointerReleased);
+	assert!(matches!(system.drag_state, DragState::None));
+
+	// A later click in a panel body must not apply the abandoned drop.
+	system.update(Msg::MouseMove(Point::new(bounds.center_x(), bounds.center_y())));
+	system.update(Msg::TabDragEnd);
+	assert_eq!(area(&system, 0), (vec![Kind::A, Kind::B], 0));
+	assert_eq!(area(&system, 1), (vec![Kind::C], 0));
+}
+
+#[test]
+fn releasing_inside_keeps_the_drop_for_the_overlay() {
+	let mut system = system(tabs(0, vec![Kind::A, Kind::B], 0), tabs(1, vec![Kind::C], 0));
+	let (bounds, _) = system.tab_bar_geometry(1).expect("area 1");
+
+	system.update(Msg::MouseMove(Point::new(20.0, 10.0)));
+	system.update(Msg::TabPress(0, 0));
+	system.update(Msg::MouseMove(Point::new(bounds.center_x(), bounds.center_y())));
+	// The window-level release can arrive before the overlay's.
+	system.update(Msg::PointerReleased);
+	system.update(Msg::TabDragEnd);
+	assert_eq!(area(&system, 1), (vec![Kind::C, Kind::A], 1));
+}
+
+#[test]
+fn header_bottom_row_counts_as_header() {
+	let system = system(tabs(0, vec![Kind::A, Kind::B], 0), tabs(1, vec![Kind::C], 0));
+	let (bounds, geometry) = system.tab_bar_geometry(1).expect("area 1");
+	let pos = Point::new(
+		geometry.tab_x(0) + geometry.tab_width * 0.75,
+		bounds.y + PANEL_OUTLINE_WIDTH + HEADER_HEIGHT - 0.5,
+	);
+	assert_eq!(
+		system.tab_drop_at(0, 0, pos),
+		Some(TabDrop::Insert { area_id: 1, index: 1 })
+	);
+}
+
+#[test]
+fn corner_move_keeps_focus_on_the_moved_area() {
+	let mut system = system(tabs(0, vec![Kind::A], 0), tabs(1, vec![Kind::C], 0));
+	system.focused_area = Some(0);
+	system.move_area_into(0, 1, SplitDirection::Vertical, 0.5, true);
+	assert_eq!(system.focused_area, Some(10));
+}
+
+#[test]
 fn tab_geometry_shares_width_and_caps_it() {
 	let bounds = Rectangle::new(Point::ORIGIN, Size::new(1000.0, 300.0));
 	let wide = TabBarGeometry::new(bounds, 2, true);

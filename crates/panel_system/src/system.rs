@@ -29,6 +29,8 @@ const EDITOR_MENU_SLIDE_Y_PX: f32 = 6.0;
 const EDITOR_MENU_COLUMN_WIDTH: f32 = 136.0;
 /// Padding around the editor menu's columns.
 const EDITOR_MENU_PADDING: f32 = 2.0;
+/// Size of the active tab's editor-menu chevron.
+const TAB_CHEVRON_SIZE: f32 = 10.0;
 
 /// Editor menu width: fixed columns, 1px dividers, and the outer padding.
 fn editor_menu_width<C: AreaKind>() -> f32 {
@@ -271,6 +273,8 @@ where
 	FocusPointer,
 	/// ポインタがパネルシステムの外へ出た
 	PointerExited,
+	/// ウィンドウ内のどこかでマウスボタンが離された（パネル外での解放でドラッグを終える）
+	PointerReleased,
 	/// リサイズガターのホバー開始／終了
 	GutterHover(Vec<usize>, bool),
 	/// アプリケーション固有のメッセージ
@@ -646,6 +650,17 @@ impl<C: AreaKind> PanelSystem<C> {
 
 			PanelSystemMessage::PointerExited => {
 				self.pointer_inside = false;
+				// Outside the panels a tab has nowhere to land; drop the stale target.
+				if let DragState::TabDrag { drop, .. } = &mut self.drag_state {
+					*drop = None;
+				}
+			}
+
+			PanelSystemMessage::PointerReleased => {
+				// Releases inside are handled by the drag overlay; outside it never sees them.
+				if !self.pointer_inside {
+					self.drag_state = DragState::None;
+				}
 			}
 
 			PanelSystemMessage::GutterHover(path, entered) => match (&mut self.gutter_hover, entered) {
@@ -875,7 +890,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		let (bounds, geometry) = self.tab_bar_geometry(target_id)?;
 		let same_area = target_id == source_id;
 
-		if pos.y < bounds.y + HEADER_HEIGHT {
+		if pos.y < bounds.y + PANEL_OUTLINE_WIDTH + HEADER_HEIGHT {
 			let index = geometry.slot_at(pos.x);
 			let unchanged = same_area && (index == tab_index || index == tab_index + 1);
 			return (!unchanged).then_some(TabDrop::Insert {
@@ -1054,6 +1069,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			)
 			.interaction(cursor)
 			.on_move(PanelSystemMessage::MouseMove)
+			.on_exit(PanelSystemMessage::PointerExited)
 			.on_release(release);
 
 			stack![base, overlay].width(Length::Fill).height(Length::Fill).into()
@@ -1091,7 +1107,7 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		Some(
 			column![
-				Space::new().height(bounds.y + HEADER_HEIGHT),
+				Space::new().height(bounds.y + PANEL_OUTLINE_WIDTH + HEADER_HEIGHT),
 				row![Space::new().width(menu_x), floating, Space::new().width(Length::Fill),].height(Length::Shrink),
 				Space::new().height(Length::Fill),
 			]
@@ -1541,7 +1557,16 @@ impl<C: AreaKind> PanelSystem<C> {
 		.spacing(HEADER_PADDING)
 		.align_y(iced::Alignment::Center);
 
-		if active {
+		// Narrow tabs drop the close button, then the chevron, instead of squeezing them to nothing.
+		// Room left after the padding, the icon, and the gaps around the label and the fill spacer.
+		let mut room = width - SPACE_2 * 2.0 - ICON_SIZE - HEADER_PADDING * 2.0;
+		let show_close = area.tabs().len() > 1 && room >= ICON_SIZE + HEADER_PADDING;
+		if show_close {
+			room -= ICON_SIZE + HEADER_PADDING;
+		}
+		let show_chevron = active && room >= TAB_CHEVRON_SIZE + HEADER_PADDING;
+
+		if show_chevron {
 			let menu = self
 				.editor_menu
 				.as_ref()
@@ -1550,7 +1575,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			let turn = menu.map_or(0.0, EditorMenuState::value);
 			label_row = label_row.push(constants::icons::icon_transformed(
 				constants::icons::Icon::ChevronDown,
-				10.0,
+				TAB_CHEVRON_SIZE,
 				if menu_open {
 					TEXT_PRIMARY_COLOR
 				} else {
@@ -1562,7 +1587,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			));
 		}
 
-		if area.tabs().len() > 1 {
+		if show_close {
 			label_row = label_row.push(
 				button(constants::widgets::button_body_center(
 					svg(constants::icons::Icon::Close.handle())
@@ -2018,7 +2043,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			if let Some(area) = self.find_area_mut(area_id) {
 				area.remove_tab(tab_index);
 			}
-			self.hovered_tab = None;
+			// `hovered_tab` stays: the tab shifted into this slot is the one under the pointer now.
 		} else if self.area_has_sibling(area_id) {
 			self.join_area(area_id);
 		}
@@ -2075,7 +2100,8 @@ impl<C: AreaKind> PanelSystem<C> {
 					first_size,
 					new_is_first,
 				);
-				self.take_tab(source_id, tab_index);
+				let taken = self.take_tab(source_id, tab_index);
+				debug_assert!(taken.is_some(), "the dragged tab was cloned from this slot");
 				self.focus_area(new_id);
 			}
 		}
@@ -2157,6 +2183,9 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		Self::split_area_recursive(&mut self.root, target_id, new_area, direction, first_size, new_is_first);
 		self.join_area(source_id);
+		if self.focused_area == Some(source_id) {
+			self.focus_area(new_id);
+		}
 	}
 
 	/// 2つのエリアをレイアウト上で入れ替える（全体移動）
