@@ -18,8 +18,8 @@ pub(crate) struct PanelChrome {
 	pub(crate) outline_color: Color,
 	/// Hairline between header and body.
 	pub(crate) separator_color: Color,
-	pub(crate) focus_color: Color,
-	pub(crate) focused: bool,
+	pub(crate) hover_color: Color,
+	pub(crate) hovered: bool,
 }
 
 impl<Message> Program<Message> for PanelChrome {
@@ -79,8 +79,8 @@ impl<Message> Program<Message> for PanelChrome {
 			);
 		}
 
-		let outline_color = if self.focused {
-			self.focus_color
+		let outline_color = if self.hovered {
+			self.hover_color
 		} else {
 			self.outline_color
 		};

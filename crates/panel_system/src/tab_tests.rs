@@ -318,6 +318,85 @@ fn corner_move_keeps_focus_on_the_moved_area() {
 }
 
 #[test]
+fn pointer_move_highlights_the_area_under_the_cursor() {
+	let mut system = system(tabs(0, vec![Kind::A], 0), tabs(1, vec![Kind::B], 0));
+	assert_eq!(system.hovered_area(), None);
+
+	system.update::<()>(Msg::MouseMove(Point::new(10.0, 10.0)));
+	assert_eq!(system.hovered_area(), Some(0));
+	// ポインタの移動はフォーカスを変えない
+	assert_eq!(system.focused_area, None);
+
+	system.update::<()>(Msg::MouseMove(Point::new(990.0, 10.0)));
+	assert_eq!(system.hovered_area(), Some(1));
+}
+
+#[test]
+fn hover_uses_half_open_area_bounds_and_skips_the_gutter() {
+	let mut system = system(tabs(0, vec![Kind::A], 0), tabs(1, vec![Kind::B], 0));
+
+	// 1000px 幅・GAP 6px の 1:1 分割では [0,497) が左、[497,503) がガター、[503,1000) が右
+	for (x, expected) in [(496.9, Some(0)), (497.0, None), (502.9, None), (503.0, Some(1))] {
+		system.update::<()>(Msg::MouseMove(Point::new(x, 300.0)));
+		assert_eq!(system.hovered_area(), expected, "x = {x}");
+	}
+}
+
+#[test]
+fn hover_targets_the_area_under_the_cursor_in_a_vertical_split() {
+	let mut system = PanelSystem::new()
+		.with_layout(LayoutBuilder::vsplit(
+			tabs(0, vec![Kind::A], 0),
+			tabs(1, vec![Kind::B], 0),
+			0.5,
+		))
+		.with_ids(10);
+	system.window_size = Size::new(1000.0, 1000.0);
+	system.materialize_split_sizes();
+
+	for (y, expected) in [(10.0, Some(0)), (496.9, Some(0)), (500.0, None), (503.0, Some(1))] {
+		system.update::<()>(Msg::MouseMove(Point::new(500.0, y)));
+		assert_eq!(system.hovered_area(), expected, "y = {y}");
+	}
+}
+
+#[test]
+fn the_resize_band_hides_the_panel_highlight() {
+	let mut system = system(tabs(0, vec![Kind::A], 0), tabs(1, vec![Kind::B], 0));
+
+	// 12px のリサイズ帯はパネル端から 3px はみ出し、その範囲のクリックはガター操作になる
+	system.update::<()>(Msg::MouseMove(Point::new(495.0, 300.0)));
+	assert_eq!(system.hovered_area(), Some(0));
+
+	system.update::<()>(Msg::GutterHover(vec![], true));
+	assert_eq!(system.hovered_area(), None);
+
+	system.update::<()>(Msg::GutterHover(vec![], false));
+	assert_eq!(system.hovered_area(), Some(0));
+}
+
+#[test]
+fn hover_follows_the_layout_without_pointer_motion() {
+	let mut system = system(tabs(0, vec![Kind::A], 0), tabs(1, vec![Kind::B], 0));
+	system.update::<()>(Msg::MouseMove(Point::new(10.0, 10.0)));
+	assert_eq!(system.hovered_area(), Some(0));
+
+	// ポインタを動かさない入れ替えでも、強調表示は新しい配置から導出される
+	system.swap_areas(0, 1);
+	assert_eq!(system.hovered_area(), Some(1));
+}
+
+#[test]
+fn leaving_the_panels_clears_the_highlight() {
+	let mut system = system(tabs(0, vec![Kind::A], 0), tabs(1, vec![Kind::B], 0));
+	system.update::<()>(Msg::MouseMove(Point::new(10.0, 10.0)));
+	assert_eq!(system.hovered_area(), Some(0));
+
+	system.update::<()>(Msg::PointerExited);
+	assert_eq!(system.hovered_area(), None);
+}
+
+#[test]
 fn tab_geometry_shares_width_and_caps_it() {
 	let bounds = Rectangle::new(Point::ORIGIN, Size::new(1000.0, 300.0));
 	let wide = TabBarGeometry::new(bounds, 2, true);

@@ -272,6 +272,7 @@ where
 	AnimTick,
 	/// 角ドラッグ開始
 	CornerDragStart(usize),
+	/// ポインタ位置。パネルシステムの原点を基準とする座標で受け取る。
 	MouseMove(Point),
 	CornerDragEnd,
 	/// このエリアを削除し、兄弟と結合
@@ -305,7 +306,7 @@ pub struct PanelSystem<C: AreaKind> {
 	window_size: Size,
 	/// エディタ種別メニュー（開閉アニメーション付き）
 	editor_menu: Option<EditorMenuState>,
-	/// フォーカス中のエリア（アクセントのリングで示す）
+	/// フォーカス中のエリア。focused_content とアクティブタブの文字色が参照する。
 	focused_area: Option<usize>,
 	/// ホバー中のガター (split path, 重なったヒット領域の数)
 	gutter_hover: Option<(Vec<usize>, u32)>,
@@ -950,6 +951,15 @@ impl<C: AreaKind> PanelSystem<C> {
 		}
 	}
 
+	/// ポインタがパネルシステム内にある場合、その直下のエリア。輪郭のホバー表示が参照する。
+	/// リサイズ帯の上ではクリックがガター操作になるため、輪郭は表示しない。
+	fn hovered_area(&self) -> Option<usize> {
+		if !self.pointer_inside || self.gutter_hover.as_ref().is_some_and(|(_, count)| *count > 0) {
+			return None;
+		}
+		self.area_at_point(self.last_mouse_pos)
+	}
+
 	fn area_at_point(&self, pos: Point) -> Option<usize> {
 		Self::find_area_at_point(&self.root, pos, Rectangle::new(Point::ORIGIN, self.window_size))
 	}
@@ -1375,6 +1385,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		let area_id = area.id;
 		let can_join = self.area_has_sibling(area_id);
 		let focused = self.focused_area == Some(area_id);
+		let hovered = self.hovered_area() == Some(area_id);
 		let area_bounds = self
 			.area_path(area_id)
 			.map_or(Rectangle::new(Point::ORIGIN, self.window_size), |path| {
@@ -1539,8 +1550,8 @@ impl<C: AreaKind> PanelSystem<C> {
 			header_color: colors::HEADER_BG,
 			outline_color: colors::PANEL_OUTLINE_COLOR,
 			separator_color: colors::HEADER_SEPARATOR,
-			focus_color: colors::FOCUS_RING,
-			focused,
+			hover_color: colors::PANEL_HOVER_OUTLINE,
+			hovered,
 		};
 
 		squircle_panel_stack(
@@ -1779,7 +1790,6 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		mouse_area(grip)
 			.on_press(PanelSystemMessage::CornerDragStart(area_id))
-			.on_move(PanelSystemMessage::MouseMove)
 			.into()
 	}
 
@@ -1982,7 +1992,6 @@ impl<C: AreaKind> PanelSystem<C> {
 			return Space::new().width(width).height(height).into();
 		}
 
-		let is_any_resizing = matches!(&self.drag_state, DragState::Resizing { .. });
 		let cursor = match direction {
 			SplitDirection::Horizontal => mouse::Interaction::ResizingHorizontally,
 			SplitDirection::Vertical => mouse::Interaction::ResizingVertically,
@@ -2003,11 +2012,9 @@ impl<C: AreaKind> PanelSystem<C> {
 			.on_press(PanelSystemMessage::ResizeStart(path, direction))
 			.on_release(PanelSystemMessage::ResizeEnd);
 
-		if is_any_resizing {
-			ma.into()
-		} else {
-			ma.on_move(PanelSystemMessage::MouseMove).into()
-		}
+		// ポインタ位置はルートの mouse_area とドラッグオーバーレイが通知する。ここでも通知すると
+		// ウィジェットローカル座標で上書きされ、ドラッグのドロップ判定がガター基準になる。
+		ma.into()
 	}
 
 	// ==========================================================================

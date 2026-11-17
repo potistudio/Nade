@@ -49,10 +49,7 @@ pub mod colors {
 		..style::ACCENT_COLOR
 	};
 	pub const HEADER_SEPARATOR: Color = Color::from_rgba(0.0, 0.0, 0.0, 0.28);
-	pub const FOCUS_RING: Color = Color {
-		a: 0.75,
-		..style::ACCENT_COLOR
-	};
+	pub const PANEL_HOVER_OUTLINE: Color = style::BORDER_ACTIVE_COLOR;
 	pub const GUTTER_ACTIVE: Color = Color {
 		a: 0.85,
 		..style::ACCENT_COLOR
