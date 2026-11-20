@@ -18,8 +18,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
 
-use core::{AssetId, CompositionId, CoreEffect, FrameData, InstanceId, Model, Msg, SceneObjectId, TextObject, update};
-use domain::{AssetType, Instance, InstanceContent, Project, TransformAnimation, TransformProperty};
+use core::{AssetId, CompositionId, CoreEffect, FrameData, InstanceId, MediaInfo, Model, Msg, update};
+use domain::{AssetType, InstanceContent, MediaKind, MediaSource, Project, TransformAnimation, TransformProperty};
+use renderer::Scene;
 
 use crate::message::{AppPanelMessage, Message, PreviewMessage, ShellMessage, TransportMessage};
 use crate::panel_content::PanelContent;
@@ -135,6 +136,11 @@ pub(super) struct NadeApp {
 	/// レンダリングServiceのシャットダウン受信機（Serviceへ渡す）
 	render_shutdown_rx: Arc<std::sync::Mutex<Receiver<()>>>,
 
+	/// ワーカーが埋まっていて捨てたレンダリング要求があるか（完了時に描き直す）
+	render_dirty: bool,
+	/// 直近の再生ティック時刻（実時間で再生を進めるため）
+	last_play_tick: Option<Instant>,
+
 	/// FPS計算用カウンタ
 	frame_count: u32,
 	/// FPS更新の基準時刻
@@ -198,6 +204,8 @@ impl NadeApp {
 			render_rx: Arc::new(std::sync::Mutex::new(render_rx)),
 			render_shutdown_tx: Some(shutdown_tx),
 			render_shutdown_rx: Arc::new(std::sync::Mutex::new(shutdown_rx)),
+			render_dirty: false,
+			last_play_tick: None,
 			frame_count: 0,
 			fps_update_time: Instant::now(),
 			render_fps: 0.0,
@@ -269,6 +277,7 @@ impl NadeApp {
 		if let Some(comp) = project.composition_mut(&main) {
 			let rect = comp.add_instance_named(node_rect, "Rectangle");
 			rect.transform.position = [-120.0, 40.0, 0.0];
+			rect.set_content(InstanceContent::solid(320.0, 180.0, [0.29, 0.47, 0.96, 1.0]));
 
 			let title = comp.add_instance_named(node_title, "Title");
 			title.transform.position = [0.0, -60.0, 0.0];
@@ -353,57 +362,29 @@ impl NadeApp {
 		}
 	}
 
-	/// レンダリング要求をワーカーへ送る。キューが満杯なら `false`。
-	fn spawn_render(&self, time: f32, width: u32, height: u32) -> bool {
-		let track_hidden: Vec<bool> = (0..self.timeline.model.tracks.len())
-			.map(|index| !self.timeline.model.is_track_rendered(index))
-			.collect();
-
-		let objects: Vec<TextObject> = self
-			.target_composition()
-			.and_then(|id| self.project.composition(&id))
-			.map(|comp| {
-				comp.objects_in_draw_order()
-					.filter(|instance| {
-						track_hidden
-							.get(instance.track_index())
-							.map(|hidden| !*hidden)
-							.unwrap_or(true)
-					})
-					.filter_map(|instance| instance_to_text_object(instance, time))
-					.collect()
-			})
-			.unwrap_or_default();
-
-		// 解像度を落とすときはレイヤー座標とスケールも同じ倍率で縮める
-		let factor = self.viewer.resolution.factor();
-		let (width, height) = self.viewer.resolution.scale_size(width, height);
-		let objects = if (factor - 1.0).abs() > f32::EPSILON {
-			objects
-				.into_iter()
-				.map(|mut object| {
-					for axis in 0..2 {
-						object.transform.position[axis] *= factor;
-						object.transform.scale[axis] *= factor;
-					}
-					object
-				})
-				.collect()
-		} else {
-			objects
+	/// レンダリング要求をワーカーへ送る。キューが満杯なら `false` を返し、
+	/// 現在のフレームが描き終わった時点で描き直す。
+	fn spawn_render(&mut self, time: f32, _width: u32, _height: u32) -> bool {
+		let Some(comp) = self.target_composition().and_then(|id| self.project.composition(&id)) else {
+			return true;
 		};
+		let model = &self.timeline.model;
+		let scene = Scene::from_composition(comp, time, self.viewer.resolution.factor(), |track| {
+			// タイムライン未作成のトラックは描画する
+			track >= model.tracks.len() || model.is_track_rendered(track)
+		});
 
-		self.render_worker.try_submit(RenderJob {
-			objects,
-			time,
-			width,
-			height,
-		})
+		let submitted = self.render_worker.try_submit(RenderJob { scene });
+		self.render_dirty = !submitted;
+		submitted
 	}
 
 	/// バックグラウンドレンダリング完了を処理する
 	fn handle_render_completed(&mut self, frame: FrameData) {
 		self.apply_core_msg(Msg::FrameRendered(frame));
+		if self.render_dirty && !self.current_model.preview.is_playing {
+			self.request_preview_refresh();
+		}
 
 		self.frame_count += 1;
 		let now = Instant::now();
@@ -455,8 +436,16 @@ impl NadeApp {
 			Message::Tick => {
 				self.timeline.state.tick_scroll_spring(self.now);
 				if self.current_model.preview.is_playing {
-					self.apply_core_msg(Msg::Tick);
+					// タイマーの遅れに左右されないよう実時間で進める（大きな停止は 1/10 秒まで）
+					let delta = self
+						.last_play_tick
+						.map_or(1.0 / 60.0, |last| self.now.duration_since(last).as_secs_f32())
+						.min(0.1);
+					self.last_play_tick = Some(self.now);
+					self.apply_core_msg(Msg::Advance(delta));
 					self.wrap_playback();
+				} else {
+					self.last_play_tick = None;
 				}
 				if self.toast.as_ref().is_some_and(|toast| !toast.is_active(self.now)) {
 					self.toast = None;
@@ -512,9 +501,9 @@ impl NadeApp {
 				self.update(Message::CloseRequested(iced::window::Id::unique()))
 			}
 
-			Message::MediaImported(path) => {
-				if let Some(path) = path {
-					self.import_media_path(path);
+			Message::MediaImported(files) => {
+				for (path, info) in files {
+					self.import_media_path(path, info);
 				}
 				Task::none()
 			}
@@ -559,6 +548,10 @@ impl NadeApp {
 				self.add_object_under_selection();
 				Task::none()
 			}
+			ShellMessage::NewSolid => {
+				self.add_solid_layer();
+				Task::none()
+			}
 			ShellMessage::ImportMedia => Self::pick_media_file(),
 			ShellMessage::DragWindow => iced::window::latest().and_then(iced::window::drag),
 			ShellMessage::ToggleMaximize => iced::window::latest().and_then(iced::window::toggle_maximize),
@@ -579,6 +572,7 @@ impl NadeApp {
 					self.apply_core_msg(Msg::SetTime(0.0));
 				}
 				self.apply_core_msg(Msg::TogglePlay);
+				self.last_play_tick = self.current_model.preview.is_playing.then_some(self.now);
 				log::debug!("Toggling play/pause: {}", self.current_model.preview.is_playing);
 			}
 			TransportMessage::GoToStart => self.apply_core_msg(Msg::SetTime(0.0)),
@@ -700,6 +694,9 @@ impl NadeApp {
 
 		if timeline_update.clip_modified {
 			self.sync_instances_from_timeline();
+			if !self.timeline.state.is_dragging_clip() {
+				self.materialize_timeline_duplicates();
+			}
 			self.request_preview_refresh();
 		}
 
@@ -876,8 +873,20 @@ impl NadeApp {
 			.unwrap_or(1)
 			.max(1);
 
+		// トラックの表示・ソロ状態は作り直しても残す
+		let flags: Vec<(bool, bool)> = self
+			.timeline
+			.model
+			.tracks
+			.iter()
+			.map(|track| (track.visible, track.solo))
+			.collect();
 		self.timeline.model.tracks.clear();
 		self.timeline.model.ensure_track_count(track_count);
+		for (track, (visible, solo)) in self.timeline.model.tracks.iter_mut().zip(flags) {
+			track.visible = visible;
+			track.solo = solo;
+		}
 
 		for (instance_id, name, start_time, duration, track_index) in clips {
 			self.add_instance_clip(composition_id, instance_id, &name, start_time, duration, track_index);
@@ -908,12 +917,22 @@ impl NadeApp {
 		}
 	}
 
+	/// タイムラインのクリップ位置をインスタンスへ書き戻す。
+	///
+	/// 左端だけが動いた（終端が変わらない）クリップはトリムとみなしてフッテージの
+	/// 開始位置もずらす。尺のある素材は素材の範囲を越えないようクリップ側を戻す。
+	/// Shift+ドラッグの複製クリップ（同じインスタンスを指す 2 本目）は無視する。
 	fn sync_instances_from_timeline(&mut self) {
-		for (track_index, track) in self.timeline.model.tracks.iter().enumerate() {
-			for clip in &track.clips {
+		const EPSILON: f32 = 1e-4;
+		let mut seen = std::collections::HashSet::new();
+		for (track_index, track) in self.timeline.model.tracks.iter_mut().enumerate() {
+			for clip in &mut track.clips {
 				let (Some(composition_id), Some(instance_id)) = (clip.composition_id, clip.instance_id) else {
 					continue;
 				};
+				if !seen.insert((composition_id, instance_id)) {
+					continue;
+				}
 				let Some(instance) = self
 					.project
 					.composition_mut(&composition_id)
@@ -921,11 +940,71 @@ impl NadeApp {
 				else {
 					continue;
 				};
+
+				let trimmed_left = (clip.start_time - instance.start_time()).abs() > EPSILON
+					&& (clip.end_time() - instance.end_time()).abs() <= EPSILON;
+				if trimmed_left {
+					let offset = instance.source_offset + clip.start_time - instance.start_time();
+					instance.source_offset = offset;
+				}
+
+				let source_length = instance
+					.content()
+					.is_timed_media()
+					.then(|| instance.content().as_media().and_then(|source| source.info.duration))
+					.flatten();
+				if let Some(length) = source_length {
+					if instance.source_offset < 0.0 {
+						// 素材の先頭より前には伸ばせない
+						clip.start_time -= instance.source_offset;
+						clip.duration += instance.source_offset;
+						instance.source_offset = 0.0;
+					}
+					clip.duration = clip.duration.min((length - instance.source_offset).max(EPSILON));
+				}
+
 				instance.set_start_time(clip.start_time);
 				instance.set_duration(clip.duration);
 				instance.set_track_index(track_index);
 			}
 		}
+	}
+
+	/// Shift+ドラッグで作られた複製クリップに専用のインスタンスを割り当てる。
+	/// 複製があれば `true`（タイムラインは作り直される）。
+	fn materialize_timeline_duplicates(&mut self) -> bool {
+		let mut seen = std::collections::HashSet::new();
+		let mut duplicates = Vec::new();
+		for (track_index, track) in self.timeline.model.tracks.iter().enumerate() {
+			for clip in &track.clips {
+				let (Some(composition), Some(instance)) = (clip.composition_id, clip.instance_id) else {
+					continue;
+				};
+				if !seen.insert((composition, instance)) {
+					duplicates.push((composition, instance, track_index, clip.start_time));
+				}
+			}
+		}
+		let Some(&(composition, ..)) = duplicates.first() else {
+			return false;
+		};
+
+		let mut last = None;
+		for (composition, instance, track_index, start_time) in duplicates {
+			let Some(comp) = self.project.composition_mut(&composition) else {
+				continue;
+			};
+			let Some(mut copy) = comp.get(instance).cloned() else {
+				continue;
+			};
+			copy.set_start_time(start_time);
+			last = Some(comp.insert_instance(copy, Some(track_index)));
+		}
+		self.rebuild_timeline_for_composition(composition);
+		if let Some(instance) = last {
+			self.select_object(ObjectId::Instance { composition, instance });
+		}
+		true
 	}
 
 	fn sync_instance_tracks_from_timeline(&mut self) {
@@ -1176,13 +1255,18 @@ impl NadeApp {
 			.filter(|instance| self.timeline.model.is_track_rendered(instance.track_index()))
 			.map(|instance| {
 				let transform = instance.transform_at(time);
-				let size = instance
-					.content()
-					.as_text()
-					.and_then(|(text, font_path, font_size, spacing, _)| {
-						renderer::measure_text(font_path, text, font_size, spacing)
-					})
-					.unwrap_or([0.0, 0.0]);
+				let size = match instance.content() {
+					InstanceContent::Text {
+						text,
+						font_path,
+						font_size,
+						spacing,
+						..
+					} => renderer::measure_text(font_path, text, *font_size, *spacing).unwrap_or([0.0, 0.0]),
+					InstanceContent::Solid { width, height, .. } => [*width, *height],
+					InstanceContent::Media(source) => source.size(),
+					InstanceContent::Empty => [0.0, 0.0],
+				};
 				LayerBox {
 					id: instance.id(),
 					center: [transform.position[0], transform.position[1]],
@@ -1245,6 +1329,10 @@ impl NadeApp {
 		let fps = self.composition_fps();
 		let scale_linked = self.inspector_ui.scale_linked;
 		let hex_draft = self.inspector_ui.hex_draft.take();
+		let frame = self
+			.project
+			.composition(&composition)
+			.map_or([1920.0, 1080.0], |comp| [comp.width() as f32, comp.height() as f32]);
 
 		let Some(obj) = self
 			.project
@@ -1357,6 +1445,27 @@ impl NadeApp {
 					color[..3].copy_from_slice(&rgb);
 				}
 			}
+			InspectorMessage::SetSolidSize { width, height } => {
+				if let Some((slot_width, slot_height)) = obj.content_mut().solid_size_mut() {
+					*slot_width = width.max(1.0);
+					*slot_height = height.max(1.0);
+				}
+			}
+			InspectorMessage::FitToComposition => {
+				let [width, height] = match obj.content() {
+					InstanceContent::Media(source) => source.size(),
+					InstanceContent::Solid { width, height, .. } => [*width, *height],
+					_ => [0.0, 0.0],
+				};
+				if width > 0.0 && height > 0.0 {
+					let fit = (frame[0] / width).min(frame[1] / height);
+					obj.set_property_at(TransformProperty::ScaleX, time, fit);
+					obj.set_property_at(TransformProperty::ScaleY, time, fit);
+					obj.set_property_at(TransformProperty::PositionX, time, 0.0);
+					obj.set_property_at(TransformProperty::PositionY, time, 0.0);
+					toast = Some((Icon::Fit, "Fit to composition".to_string()));
+				}
+			}
 			InspectorMessage::ToggleSection(_) | InspectorMessage::ToggleScaleLink | InspectorMessage::HexEdited(_) => {
 			}
 		}
@@ -1399,6 +1508,7 @@ impl NadeApp {
 					instance: obj,
 					time: self.current_model.preview.time,
 					label: constants::style::label_color(obj.track_index()),
+					fps: self.composition_fps(),
 				})
 			}
 			Some(ObjectId::Composition(id)) => match self.project.composition(&id) {
@@ -1464,7 +1574,7 @@ impl NadeApp {
 	fn pick_media_file() -> Task<Message> {
 		Task::perform(
 			async {
-				rfd::AsyncFileDialog::new()
+				let Some(handles) = rfd::AsyncFileDialog::new()
 					.set_title("Import Media")
 					.add_filter(
 						"Media",
@@ -1473,27 +1583,49 @@ impl NadeApp {
 							"webm", "m4v", "mp3", "wav", "flac", "aac", "ogg", "m4a",
 						],
 					)
-					.pick_file()
+					.pick_files()
 					.await
-					.map(|handle| handle.path().to_path_buf())
+				else {
+					return Vec::new();
+				};
+				// ffprobe はブロッキングなので UI スレッドの外で回す
+				handles
+					.into_iter()
+					.map(|handle| {
+						let path = handle.path().to_path_buf();
+						let info = media::probe(&path).map_err(|error| format!("{error:#}"));
+						(path, info)
+					})
+					.collect()
 			},
 			Message::MediaImported,
 		)
 	}
 
-	fn import_media_path(&mut self, path: PathBuf) {
+	fn import_media_path(&mut self, path: PathBuf, info: Result<MediaInfo, String>) {
+		let name = path
+			.file_name()
+			.map(|name| name.to_string_lossy().into_owned())
+			.unwrap_or_default();
+		let info = match info {
+			Ok(info) => info,
+			Err(error) => {
+				log::warn!("Failed to read media {}: {error}", path.display());
+				self.show_toast(Icon::Close, format!("Couldn’t read “{name}”"));
+				return;
+			}
+		};
 		let parent = self.asset_import_parent();
 		match self.project.import_media(&path, parent) {
 			Some(id) => {
+				if let Some(asset) = self.project.asset_mut(id) {
+					asset.media_info = Some(info);
+				}
 				if let Some(parent_id) = parent {
 					self.asset_browser.expanded_ids.insert(parent_id);
 				}
 				self.asset_browser.selected_id = Some(id);
-				log::info!("Imported media: {}", path.display());
-				let name = path
-					.file_name()
-					.map(|name| name.to_string_lossy().into_owned())
-					.unwrap_or_default();
+				log::info!("Imported media: {} ({info:?})", path.display());
 				self.show_toast(Icon::Import, format!("Imported “{name}”"));
 			}
 			None => {
@@ -1530,23 +1662,103 @@ impl NadeApp {
 		let Some(asset) = self.project.asset(id) else {
 			return;
 		};
-		if !asset.kind().is_media() {
-			log::debug!("Add to timeline ignored for non-media asset");
-			return;
-		}
-
+		let kind = match asset.kind() {
+			AssetType::Image => MediaKind::Image,
+			AssetType::Video => MediaKind::Video,
+			AssetType::Audio => MediaKind::Audio,
+			_ => {
+				log::debug!("Add to timeline ignored for non-media asset");
+				return;
+			}
+		};
 		let name = asset.name.clone();
-		let start_time = self.current_model.preview.time;
-		let duration = 5.0;
-		let track_index = if asset.kind() == AssetType::Audio { 1 } else { 0 };
-		self.timeline.model.ensure_track_count(track_index + 1);
-		let clip_id = self.timeline.model.alloc_clip_id();
+		let (Some(path), Some(info)) = (asset.source_path.clone(), asset.media_info) else {
+			self.show_toast(Icon::Close, format!("“{name}” has no media file"));
+			return;
+		};
+		let Some(composition_id) = self.target_composition() else {
+			self.show_toast(Icon::Close, "Select a composition first");
+			return;
+		};
 
-		if let Some(track) = self.timeline.model.tracks.get_mut(track_index) {
-			track.add_clip(TimelineClip::new(clip_id, &name, start_time, duration));
-			log::info!("Added `{name}` to timeline at {start_time:.2}s");
-			self.show_toast(Icon::Insert, format!("Added “{name}” to the timeline"));
+		// 動画の音声のみ・映像のみのファイルにも対応する
+		let kind = match kind {
+			MediaKind::Video if !info.has_video => MediaKind::Audio,
+			kind => kind,
+		};
+		let start_time = self.current_model.preview.time;
+		let duration = match kind {
+			MediaKind::Image => 5.0,
+			MediaKind::Video | MediaKind::Audio => info.duration.unwrap_or(5.0),
 		}
+		.max(1.0 / self.composition_fps().max(1.0));
+		let node_id = self.project.create_node();
+		let Some(comp) = self.project.composition_mut(&composition_id) else {
+			return;
+		};
+		let (comp_width, comp_height) = (comp.width() as f32, comp.height() as f32);
+		let instance = comp.add_instance_at(node_id, name.clone(), start_time, duration);
+		let source = MediaSource {
+			asset: id,
+			kind,
+			path,
+			info,
+		};
+		// コンポより大きい素材はフレームに収まるよう縮小する
+		let [width, height] = source.size();
+		if width > 0.0 && height > 0.0 {
+			let fit = (comp_width / width).min(comp_height / height).min(1.0);
+			instance.transform.scale = [fit, fit, 1.0];
+		}
+		instance.set_content(InstanceContent::Media(source));
+		let instance_id = instance.id();
+		// 素材がコンポの尺を越えるなら尺を伸ばす
+		let end = start_time + duration;
+		if end > comp.duration() {
+			comp.set_duration(end);
+		}
+
+		self.rebuild_timeline_for_composition(composition_id);
+		self.project_pane.expanded_ids.insert(composition_id);
+		self.select_object(ObjectId::Instance {
+			composition: composition_id,
+			instance: instance_id,
+		});
+		self.request_preview_refresh();
+		log::info!("Added `{name}` to timeline at {start_time:.2}s");
+		self.show_toast(Icon::Insert, format!("Added “{name}” to the timeline"));
+	}
+
+	/// コンポジションと同じ大きさの平面レイヤーを追加する
+	fn add_solid_layer(&mut self) {
+		let Some(composition_id) = self.target_composition() else {
+			self.show_toast(Icon::Close, "Select a composition first");
+			return;
+		};
+		let existing: Vec<String> = self
+			.project
+			.composition(&composition_id)
+			.map(|comp| comp.all_objects().map(|obj| obj.name().to_string()).collect())
+			.unwrap_or_default();
+		let name = unique_numbered_name("Solid", &existing);
+		let node_id = self.project.create_node();
+		let Some(comp) = self.project.composition_mut(&composition_id) else {
+			return;
+		};
+		let (width, height, duration) = (comp.width() as f32, comp.height() as f32, comp.duration());
+		let color = constants::style::label_color(comp.len());
+		let instance = comp.add_instance_at(node_id, name.clone(), 0.0, duration);
+		instance.set_content(InstanceContent::solid(width, height, [color.r, color.g, color.b, 1.0]));
+		let instance_id = instance.id();
+
+		self.rebuild_timeline_for_composition(composition_id);
+		self.project_pane.expanded_ids.insert(composition_id);
+		self.select_object(ObjectId::Instance {
+			composition: composition_id,
+			instance: instance_id,
+		});
+		self.request_preview_refresh();
+		self.show_toast(Icon::LayerSolid, format!("Added solid “{name}”"));
 	}
 
 	pub(super) fn view(&self) -> Element<'_, Message> {
@@ -1649,22 +1861,6 @@ impl NadeApp {
 
 		Subscription::batch([render_subscription, events, tick, close])
 	}
-}
-
-fn instance_to_text_object(instance: &Instance, time: f32) -> Option<TextObject> {
-	let (text, font_path, font_size, spacing, fill_color) = instance.content().as_text()?;
-	Some(TextObject {
-		id: SceneObjectId(instance.id().value() as u64),
-		name: instance.name().to_string(),
-		transform: instance.transform_at(time),
-		start_time: instance.start_time(),
-		duration: instance.duration(),
-		text: text.to_string(),
-		font_path: font_path.to_string(),
-		font_size,
-		spacing,
-		fill_color,
-	})
 }
 
 /// `#RRGGBB` / `RRGGBB` / `#RGB` → linear 0..1 RGB.

@@ -4,6 +4,7 @@
 //! (`NADE_SCREENSHOT_DELAY_MS`, default 2500) and quits — handy for PR
 //! screenshots. `NADE_SCREENSHOT_SCENE` stages the UI first, e.g.
 //! `select=Title;workspace=graph;tool=t;time=1.5;loop=1;play=1;menu=2`.
+//! Media can be staged too: `import=/path/clip.mp4;add=1;solid=1`.
 
 use std::path::PathBuf;
 
@@ -96,6 +97,15 @@ pub fn scene_messages(select_layer: impl Fn(&str) -> Option<AppPanelMessage>) ->
 				.ok()
 				.map(|area| Message::PanelSystem(panel_system::PanelSystemMessage::ToggleEditorMenu(area))),
 			"play" => Some(Message::Transport(crate::message::TransportMessage::TogglePlay)),
+			"import" => {
+				let path = PathBuf::from(value.trim());
+				let info = media::probe(&path).map_err(|error| format!("{error:#}"));
+				Some(Message::MediaImported(vec![(path, info)]))
+			}
+			"add" => Some(Message::PanelSystem(panel_system::PanelSystemMessage::AppMessage(
+				AppPanelMessage::Assets(asset_browser::AssetBrowserMessage::AddToTimeline),
+			))),
+			"solid" => Some(Message::Shell(ShellMessage::NewSolid)),
 			_ => None,
 		})
 		.collect()

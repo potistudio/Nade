@@ -3080,6 +3080,7 @@ dependencies = [
  "image",
  "inspector_panel",
  "log",
+ "media",
  "panel_system",
  "rayon",
  "renderer",

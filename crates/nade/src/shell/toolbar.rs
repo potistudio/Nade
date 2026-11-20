@@ -40,6 +40,7 @@ pub fn view<'a>(state: ToolbarState) -> Element<'a, Message> {
 		action(Icon::Import, "Import Media…", ShellMessage::ImportMedia),
 		action(Icon::Comp, "New Composition", ShellMessage::NewComposition),
 		action(Icon::LayerText, "New Text Layer", ShellMessage::NewTextLayer),
+		action(Icon::LayerSolid, "New Solid  ⌘Y", ShellMessage::NewSolid),
 	]
 	.spacing(SPACE_2)
 	.align_y(Alignment::Center);

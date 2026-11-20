@@ -11,7 +11,7 @@ use crate::panel_content::PanelContent;
 use crate::tool::Tool;
 use crate::viewer::Resolution;
 use crate::workspace::Workspace;
-use core::{FrameData, InstanceId};
+use core::{FrameData, InstanceId, MediaInfo};
 
 pub use asset_browser::AssetBrowserMessage;
 pub use browser_panel::ProjectPaneMessage;
@@ -82,6 +82,7 @@ pub enum ShellMessage {
 	SelectWorkspace(Workspace),
 	NewComposition,
 	NewTextLayer,
+	NewSolid,
 	ImportMedia,
 	/// タイトルストリップのドラッグでウィンドウを移動
 	DragWindow,
@@ -110,8 +111,8 @@ pub enum Message {
 	CloseRequested(iced::window::Id),
 	/// タイムラインパネルメッセージ
 	Timeline(TimelineMessage),
-	/// ファイルダイアログで選ばれたメディア（キャンセル時は None）
-	MediaImported(Option<PathBuf>),
+	/// ファイルダイアログで選ばれ、プローブ済みのメディア（キャンセル時は空）
+	MediaImported(Vec<(PathBuf, Result<MediaInfo, String>)>),
 	/// デバッグ用スクリーンショットの取得結果
 	#[cfg(debug_assertions)]
 	DevScreenshot(iced::window::Screenshot),

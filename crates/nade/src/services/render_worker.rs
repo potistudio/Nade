@@ -1,19 +1,18 @@
-use core::{FrameData, SceneObjectData, TextObject};
+use core::FrameData;
 use crossbeam_channel::{Receiver, Sender, TrySendError, bounded};
+use renderer::{Compositor, Scene};
 use std::thread;
 
 /// 1フレーム分のレンダリング要求
 pub struct RenderJob {
-	pub objects: Vec<TextObject>,
-	pub time: f32,
-	pub width: u32,
-	pub height: u32,
+	pub scene: Scene,
 }
 
 /// 常駐レンダリングワーカー
 ///
 /// フレームごとに `thread::spawn` する代わりに、専用スレッドがジョブを処理する。
 /// チャンネル容量 1 なので、処理中に届いた最新フレームだけを 1 件キューできる。
+/// デコード済みフッテージ（動画デコーダ・静止画）はスレッド内で使い回す。
 pub struct RenderWorker {
 	job_tx: Sender<RenderJob>,
 }
@@ -25,17 +24,13 @@ impl RenderWorker {
 		thread::Builder::new()
 			.name("nade-render".into())
 			.spawn(move || {
+				let mut compositor = Compositor::new();
 				while let Ok(job) = job_rx.recv() {
-					let img_buffer = renderer::render_objects(
-						job.objects.iter().map(|obj| obj as &dyn SceneObjectData),
-						job.time,
-						job.width,
-						job.height,
-					);
+					let image = compositor.render(&job.scene);
 					let frame_data = FrameData {
-						width: job.width,
-						height: job.height,
-						pixels: bytes::Bytes::from(img_buffer.into_raw()),
+						width: job.scene.width,
+						height: job.scene.height,
+						pixels: bytes::Bytes::from(image.into_raw()),
 					};
 					if render_tx.send(frame_data).is_err() {
 						break;

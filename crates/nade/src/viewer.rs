@@ -24,15 +24,6 @@ impl Resolution {
 			Self::Quarter => 0.25,
 		}
 	}
-
-	/// Render size for a composition, never smaller than one pixel.
-	pub fn scale_size(self, width: u32, height: u32) -> (u32, u32) {
-		let factor = self.factor();
-		(
-			((width as f32 * factor).round() as u32).max(1),
-			((height as f32 * factor).round() as u32).max(1),
-		)
-	}
 }
 
 impl fmt::Display for Resolution {
@@ -61,16 +52,4 @@ pub struct ViewerSettings {
 	pub show_grid: bool,
 	pub show_safe_areas: bool,
 	pub resolution: Resolution,
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn scales_render_size() {
-		assert_eq!(Resolution::Half.scale_size(1920, 1080), (960, 540));
-		assert_eq!(Resolution::Third.scale_size(1920, 1080), (640, 360));
-		assert_eq!(Resolution::Quarter.scale_size(2, 2), (1, 1));
-	}
 }
