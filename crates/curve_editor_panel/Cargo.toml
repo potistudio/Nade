@@ -11,7 +11,7 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-nade_constants = { workspace = true }
-nade_core = { workspace = true }
-nade_domain = { workspace = true }
-iced = { workspace = true }
+nade_constants.workspace = true
+nade_core.workspace = true
+nade_domain.workspace = true
+iced.workspace = true

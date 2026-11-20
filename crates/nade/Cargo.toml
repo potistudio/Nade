@@ -41,9 +41,9 @@ iced = { version = "0.14.0", features = [
 ] }
 nade_browser_panel = { path = "../browser_panel" }
 nade_asset_browser = { path = "../asset_browser" }
-nade_constants = { workspace = true }
-nade_core = { workspace = true }
-nade_curve_editor_panel = { workspace = true }
+nade_constants.workspace = true
+nade_core.workspace = true
+nade_curve_editor_panel.workspace = true
 nade_domain.workspace = true
 nade_panel_system = { path = "../panel_system" }
 nade_timeline_panel = { path = "../timeline_panel" }
@@ -55,8 +55,8 @@ tokio = { version = "1.53.2", features = ["sync"] }
 bytes = "1.12.1"
 iced_wgpu = "0.14.0"
 nade_renderer = { path = "../renderer" }
-nade_media = { workspace = true }
-nade_audio = { workspace = true }
+nade_media.workspace = true
+nade_audio.workspace = true
 rfd = "0.17.2"
 serde = "1.0.229"
 

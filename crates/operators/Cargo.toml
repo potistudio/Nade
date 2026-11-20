@@ -10,4 +10,4 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-nade_core = { workspace = true }
+nade_core.workspace = true

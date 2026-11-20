@@ -14,4 +14,4 @@ workspace = true
 iced.workspace = true
 nade_domain.workspace = true
 nade_constants.workspace = true
-nade_core = { workspace = true }
+nade_core.workspace = true

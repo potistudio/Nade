@@ -10,14 +10,14 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-anyhow = { workspace = true }
-nade_core = { workspace = true }
-nade_domain = { workspace = true }
-nade_effects = { workspace = true }
-nade_encoder = { workspace = true }
-env_logger = { workspace = true }
-log = { workspace = true }
-nade_media = { workspace = true }
+anyhow.workspace = true
+nade_core.workspace = true
+nade_domain.workspace = true
+nade_effects.workspace = true
+nade_encoder.workspace = true
+env_logger.workspace = true
+log.workspace = true
+nade_media.workspace = true
 image = "0.25.10"
 rayon = "1.12.0"
 swash = "0.2.10"

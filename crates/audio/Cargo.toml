@@ -11,8 +11,8 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-anyhow = { workspace = true }
+anyhow.workspace = true
 cpal = "0.18.2"
 nade_encoder = { path = "../encoder" }
-log = { workspace = true }
-nade_media = { workspace = true }
+log.workspace = true
+nade_media.workspace = true

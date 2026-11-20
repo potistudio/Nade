@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-nade_constants = { workspace = true }
+nade_constants.workspace = true
 iced = { version = "0.14", features = ["canvas"] }
 env_logger.workspace = true
 log.workspace = true

@@ -13,4 +13,4 @@ workspace = true
 anyhow.workspace = true
 log.workspace = true
 nade_core = { path = "../core" }
-nade_media = { workspace = true }
+nade_media.workspace = true
