@@ -1066,25 +1066,19 @@ impl<C: AreaKind> PanelSystem<C> {
 			.height(Length::Fill)
 			.style(constants::widgets::window);
 
+		// Keep the tree shape fixed — `mouse_area(stack![base, …])` — whatever the drag or menu
+		// state: a root that swaps widget types rebuilds every widget state below it (scroll
+		// offsets, focus, hover) on each tab press, drag end, and menu open or close.
+		//
 		// Editor menu is drawn at the window root so short panels (timeline) cannot
 		// clip it — Float still inherits the leaf viewport when nested inside an area.
 		let mut layers: Vec<Element<'_, PanelSystemMessage<C, M>>> = vec![base.into()];
 		layers.extend(self.view_editor_menu_layer());
 		layers.extend(self.view_tab_drag_layers());
-		let base: Element<'_, PanelSystemMessage<C, M>> = if layers.len() > 1 {
-			iced::widget::Stack::with_children(layers)
-				.width(Length::Fill)
-				.height(Length::Fill)
-				.into()
-		} else {
-			layers.remove(0)
-		};
 
 		// ドラッグ中は全面オーバーレイで他パネル上でも追従できるようにする
-		if matches!(
-			self.drag_state,
-			DragState::CornerDrag { .. } | DragState::Resizing { .. } | DragState::TabDrag { .. }
-		) {
+		let dragging = !matches!(self.drag_state, DragState::None);
+		if dragging {
 			let release = match &self.drag_state {
 				DragState::CornerDrag { .. } => PanelSystemMessage::CornerDragEnd,
 				DragState::TabDrag { .. } => PanelSystemMessage::TabDragEnd,
@@ -1106,26 +1100,28 @@ impl<C: AreaKind> PanelSystem<C> {
 				_ => mouse::Interaction::Idle,
 			};
 
-			let overlay = mouse_area(
-				container(Space::new())
-					.width(Length::Fill)
-					.height(Length::Fill)
-					.style(|_| container::Style {
-						background: Some(Color::TRANSPARENT.into()),
-						..Default::default()
-					}),
-			)
-			.interaction(cursor)
-			.on_move(PanelSystemMessage::MouseMove)
-			.on_exit(PanelSystemMessage::PointerExited)
-			.on_release(release);
+			// The overlay sits above the panels, so it reports moves before any panel widget
+			// can capture them; the root area reports them otherwise.
+			layers.push(
+				mouse_area(Space::new().width(Length::Fill).height(Length::Fill))
+					.interaction(cursor)
+					.on_move(PanelSystemMessage::MouseMove)
+					.on_release(release)
+					.into(),
+			);
+		}
 
-			stack![base, overlay].width(Length::Fill).height(Length::Fill).into()
+		let root = mouse_area(
+			iced::widget::Stack::with_children(layers)
+				.width(Length::Fill)
+				.height(Length::Fill),
+		)
+		.on_exit(PanelSystemMessage::PointerExited);
+
+		if dragging {
+			root.into()
 		} else {
-			mouse_area(base)
-				.on_move(PanelSystemMessage::MouseMove)
-				.on_exit(PanelSystemMessage::PointerExited)
-				.into()
+			root.on_move(PanelSystemMessage::MouseMove).into()
 		}
 	}
 
