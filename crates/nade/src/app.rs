@@ -398,9 +398,9 @@ impl NadeApp {
 		let mut project = Project::default();
 
 		let assets = project.create_folder("Assets", None);
-		project.create_asset_in(Some(assets), "Background.png", AssetType::Image);
-		project.create_asset_in(Some(assets), "0001-0004.mov", AssetType::Video);
-		project.create_asset_in(Some(assets), "BGM.mp3", AssetType::Audio);
+		project.create_asset_in(Some(assets), "Background", AssetType::Image);
+		project.create_asset_in(Some(assets), "0001-0004", AssetType::Video);
+		project.create_asset_in(Some(assets), "BGM", AssetType::Audio);
 
 		let main = project.create_composition("Main Composition", 1920, 1080, 60.0);
 		let scene = project.create_composition("Scene 1", 1280, 720, 30.0);
