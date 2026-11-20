@@ -1,6 +1,8 @@
 //! Outline rows shared by the Layers and Assets panels (Finder-style
 //! sidebar rows: inset selection pill, disclosure chevron, tinted glyph).
 
+use std::borrow::Cow;
+
 use iced::widget::{Space, container, hover, mouse_area, row};
 use iced::{Alignment, Border, Color, Element, Length};
 
@@ -25,7 +27,8 @@ pub struct TreeRow<'a, Message> {
 	pub icon: Icon,
 	pub icon_color: Color,
 	pub label: &'a str,
-	pub meta: Option<String>,
+	/// Trailing mono label; borrowed when the caller already owns the text.
+	pub meta: Option<Cow<'a, str>>,
 	pub selected: bool,
 	pub on_select: Message,
 	pub on_open: Message,
@@ -66,7 +69,12 @@ impl<'a, Message: Clone + 'a> TreeRow<'a, Message> {
 		.height(ROW_HEIGHT);
 
 		if let Some(meta) = self.meta {
-			content = content.push(mono_label(meta, FONT_TINY).color(if selected {
+			// 借用したまま渡せるものはアロケートしない
+			let meta = match meta {
+				Cow::Borrowed(meta) => mono_label(meta, FONT_TINY),
+				Cow::Owned(meta) => mono_label(meta, FONT_TINY),
+			};
+			content = content.push(meta.color(if selected {
 				Color::from_rgba(1.0, 1.0, 1.0, 0.75)
 			} else {
 				TEXT_MUTED_COLOR
