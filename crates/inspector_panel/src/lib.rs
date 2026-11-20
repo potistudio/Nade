@@ -1,4 +1,9 @@
-//! Typed messages and property groups for the properties (inspector) panel.
+//! Properties (inspector) panel: typed messages, property groups and the view.
+
+mod draggable_number;
+mod view;
+
+pub use view::{CompositionChoice, InspectorTarget, InspectorUi, LayerTarget, ParentChoice, view};
 
 use core::{BlendMode, CompositionId, InstanceId};
 use domain::{EffectKind, TransformProperty};

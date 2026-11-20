@@ -1,6 +1,6 @@
 [package]
 name = "inspector_panel"
-description = "Typed messages for the properties panel"
+description = "Properties (inspector) panel"
 authors.workspace = true
 version.workspace = true
 license.workspace = true
@@ -13,3 +13,5 @@ workspace = true
 [dependencies]
 core.workspace = true
 domain.workspace = true
+constants.workspace = true
+iced.workspace = true

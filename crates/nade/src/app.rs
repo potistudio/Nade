@@ -268,7 +268,7 @@ pub(super) struct NadeApp {
 	/// ビューア領域のサイズ（倍率表示用）
 	viewer_size: Size,
 	/// プロパティパネルの UI 状態
-	inspector_ui: panels::inspector::InspectorUi,
+	inspector_ui: inspector_panel::InspectorUi,
 	/// Undo / Redo 履歴
 	history: History,
 	/// コピーしたレイヤー（貼り付け時はクリップ群の先頭を再生ヘッドに合わせる）
@@ -333,7 +333,7 @@ impl NadeApp {
 			window_size,
 			viewer: ViewerSettings::default(),
 			viewer_size: Size::new(960.0, 540.0),
-			inspector_ui: panels::inspector::InspectorUi::default(),
+			inspector_ui: inspector_panel::InspectorUi::default(),
 			history: History::with_snapshot(project_for_history),
 			clipboard: Vec::new(),
 			pointer_down: false,
@@ -2852,8 +2852,8 @@ impl NadeApp {
 		}
 	}
 
-	fn inspector_target(&self) -> panels::inspector::InspectorTarget<'_> {
-		use panels::inspector::{InspectorTarget, LayerTarget};
+	fn inspector_target(&self) -> inspector_panel::InspectorTarget<'_> {
+		use inspector_panel::{InspectorTarget, LayerTarget};
 
 		match self.project_pane.selected_id {
 			Some(ObjectId::Instance { composition, instance }) => {
@@ -2870,8 +2870,8 @@ impl NadeApp {
 					.filter(|other| comp.can_parent(instance, other.id()))
 					.collect();
 				candidates.sort_by_key(|other| (other.track_index(), other.id()));
-				let parents = std::iter::once(panels::inspector::ParentChoice::none())
-					.chain(candidates.into_iter().map(|other| panels::inspector::ParentChoice {
+				let parents = std::iter::once(inspector_panel::ParentChoice::none())
+					.chain(candidates.into_iter().map(|other| inspector_panel::ParentChoice {
 						id: Some(other.id()),
 						name: format!("{}. {}", other.track_index() + 1, other.name()),
 					}))
@@ -2909,7 +2909,7 @@ impl NadeApp {
 							.filter(|outer| *outer != id && self.project.can_nest(*outer, id))
 							.filter_map(|outer| {
 								let name = self.project.composition(&outer)?.name().to_string();
-								Some(panels::inspector::CompositionChoice { id: outer, name })
+								Some(inspector_panel::CompositionChoice { id: outer, name })
 							})
 							.collect();
 						targets.sort_by_key(|choice| choice.id.value());
