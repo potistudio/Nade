@@ -1,5 +1,5 @@
 use crate::{AssetBrowserMessage, AssetBrowserView, AssetRow, SortDirection, SortKey, SortOrder};
-use iced::widget::{Space, button, column, container, mouse_area, row, scrollable, text_input, tooltip};
+use iced::widget::{button, column, container, mouse_area, row, scrollable, text_input, tooltip};
 use iced::{Alignment, Color, Element, Length};
 use nade_constants::icons::{Icon, icon, icon_transformed};
 use nade_constants::style::*;
@@ -55,12 +55,12 @@ impl<'a> AssetBrowserWidget<'a> {
 		let body: Element<'a, AssetBrowserMessage> = if rows.is_empty() {
 			empty_state(searching)
 		} else {
-			let clear_area = mouse_area(container(Space::new()).width(Length::Fill).height(Length::Fill))
-				.on_press(AssetBrowserMessage::ClearSelection);
-			let list =
-				scrollable(column![column(rows.into_iter().map(view_row)).spacing(1), clear_area].width(Length::Fill))
-					.height(Length::Fill)
-					.style(widgets::scrollable);
+			let list = scrollable(column(rows.into_iter().map(view_row)).spacing(1).width(Length::Fill))
+				.height(Length::Fill)
+				.style(widgets::scrollable);
+			// 縦スクロールの中では Fill が 0 に潰れるので、一覧ごと包んで空き領域の押下で解除する。
+			// 行・シェブロン・スクロールバーの押下はそれぞれが捕捉するのでここまで届かない。
+			let list = mouse_area(list).on_press(AssetBrowserMessage::ClearSelection);
 			// ヘッダーはスクロールさせず、一覧の上に固定する
 			column![sort_header(sort), widgets::separator(), list].into()
 		};
