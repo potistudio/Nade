@@ -1,4 +1,5 @@
-use core::{AnimationCurve, NodeId, Transform, id::InstanceId};
+use core::{AnimationCurve, AssetId, MediaInfo, NodeId, Transform, id::InstanceId};
+use std::path::PathBuf;
 
 /// A scalar channel of an instance transform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -77,7 +78,7 @@ impl TransformProperty {
 }
 
 /// Keyframe curves for every scalar transform channel.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct TransformAnimation {
 	curves: [AnimationCurve; 10],
 }
@@ -101,8 +102,42 @@ impl TransformAnimation {
 	}
 }
 
+/// Kind of footage a media layer plays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MediaKind {
+	Image,
+	Video,
+	Audio,
+}
+
+/// Footage referenced by a media layer.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MediaSource {
+	/// Asset the layer was created from.
+	pub asset: AssetId,
+	pub kind: MediaKind,
+	/// File on disk.
+	pub path: PathBuf,
+	pub info: MediaInfo,
+}
+
+impl MediaSource {
+	/// Size of the picture in composition pixels (zero for audio).
+	pub fn size(&self) -> [f32; 2] {
+		match self.kind {
+			MediaKind::Audio => [0.0, 0.0],
+			MediaKind::Image | MediaKind::Video => [self.info.width as f32, self.info.height as f32],
+		}
+	}
+
+	/// Whether the footage carries sound.
+	pub fn has_audio(&self) -> bool {
+		matches!(self.kind, MediaKind::Video | MediaKind::Audio) && self.info.has_audio
+	}
+}
+
 /// インスタンスが持つ描画コンテンツ
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub enum InstanceContent {
 	/// 中身のないプレースホルダ
 	#[default]
@@ -115,6 +150,10 @@ pub enum InstanceContent {
 		spacing: f32,
 		fill_color: [f32; 4],
 	},
+	/// 単色の平面（ソリッド）
+	Solid { width: f32, height: f32, color: [f32; 4] },
+	/// 画像・動画・音声フッテージ
+	Media(MediaSource),
 }
 
 impl InstanceContent {
@@ -149,41 +188,88 @@ impl InstanceContent {
 				spacing,
 				fill_color,
 			} => Some((text.as_str(), font_path.as_str(), *font_size, *spacing, *fill_color)),
-			Self::Empty => None,
+			_ => None,
 		}
 	}
 
 	pub fn text_mut(&mut self) -> Option<&mut String> {
 		match self {
 			Self::Text { text, .. } => Some(text),
-			Self::Empty => None,
+			_ => None,
 		}
 	}
 
 	pub fn font_size_mut(&mut self) -> Option<&mut f32> {
 		match self {
 			Self::Text { font_size, .. } => Some(font_size),
-			Self::Empty => None,
+			_ => None,
 		}
 	}
 
 	pub fn spacing_mut(&mut self) -> Option<&mut f32> {
 		match self {
 			Self::Text { spacing, .. } => Some(spacing),
-			Self::Empty => None,
+			_ => None,
 		}
 	}
 
 	pub fn fill_color_mut(&mut self) -> Option<&mut [f32; 4]> {
 		match self {
-			Self::Text { fill_color, .. } => Some(fill_color),
-			Self::Empty => None,
+			Self::Text { fill_color, .. } | Self::Solid { color: fill_color, .. } => Some(fill_color),
+			_ => None,
+		}
+	}
+
+	/// A solid of the given size and color.
+	pub fn solid(width: f32, height: f32, color: [f32; 4]) -> Self {
+		Self::Solid { width, height, color }
+	}
+
+	/// `[width, height]` and color of a solid.
+	pub fn as_solid(&self) -> Option<([f32; 2], [f32; 4])> {
+		match self {
+			Self::Solid { width, height, color } => Some(([*width, *height], *color)),
+			_ => None,
+		}
+	}
+
+	pub fn solid_size_mut(&mut self) -> Option<(&mut f32, &mut f32)> {
+		match self {
+			Self::Solid { width, height, .. } => Some((width, height)),
+			_ => None,
+		}
+	}
+
+	pub fn as_media(&self) -> Option<&MediaSource> {
+		match self {
+			Self::Media(source) => Some(source),
+			_ => None,
+		}
+	}
+
+	/// Whether the layer's length is bound to footage that has its own timing.
+	pub fn is_timed_media(&self) -> bool {
+		self.as_media()
+			.is_some_and(|source| matches!(source.kind, MediaKind::Video | MediaKind::Audio))
+	}
+
+	/// Human readable layer kind.
+	pub fn kind_label(&self) -> &'static str {
+		match self {
+			Self::Empty => "Null Object",
+			Self::Text { .. } => "Text Layer",
+			Self::Solid { .. } => "Solid Layer",
+			Self::Media(source) => match source.kind {
+				MediaKind::Image => "Image Layer",
+				MediaKind::Video => "Video Layer",
+				MediaKind::Audio => "Audio Layer",
+			},
 		}
 	}
 }
 
 /// コンポジション上のインスタンス（タイムラインクリップのソース）
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Instance {
 	/// ID of the instance
 	id: InstanceId,
@@ -201,6 +287,9 @@ pub struct Instance {
 
 	/// タイムライン上のトラック（レイヤー）インデックス。0 が最前面。
 	pub track_index: usize,
+
+	/// フッテージの再生開始位置（秒）。`start_time` の瞬間に表示されるソース時刻。
+	pub source_offset: f32,
 
 	/// Transform of the instance
 	pub transform: Transform,
@@ -222,6 +311,7 @@ impl Instance {
 			start_time,
 			duration,
 			track_index: 0,
+			source_offset: 0.0,
 			transform: Transform::default(),
 			animation: TransformAnimation::default(),
 			content: InstanceContent::default(),
@@ -230,6 +320,10 @@ impl Instance {
 
 	pub fn id(&self) -> InstanceId {
 		self.id
+	}
+
+	pub(crate) fn set_id(&mut self, id: InstanceId) {
+		self.id = id;
 	}
 
 	pub fn target_node_id(&self) -> NodeId {
@@ -295,6 +389,33 @@ impl Instance {
 	/// Get the end time of the instance
 	pub fn end_time(&self) -> f32 {
 		self.start_time + self.duration
+	}
+
+	/// Whether the layer is shown at composition time `time`.
+	pub fn is_active_at(&self, time: f32) -> bool {
+		time >= self.start_time && time < self.end_time()
+	}
+
+	/// Footage time shown at composition time `time`.
+	pub fn source_time_at(&self, time: f32) -> f32 {
+		(time - self.start_time + self.source_offset).max(0.0)
+	}
+
+	/// Cut the layer at `time`. Shortens `self` to end at `time` and returns
+	/// the right half (same id until the composition assigns a new one), or
+	/// `None` when `time` does not fall strictly inside the layer.
+	pub fn split_at(&mut self, time: f32) -> Option<Self> {
+		const MIN_PART: f32 = 1.0 / 240.0;
+		if time <= self.start_time + MIN_PART || time >= self.end_time() - MIN_PART {
+			return None;
+		}
+		let mut right = self.clone();
+		let left_duration = time - self.start_time;
+		right.start_time = time;
+		right.duration = self.duration - left_duration;
+		right.source_offset = self.source_offset + left_duration;
+		self.duration = left_duration;
+		Some(right)
 	}
 
 	/// Whether the channel has keyframes.
@@ -397,6 +518,30 @@ mod tests {
 		assert!(!instance.toggle_key_at(TransformProperty::ScaleX, 1.0));
 		assert!(!instance.is_animated(TransformProperty::ScaleX));
 		assert_eq!(instance.transform.scale[0], 2.5);
+	}
+
+	#[test]
+	fn split_keeps_footage_continuous() {
+		let mut instance = Instance::new(InstanceId::new(0), NodeId::new(0), "A", 1.0, 4.0);
+		instance.source_offset = 0.5;
+		let right = instance.split_at(2.0).expect("inside the layer");
+
+		assert_eq!(instance.duration(), 1.0);
+		assert_eq!(right.start_time(), 2.0);
+		assert_eq!(right.duration(), 3.0);
+		assert!((right.source_offset - 1.5).abs() < 1e-6);
+		// 分割点の前後でソース時刻が連続する
+		assert!((instance.source_time_at(1.999) - right.source_time_at(2.0)).abs() < 0.01);
+		assert!(instance.split_at(1.0).is_none());
+		assert!(instance.split_at(5.0).is_none());
+	}
+
+	#[test]
+	fn solid_color_is_editable_as_fill() {
+		let mut content = InstanceContent::solid(100.0, 50.0, [1.0, 0.0, 0.0, 1.0]);
+		content.fill_color_mut().expect("solid has a fill")[1] = 1.0;
+		assert_eq!(content.as_solid(), Some(([100.0, 50.0], [1.0, 1.0, 0.0, 1.0])));
+		assert_eq!(content.kind_label(), "Solid Layer");
 	}
 
 	#[test]

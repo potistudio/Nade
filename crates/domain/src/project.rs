@@ -185,6 +185,17 @@ impl Project {
 		self.nodes.iter_mut().find(|node| node.id() == *id)
 	}
 
+	//==== History =============================================================
+	/// Copy of every composition, used for undo / redo.
+	pub fn snapshot(&self) -> ProjectSnapshot {
+		ProjectSnapshot(self.compositions.clone())
+	}
+
+	/// Restore compositions captured by [`Project::snapshot`].
+	pub fn restore(&mut self, snapshot: ProjectSnapshot) {
+		self.compositions = snapshot.0;
+	}
+
 	//==== Update Method =======================================================
 	pub fn save(&self) -> Result<(), std::io::Error> {
 		Ok(())
@@ -198,6 +209,10 @@ impl Project {
 		Ok(())
 	}
 }
+
+/// Editable state of a project at one point in time.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProjectSnapshot(HashMap<CompositionId, Composition>);
 
 impl Default for Project {
 	fn default() -> Self {
@@ -247,6 +262,20 @@ mod tests {
 		assert_eq!(project.root_assets(), vec![folder]);
 		assert_eq!(project.asset(folder).unwrap().children, vec![child]);
 		assert_eq!(project.asset(child).unwrap().parent, Some(folder));
+	}
+
+	#[test]
+	fn snapshot_restores_compositions() {
+		let mut project = Project::default();
+		let comp = project.create_composition("Main", 1920, 1080, 30.0);
+		let before = project.snapshot();
+		let node = project.create_node();
+		project.composition_mut(&comp).unwrap().add_instance(node);
+		assert_ne!(project.snapshot(), before);
+
+		project.restore(before.clone());
+		assert_eq!(project.snapshot(), before);
+		assert!(project.composition(&comp).unwrap().is_empty());
 	}
 
 	#[test]

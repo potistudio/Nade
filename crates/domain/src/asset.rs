@@ -1,4 +1,4 @@
-use core::AssetId;
+use core::{AssetId, MediaInfo};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -36,6 +36,8 @@ pub struct Asset {
 	pub children: Vec<AssetId>,
 	/// Source media path when this asset was imported from disk.
 	pub source_path: Option<PathBuf>,
+	/// Probed stream facts (set once the file has been inspected).
+	pub media_info: Option<MediaInfo>,
 }
 
 impl Asset {
@@ -47,6 +49,7 @@ impl Asset {
 			parent,
 			children: Vec::new(),
 			source_path: None,
+			media_info: None,
 		}
 	}
 
