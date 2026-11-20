@@ -7,9 +7,11 @@ pub use core::{
 	ValueParam,
 };
 pub mod bitdepth;
+pub mod media;
 pub mod sample_rate;
 
 pub use bitdepth::BitDepth;
+pub use media::MediaInfo;
 pub use sample_rate::SampleRate;
 
 // =============================================================================
@@ -156,6 +158,8 @@ pub struct FrameData {
 pub enum Msg {
 	/// 定期更新（ティック）
 	Tick,
+	/// 再生中に実時間で時間を進める（秒）
+	Advance(f32),
 	/// 時間変更要求
 	SetTime(f32),
 	/// 再生トグル
@@ -188,6 +192,16 @@ pub fn update(mut model: Model, msg: Msg) -> (Model, Vec<CoreEffect>) {
 		Msg::Tick => {
 			if model.preview.is_playing {
 				model.preview.time += 1.0 / 60.0;
+				effects.push(CoreEffect::RenderFrame {
+					time: model.preview.time,
+					width: model.preview.width,
+					height: model.preview.height,
+				});
+			}
+		}
+		Msg::Advance(delta) => {
+			if model.preview.is_playing {
+				model.preview.time += delta.max(0.0);
 				effects.push(CoreEffect::RenderFrame {
 					time: model.preview.time,
 					width: model.preview.width,
@@ -268,6 +282,19 @@ mod tests {
 		let (model, effects) = update(model, Msg::Tick);
 		assert!((model.preview.time - 1.0 / 60.0).abs() < f32::EPSILON);
 		assert_eq!(effects.len(), 1);
+	}
+
+	#[test]
+	fn advance_uses_wall_clock_delta() {
+		let mut model = Model::default();
+		model.preview.is_playing = true;
+		let (model, effects) = update(model, Msg::Advance(0.05));
+		assert!((model.preview.time - 0.05).abs() < f32::EPSILON);
+		assert_eq!(effects.len(), 1);
+
+		let (paused, effects) = update(Model::default(), Msg::Advance(0.05));
+		assert_eq!(paused.preview.time, 0.0);
+		assert!(effects.is_empty());
 	}
 
 	#[test]
