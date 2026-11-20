@@ -326,6 +326,16 @@ impl NadeApp {
 	fn dev_scene(&self) -> Task<Message> {
 		let project = &self.project;
 		let scene = crate::devtools::scene_messages(|name| {
+			// コンポ名ならコンポを選択
+			if let Some(composition) = project
+				.compositions()
+				.into_iter()
+				.find(|id| project.composition(id).is_some_and(|comp| comp.name() == name))
+			{
+				return Some(AppPanelMessage::Project(ProjectPaneMessage::Select(
+					ObjectId::Composition(composition),
+				)));
+			}
 			project.compositions().into_iter().find_map(|composition| {
 				let instance = project
 					.composition(&composition)?
@@ -2246,6 +2256,10 @@ impl NadeApp {
 				self.open_nested_composition();
 				return;
 			}
+			InspectorMessage::NestInto(outer) => {
+				self.nest_shown_composition(outer);
+				return;
+			}
 			_ => {}
 		}
 
@@ -2401,7 +2415,8 @@ impl NadeApp {
 			| InspectorMessage::FitCompositionToLayers
 			| InspectorMessage::SetCompositionBackground(_)
 			| InspectorMessage::SetParent(_)
-			| InspectorMessage::OpenNestedComposition => {}
+			| InspectorMessage::OpenNestedComposition
+			| InspectorMessage::NestInto(_) => {}
 		}
 
 		if let Some(name) = renamed {
@@ -2448,6 +2463,37 @@ impl NadeApp {
 			},
 		);
 		self.request_preview_refresh();
+	}
+
+	/// Add the shown composition as the top layer of `outer`, then open `outer`
+	/// with the new layer selected.
+	fn nest_shown_composition(&mut self, outer: CompositionId) {
+		let Some(inner) = self.target_composition() else {
+			return;
+		};
+		if !self.project.can_nest(outer, inner) {
+			self.show_toast(Icon::Close, "That would nest the composition in itself");
+			return;
+		}
+		let Some((name, duration)) = self
+			.project
+			.composition(&inner)
+			.map(|comp| (comp.name().to_string(), comp.duration()))
+		else {
+			return;
+		};
+		let node = self.project.create_node();
+		let Some(comp) = self.project.composition_mut(&outer) else {
+			return;
+		};
+		comp.insert_track(0);
+		let mut layer = domain::Instance::new(InstanceId::new(0), node, &name, 0.0, duration);
+		layer.set_content(InstanceContent::Composition(inner));
+		let layer = comp.insert_instance(layer, Some(0));
+		comp.compact_tracks();
+		let outer_name = comp.name().to_string();
+		self.finish_layer_edit(outer, Some(layer));
+		self.show_toast(Icon::Comp, format!("Added “{name}” to “{outer_name}”"));
 	}
 
 	/// Show the composition the selected comp layer plays (AE: double-click).
@@ -2533,6 +2579,20 @@ impl NadeApp {
 					},
 					layers: comp.len(),
 					background: comp.background(),
+					nest_targets: {
+						let mut targets: Vec<_> = self
+							.project
+							.compositions()
+							.into_iter()
+							.filter(|outer| *outer != id && self.project.can_nest(*outer, id))
+							.filter_map(|outer| {
+								let name = self.project.composition(&outer)?.name().to_string();
+								Some(panels::inspector::CompositionChoice { id: outer, name })
+							})
+							.collect();
+						targets.sort_by_key(|choice| choice.id.value());
+						targets
+					},
 				},
 				None => InspectorTarget::Empty,
 			},

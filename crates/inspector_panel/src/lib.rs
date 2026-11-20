@@ -1,6 +1,6 @@
 //! Typed messages and property groups for the properties (inspector) panel.
 
-use core::{BlendMode, InstanceId};
+use core::{BlendMode, CompositionId, InstanceId};
 use domain::TransformProperty;
 
 /// A row in the Transform section. Vector rows edit several channels.
@@ -108,6 +108,8 @@ pub enum InspectorMessage {
 	SetBlendMode(BlendMode),
 	/// Open the composition a comp layer plays.
 	OpenNestedComposition,
+	/// Place the shown composition as a layer in another composition.
+	NestInto(CompositionId),
 }
 
 #[cfg(test)]

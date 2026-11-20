@@ -7,7 +7,7 @@ use constants::style::{
 	SPACE_2, SPACE_3, SPACE_4, SPACE_5, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR,
 };
 use constants::widgets::{self, button_body_center, mono_label, ui_label};
-use core::{BlendMode, InstanceId};
+use core::{BlendMode, CompositionId, InstanceId};
 use domain::{Instance, InstanceContent, MediaKind, MediaSource, TransformProperty};
 use iced::time::{Duration, Instant};
 use iced::widget::{Space, button, column, container, pick_list, row, scrollable, slider, text_input, tooltip};
@@ -121,6 +121,19 @@ impl ParentChoice {
 	}
 }
 
+/// An entry of the "Add to" composition picker.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompositionChoice {
+	pub id: CompositionId,
+	pub name: String,
+}
+
+impl std::fmt::Display for CompositionChoice {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(&self.name)
+	}
+}
+
 impl std::fmt::Display for ParentChoice {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_str(&self.name)
@@ -133,6 +146,8 @@ pub enum InspectorTarget<'a> {
 		summary: CompositionSummary<'a>,
 		layers: usize,
 		background: [f32; 4],
+		/// Compositions this one can be nested into (no loops).
+		nest_targets: Vec<CompositionChoice>,
 	},
 	Layer(LayerTarget<'a>),
 }
@@ -148,7 +163,8 @@ pub fn view<'a>(
 			summary,
 			layers,
 			background,
-		} => composition_view(summary, layers, background),
+			nest_targets,
+		} => composition_view(summary, layers, background, nest_targets),
 		InspectorTarget::Layer(layer) => layer_view(layer, ui, now),
 	};
 
@@ -192,6 +208,7 @@ fn composition_view<'a>(
 	summary: CompositionSummary<'a>,
 	layers: usize,
 	background: [f32; 4],
+	nest_targets: Vec<CompositionChoice>,
 ) -> Element<'a, InspectorMessage> {
 	let header = row![
 		badge(Icon::Comp, constants::style::ACCENT_COLOR),
@@ -290,6 +307,21 @@ fn composition_view<'a>(
 			row![setting_label("Background"), backgrounds]
 				.spacing(SPACE_2)
 				.align_y(Alignment::Center),
+			row![
+				setting_label("Add to"),
+				pick_list(nest_targets, None::<CompositionChoice>, |choice: CompositionChoice| {
+					InspectorMessage::NestInto(choice.id)
+				})
+				.placeholder("Nest in composition…")
+				.text_size(FONT_UI)
+				.padding([2, 8])
+				.width(Length::Fill)
+				.style(widgets::pick_list)
+				.menu_style(widgets::menu),
+			]
+			.spacing(SPACE_2)
+			.align_y(Alignment::Center)
+			.height(ROW_HEIGHT),
 		]
 		.spacing(SPACE_2),
 	)
