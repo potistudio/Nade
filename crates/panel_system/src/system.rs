@@ -1812,21 +1812,18 @@ impl<C: AreaKind> PanelSystem<C> {
 	where
 		M: Clone + std::fmt::Debug + 'static,
 	{
+		// Plain icon + text: any chrome here makes the label read as a button.
 		container(
-			container(
-				row![
-					constants::icons::icon(
-						constants::icons::Icon::Transform,
-						constants::style::ICON_SIZE,
-						constants::style::TEXT_PRIMARY_COLOR
-					),
-					constants::widgets::ui_label(label, constants::style::FONT_UI),
-				]
-				.spacing(6)
-				.align_y(iced::Alignment::Center),
-			)
-			.padding([8, 14])
-			.style(constants::widgets::hud(1.0)),
+			row![
+				constants::icons::icon(
+					constants::icons::Icon::Transform,
+					constants::style::ICON_SIZE,
+					constants::style::TEXT_PRIMARY_COLOR
+				),
+				constants::widgets::ui_label(label, constants::style::FONT_UI),
+			]
+			.spacing(6)
+			.align_y(iced::Alignment::Center),
 		)
 		.width(Length::Fill)
 		.height(Length::Fill)
