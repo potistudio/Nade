@@ -1,0 +1,18 @@
+[package]
+name = "audio"
+description = "Audio preview playback of composition sound"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+cpal = "0.18.2"
+encoder = { path = "../encoder" }
+log = { workspace = true }
+media = { workspace = true }

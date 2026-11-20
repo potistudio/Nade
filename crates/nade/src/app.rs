@@ -206,6 +206,10 @@ pub(super) struct NadeApp {
 	pointer_down: bool,
 	/// 実行中の書き出し
 	export: Option<ExportTask>,
+	/// 再生中の音声
+	audio: audio::AudioPreview,
+	/// 今回の再生で音声の開始を試みた時刻と再生位置（シーク検出に使う）
+	audio_started: Option<(Instant, f32)>,
 	/// デバッグ用スクリーンショット（`NADE_SCREENSHOT`）
 	#[cfg(debug_assertions)]
 	capture: Option<crate::devtools::Capture>,
@@ -261,6 +265,8 @@ impl NadeApp {
 			clipboard: Vec::new(),
 			pointer_down: false,
 			export: None,
+			audio: audio::AudioPreview::new(),
+			audio_started: None,
 			#[cfg(debug_assertions)]
 			capture: crate::devtools::Capture::from_env(),
 		};
@@ -449,6 +455,7 @@ impl NadeApp {
 			Message::Tick | Message::RenderCompleted(_) | Message::Edit(EditCommand::Undo | EditCommand::Redo)
 		);
 		let task = self.update_inner(message);
+		self.sync_audio();
 		// ドラッグ中の連続した変更は、ボタンを離した時点で 1 ステップにまとめる
 		if records_history && !self.pointer_down {
 			self.history.checkpoint(&self.project);
@@ -493,12 +500,19 @@ impl NadeApp {
 				self.timeline.state.tick_scroll_spring(self.now);
 				if self.current_model.preview.is_playing {
 					// タイマーの遅れに左右されないよう実時間で進める（大きな停止は 1/10 秒まで）
-					let delta = self
+					let wall = self
 						.last_play_tick
 						.map_or(1.0 / 60.0, |last| self.now.duration_since(last).as_secs_f32())
 						.min(0.1);
 					self.last_play_tick = Some(self.now);
-					self.apply_core_msg(Msg::Advance(delta));
+					// 音声があれば音声の再生位置に映像を合わせる
+					let delta = match self.audio_clock() {
+						Some(clock) => (clock - self.current_model.preview.time).max(0.0),
+						None => wall,
+					};
+					if delta > 0.0 {
+						self.apply_core_msg(Msg::Advance(delta));
+					}
 					self.wrap_playback();
 				} else {
 					self.last_play_tick = None;
@@ -849,6 +863,57 @@ impl NadeApp {
 				self.show_toast(Icon::Close, "Export failed — see log");
 			}
 		}
+	}
+
+	/// 音声の再生位置。音声の起動待ち（0.5 秒まで）は再生ヘッドを止めておく。
+	fn audio_clock(&self) -> Option<f32> {
+		if !self.audio.is_playing() {
+			return None;
+		}
+		match self.audio.clock() {
+			Some(clock) => Some(clock),
+			None if self
+				.audio_started
+				.is_some_and(|(started, _)| self.now.duration_since(started).as_secs_f32() < 0.5) =>
+			{
+				Some(self.current_model.preview.time)
+			}
+			None => None,
+		}
+	}
+
+	/// 再生状態に合わせて音声を開始・停止し、シークされたら鳴らし直す
+	fn sync_audio(&mut self) {
+		if !self.current_model.preview.is_playing {
+			if self.audio.is_playing() {
+				self.audio.stop();
+			}
+			self.audio_started = None;
+			return;
+		}
+		let time = self.current_model.preview.time;
+		if let Some((started, from)) = self.audio_started {
+			// 音声が鳴っていればその位置、無ければ開始からの経過時間と比べる
+			let expected = self
+				.audio
+				.clock()
+				.unwrap_or_else(|| from + self.now.duration_since(started).as_secs_f32());
+			let waiting = self.audio.is_playing() && self.audio.clock().is_none();
+			if waiting || (expected - time).abs() <= 0.3 {
+				return;
+			}
+		}
+		let Some(comp) = self.target_composition().and_then(|id| self.project.composition(&id)) else {
+			return;
+		};
+		let model = &self.timeline.model;
+		let clips = renderer::export_settings(comp, std::path::Path::new(""), |track| {
+			track >= model.tracks.len() || model.is_track_rendered(track)
+		})
+		.audio;
+		let until = comp.duration();
+		self.audio_started = Some((self.now, time));
+		self.audio.play(&clips, time, until);
 	}
 
 	fn composition_fps(&self) -> f32 {

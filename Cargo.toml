@@ -33,6 +33,7 @@ all = "warn"
 
 [workspace.dependencies]
 anyhow = "1.0.104"
+audio = { path = "crates/audio" }
 constants = { path = "crates/constants" }
 core = { path = "crates/core" }
 curve_editor_panel = { path = "crates/curve_editor_panel" }

@@ -57,6 +57,7 @@ wgpu = "27.0.1"
 iced_wgpu = "0.14.0"
 renderer = { path = "../renderer" }
 media = { workspace = true }
+audio = { workspace = true }
 rfd = "0.17.2"
 serde = "1.0.229"
 
