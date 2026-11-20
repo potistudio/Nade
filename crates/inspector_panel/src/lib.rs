@@ -1,10 +1,12 @@
 //! Typed messages and property groups for the properties (inspector) panel.
 
+use core::{BlendMode, InstanceId};
 use domain::TransformProperty;
 
 /// A row in the Transform section. Vector rows edit several channels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PropertyGroup {
+	Anchor,
 	Position,
 	Rotation,
 	Scale,
@@ -12,11 +14,13 @@ pub enum PropertyGroup {
 }
 
 impl PropertyGroup {
-	pub const ALL: [Self; 4] = [Self::Position, Self::Rotation, Self::Scale, Self::Opacity];
+	/// Rows in After Effects order.
+	pub const ALL: [Self; 5] = [Self::Anchor, Self::Position, Self::Scale, Self::Rotation, Self::Opacity];
 
 	/// Scalar channels edited by this row (2D layers: X/Y and Z rotation).
 	pub fn channels(self) -> &'static [TransformProperty] {
 		match self {
+			Self::Anchor => &[TransformProperty::AnchorX, TransformProperty::AnchorY],
 			Self::Position => &[TransformProperty::PositionX, TransformProperty::PositionY],
 			Self::Rotation => &[TransformProperty::RotationZ],
 			Self::Scale => &[TransformProperty::ScaleX, TransformProperty::ScaleY],
@@ -26,6 +30,7 @@ impl PropertyGroup {
 
 	pub fn label(self) -> &'static str {
 		match self {
+			Self::Anchor => "Anchor",
 			Self::Position => "Position",
 			Self::Rotation => "Rotation",
 			Self::Scale => "Scale",
@@ -48,6 +53,7 @@ impl PropertyGroup {
 /// Collapsible sections of the panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Section {
+	Layer,
 	Transform,
 	Text,
 	Solid,
@@ -97,6 +103,11 @@ pub enum InspectorMessage {
 	FitCompositionToLayers,
 	/// Composition background color (RGB, 0..1).
 	SetCompositionBackground([f32; 3]),
+	/// Parent layer (None = no parent); keeps the layer where it is.
+	SetParent(Option<InstanceId>),
+	SetBlendMode(BlendMode),
+	/// Open the composition a comp layer plays.
+	OpenNestedComposition,
 }
 
 #[cfg(test)]

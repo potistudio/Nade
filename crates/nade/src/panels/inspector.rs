@@ -7,9 +7,10 @@ use constants::style::{
 	SPACE_2, SPACE_3, SPACE_4, SPACE_5, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR,
 };
 use constants::widgets::{self, button_body_center, mono_label, ui_label};
+use core::{BlendMode, InstanceId};
 use domain::{Instance, InstanceContent, MediaKind, MediaSource, TransformProperty};
 use iced::time::{Duration, Instant};
-use iced::widget::{Space, button, column, container, row, scrollable, slider, text_input, tooltip};
+use iced::widget::{Space, button, column, container, pick_list, row, scrollable, slider, text_input, tooltip};
 use iced::{Alignment, Animation, Border, Color, Element, Length};
 use inspector_panel::{InspectorMessage, PropertyGroup, Section};
 use panel_system::PanelSystemMessage;
@@ -25,6 +26,7 @@ const ROW_HEIGHT: f32 = constants::style::ROW_HEIGHT;
 /// Panel-local UI state owned by the app (section disclosure, links, drafts).
 #[derive(Debug)]
 pub struct InspectorUi {
+	layer_open: Animation<bool>,
 	transform_open: Animation<bool>,
 	text_open: Animation<bool>,
 	solid_open: Animation<bool>,
@@ -41,6 +43,7 @@ impl Default for InspectorUi {
 				.easing(iced::animation::Easing::EaseOutCubic)
 		};
 		Self {
+			layer_open: disclosure(),
 			transform_open: disclosure(),
 			text_open: disclosure(),
 			solid_open: disclosure(),
@@ -54,6 +57,7 @@ impl Default for InspectorUi {
 impl InspectorUi {
 	fn disclosure(&self, section: Section) -> &Animation<bool> {
 		match section {
+			Section::Layer => &self.layer_open,
 			Section::Transform => &self.transform_open,
 			Section::Text => &self.text_open,
 			Section::Solid => &self.solid_open,
@@ -63,6 +67,7 @@ impl InspectorUi {
 
 	pub fn toggle(&mut self, section: Section, now: Instant) {
 		let animation = match section {
+			Section::Layer => &mut self.layer_open,
 			Section::Transform => &mut self.transform_open,
 			Section::Text => &mut self.text_open,
 			Section::Solid => &mut self.solid_open,
@@ -78,6 +83,7 @@ impl InspectorUi {
 
 	pub fn is_animating(&self, now: Instant) -> bool {
 		[
+			&self.layer_open,
 			&self.transform_open,
 			&self.text_open,
 			&self.solid_open,
@@ -93,6 +99,32 @@ pub struct LayerTarget<'a> {
 	pub time: f32,
 	pub label: Color,
 	pub fps: f32,
+	/// Layers this one may be parented to (no cycles), plus "None".
+	pub parents: Vec<ParentChoice>,
+	/// Name of the composition a comp layer plays.
+	pub nested: Option<&'a str>,
+}
+
+/// An entry of the Parent picker.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParentChoice {
+	pub id: Option<InstanceId>,
+	pub name: String,
+}
+
+impl ParentChoice {
+	pub fn none() -> Self {
+		Self {
+			id: None,
+			name: "None".to_string(),
+		}
+	}
+}
+
+impl std::fmt::Display for ParentChoice {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(&self.name)
+	}
 }
 
 pub enum InspectorTarget<'a> {
@@ -277,6 +309,17 @@ fn layer_view<'a>(layer: LayerTarget<'a>, ui: &'a InspectorUi, now: Instant) -> 
 	let instance = layer.instance;
 
 	let mut sections = column![layer_header(&layer)].spacing(SPACE_4 + 2.0);
+
+	let open = layer.nested.map(|_| open_comp_button());
+	sections = sections.push(section(
+		Section::Layer,
+		Icon::PanelLayers,
+		"Layer",
+		open,
+		ui,
+		now,
+		layer_rows(&layer),
+	));
 
 	let transform_rows = PropertyGroup::ALL
 		.into_iter()
@@ -556,6 +599,18 @@ fn property_row<'a>(layer: &LayerTarget<'a>, group: PropertyGroup, ui: &Inspecto
 	};
 
 	let fields: Element<'a, InspectorMessage> = match group {
+		PropertyGroup::Anchor => row![
+			field(TransformProperty::AnchorX)
+				.prefix("X", AXIS_X_COLOR)
+				.step(1.0)
+				.precision(1),
+			field(TransformProperty::AnchorY)
+				.prefix("Y", AXIS_Y_COLOR)
+				.step(1.0)
+				.precision(1),
+		]
+		.spacing(SPACE_2)
+		.into(),
 		PropertyGroup::Position => row![
 			field(TransformProperty::PositionX)
 				.prefix("X", AXIS_X_COLOR)
@@ -734,6 +789,60 @@ fn solid_rows<'a>(size: [f32; 2], color: [f32; 4], ui: &'a InspectorUi) -> Eleme
 	let mut rows = column![labelled("Size", dimensions.into())].spacing(SPACE_1 + 1.0);
 	for fill_row in fill_rows(color, ui) {
 		rows = rows.push(fill_row);
+	}
+	rows.into()
+}
+
+fn open_comp_button<'a>() -> Element<'a, InspectorMessage> {
+	widgets::tip(
+		button(button_body_center(icon(Icon::Open, 12.0, TEXT_SECONDARY_COLOR)))
+			.padding(0)
+			.width(24)
+			.height(ROW_HEIGHT)
+			.style(widgets::button_ghost)
+			.on_press(InspectorMessage::OpenNestedComposition),
+		"Open Composition",
+		tooltip::Position::Left,
+	)
+}
+
+/// Parent, blend mode and (for comp layers) the nested composition.
+fn layer_rows<'a>(layer: &LayerTarget<'a>) -> Element<'a, InspectorMessage> {
+	let instance = layer.instance;
+	let current = layer
+		.parents
+		.iter()
+		.find(|choice| choice.id == instance.parent)
+		.cloned()
+		.unwrap_or_else(ParentChoice::none);
+	let parent = pick_list(layer.parents.clone(), Some(current), |choice: ParentChoice| {
+		InspectorMessage::SetParent(choice.id)
+	})
+	.text_size(FONT_UI)
+	.padding([2, 8])
+	.width(Length::Fill)
+	.style(widgets::pick_list)
+	.menu_style(widgets::menu);
+	let blend = pick_list(
+		BlendMode::ALL,
+		Some(instance.blend_mode),
+		InspectorMessage::SetBlendMode,
+	)
+	.text_size(FONT_UI)
+	.padding([2, 8])
+	.width(Length::Fill)
+	.style(widgets::pick_list)
+	.menu_style(widgets::menu);
+
+	let mut rows = column![labelled("Parent", parent.into()), labelled("Blend", blend.into())].spacing(SPACE_1 + 1.0);
+	if let Some(name) = layer.nested {
+		rows = rows.push(labelled(
+			"Source",
+			ui_label(name, FONT_UI)
+				.color(TEXT_PRIMARY_COLOR)
+				.wrapping(iced::widget::text::Wrapping::None)
+				.into(),
+		));
 	}
 	rows.into()
 }

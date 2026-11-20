@@ -286,6 +286,11 @@ impl Composition {
 		true
 	}
 
+	/// Whether `parent` can become the parent of `id` without a cycle.
+	pub fn can_parent(&self, id: InstanceId, parent: InstanceId) -> bool {
+		self.get(id).is_some() && self.get(parent).is_some() && !self.is_in_subtree(parent, id)
+	}
+
 	/// Re-parent a layer like After Effects: the layer keeps its on-screen
 	/// placement at `time`, its transform is rewritten relative to the new
 	/// parent. Returns `false` (no change) for unknown layers or cycles.

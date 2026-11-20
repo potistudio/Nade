@@ -2626,6 +2626,7 @@ dependencies = [
 name = "inspector_panel"
 version = "0.0.1"
 dependencies = [
+ "core",
  "domain",
 ]
 

@@ -98,6 +98,8 @@ pub enum EditCommand {
 	Cut,
 	Paste,
 	Delete,
+	/// 選択レイヤーを新しいコンポジションへまとめる（AE の Pre-compose）
+	Precompose,
 }
 
 /// ウィンドウ上部のツールバー／タイトルストリップからの操作

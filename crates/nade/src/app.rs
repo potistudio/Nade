@@ -76,6 +76,7 @@ fn shortcut(key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Messa
 			("k", false) | ("d", true) => edit(EditCommand::Split),
 			("d", false) => edit(EditCommand::Duplicate),
 			("c", false) => edit(EditCommand::Copy),
+			("c", true) => edit(EditCommand::Precompose),
 			("x", false) => edit(EditCommand::Cut),
 			("v", false) => edit(EditCommand::Paste),
 			("y", false) => Some(Message::Shell(ShellMessage::NewSolid)),
@@ -998,7 +999,47 @@ impl NadeApp {
 			}
 			EditCommand::Paste => self.paste_clipboard(),
 			EditCommand::Delete => self.delete_selected_layers(),
+			EditCommand::Precompose => self.precompose_selection(),
 		}
+	}
+
+	/// 選択レイヤーをプリコンポーズし、置き換わったコンポレイヤーを選択する
+	fn precompose_selection(&mut self) {
+		let Some(composition) = self.target_composition() else {
+			return;
+		};
+		let layers: Vec<InstanceId> = self
+			.selected_instances()
+			.into_iter()
+			.filter(|(comp, _)| *comp == composition)
+			.map(|(_, instance)| instance)
+			.collect();
+		if layers.is_empty() {
+			self.show_toast(Icon::Close, "Select layers to pre-compose");
+			return;
+		}
+		let existing: Vec<String> = self
+			.project
+			.compositions()
+			.iter()
+			.filter_map(|id| self.project.composition(id).map(|comp| comp.name().to_string()))
+			.collect();
+		let name = unique_numbered_name("Pre-comp", &existing);
+		let time = self.current_model.preview.time;
+		let Some((nested, layer)) = self.project.precompose(composition, &layers, name.clone(), time) else {
+			return;
+		};
+		self.project_pane.expanded_ids.insert(nested);
+		self.timeline.state.clear_selection();
+		self.finish_layer_edit(composition, Some(layer));
+		let count = layers.len();
+		self.show_toast(
+			Icon::Comp,
+			format!(
+				"Pre-composed {count} layer{} into “{name}”",
+				if count == 1 { "" } else { "s" }
+			),
+		);
 	}
 
 	/// Undo / Redo 後に UI 側の派生状態を作り直す
@@ -1286,6 +1327,18 @@ impl NadeApp {
 	}
 
 	fn open_item(&mut self, id: ObjectId) {
+		// コンポレイヤーのダブルクリックは中身のコンポを開く（AE と同じ）
+		if let ObjectId::Instance { composition, instance } = id
+			&& let Some(nested) = self
+				.project
+				.composition(&composition)
+				.and_then(|comp| comp.get(instance))
+				.and_then(|layer| layer.content().as_composition())
+			&& self.project.composition(&nested).is_some()
+		{
+			self.open_item(ObjectId::Composition(nested));
+			return;
+		}
 		self.select_object(id);
 		if let ObjectId::Composition(composition_id) = id {
 			self.project_pane.expanded_ids.insert(composition_id);
@@ -1885,6 +1938,14 @@ impl NadeApp {
 				self.apply_composition_setting(msg);
 				return;
 			}
+			InspectorMessage::SetParent(parent) => {
+				self.set_selected_parent(parent);
+				return;
+			}
+			InspectorMessage::OpenNestedComposition => {
+				self.open_nested_composition();
+				return;
+			}
 			_ => {}
 		}
 
@@ -2032,12 +2093,15 @@ impl NadeApp {
 					toast = Some((Icon::Fit, "Fit to composition".to_string()));
 				}
 			}
+			InspectorMessage::SetBlendMode(mode) => obj.blend_mode = mode,
 			InspectorMessage::ToggleSection(_)
 			| InspectorMessage::ToggleScaleLink
 			| InspectorMessage::HexEdited(_)
 			| InspectorMessage::SetCompositionDuration(_)
 			| InspectorMessage::FitCompositionToLayers
-			| InspectorMessage::SetCompositionBackground(_) => {}
+			| InspectorMessage::SetCompositionBackground(_)
+			| InspectorMessage::SetParent(_)
+			| InspectorMessage::OpenNestedComposition => {}
 		}
 
 		if let Some(name) = renamed {
@@ -2059,6 +2123,37 @@ impl NadeApp {
 		match jump {
 			Some(time) => self.apply_core_msg(Msg::SetTime(time)),
 			None => self.request_preview_refresh(),
+		}
+	}
+
+	/// Parent picker: re-parent the selected layer keeping it in place.
+	fn set_selected_parent(&mut self, parent: Option<InstanceId>) {
+		let Some(ObjectId::Instance { composition, instance }) = self.project_pane.selected_id else {
+			return;
+		};
+		let time = self.current_model.preview.time;
+		let Some(comp) = self.project.composition_mut(&composition) else {
+			return;
+		};
+		if !comp.set_parent(instance, parent, time) {
+			self.show_toast(Icon::Close, "That parent would create a loop");
+			return;
+		}
+		let name = parent.and_then(|id| comp.get(id)).map(|layer| layer.name().to_string());
+		self.show_toast(
+			Icon::Link,
+			match name {
+				Some(name) => format!("Parented to “{name}”"),
+				None => "Parent removed".to_string(),
+			},
+		);
+		self.request_preview_refresh();
+	}
+
+	/// Show the composition the selected comp layer plays (AE: double-click).
+	fn open_nested_composition(&mut self) {
+		if let Some(id @ ObjectId::Instance { .. }) = self.project_pane.selected_id {
+			self.open_item(id);
 		}
 	}
 
@@ -2101,11 +2196,30 @@ impl NadeApp {
 				else {
 					return InspectorTarget::Empty;
 				};
+				let comp = self.project.composition(&composition).expect("layer found above");
+				let mut candidates: Vec<&domain::Instance> = comp
+					.all_objects()
+					.filter(|other| comp.can_parent(instance, other.id()))
+					.collect();
+				candidates.sort_by_key(|other| (other.track_index(), other.id()));
+				let parents = std::iter::once(panels::inspector::ParentChoice::none())
+					.chain(candidates.into_iter().map(|other| panels::inspector::ParentChoice {
+						id: Some(other.id()),
+						name: format!("{}. {}", other.track_index() + 1, other.name()),
+					}))
+					.collect();
+				let nested = obj
+					.content()
+					.as_composition()
+					.and_then(|id| self.project.composition(&id))
+					.map(|nested| nested.name());
 				InspectorTarget::Layer(LayerTarget {
 					instance: obj,
 					time: self.current_model.preview.time,
 					label: constants::style::label_color(obj.track_index()),
 					fps: self.composition_fps(),
+					parents,
+					nested,
 				})
 			}
 			Some(ObjectId::Composition(id)) => match self.project.composition(&id) {
