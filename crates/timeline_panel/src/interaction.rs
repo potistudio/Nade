@@ -500,6 +500,8 @@ impl TimelineInteraction {
 				visibility_changed: false,
 			},
 			TimelineMessage::CanvasEvent(event) => self.handle_canvas_event(model, event, current_time),
+			// アプリ側でキーフレームを動かす
+			TimelineMessage::KeyframeDragged { .. } => TimelineUpdate::default(),
 			TimelineMessage::ReorderTrack { .. } => {
 				// Handled via pending_reorder in handle_mouse_release
 				TimelineUpdate::default()

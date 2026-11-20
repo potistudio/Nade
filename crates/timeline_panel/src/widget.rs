@@ -49,9 +49,19 @@ pub enum TimelineMessage {
 	PlayheadChanged(f32),
 	ClipModified,
 	CanvasEvent(TimelineCanvasEvent),
-	ReorderTrack { from_index: usize, to_index: usize },
+	ReorderTrack {
+		from_index: usize,
+		to_index: usize,
+	},
 	ToggleVisible(usize),
 	ToggleSolo(usize),
+	/// A keyframe diamond on a clip is being dragged: keys that sat at
+	/// `origin` (when the drag began) should now sit at `time`.
+	KeyframeDragged {
+		clip_id: usize,
+		origin: f32,
+		time: f32,
+	},
 }
 
 /// Canvasから通知されるタイムライン入力イベント
@@ -907,8 +917,60 @@ impl std::fmt::Debug for TimelineWidget<'_> {
 	}
 }
 
+/// Canvas-local input state.
+#[derive(Debug, Default)]
+pub struct CanvasState {
+	modifiers: keyboard::Modifiers,
+	key_drag: Option<KeyDrag>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct KeyDrag {
+	clip_id: usize,
+	origin: f32,
+	last: f32,
+}
+
+impl TimelineWidget<'_> {
+	/// Keyframe diamond under `point` (canvas-local): `(clip id, key time)`.
+	fn keyframe_at(&self, point: Point, size: Size) -> Option<(usize, f32)> {
+		let layout = TimelineLayout::from_bounds(Rectangle::new(Point::ORIGIN, size));
+		let lanes = layout.content;
+		if !lanes.contains(point) {
+			return None;
+		}
+		let reach = KEYFRAME_RADIUS + 2.0;
+		self.model.tracks.iter().enumerate().find_map(|(track_index, track)| {
+			let center_y =
+				lanes.y + track_index as f32 * TRACK_HEIGHT + self.state.scroll_offset.y + TRACK_HEIGHT * 0.5;
+			if (point.y - center_y).abs() > reach + 1.0 {
+				return None;
+			}
+			track.clips.iter().find_map(|clip| {
+				let times = self.keyframes.get(&clip.id)?;
+				times
+					.iter()
+					.copied()
+					.filter(|time| (self.state.time_to_x(*time, lanes.x) - point.x).abs() <= reach)
+					.min_by(|a, b| {
+						let distance = |time: f32| (self.state.time_to_x(time, lanes.x) - point.x).abs();
+						distance(*a).total_cmp(&distance(*b))
+					})
+					.map(|time| (clip.id, time))
+			})
+		})
+	}
+
+	/// Pointer time snapped to whole frames (canvas-local x).
+	fn snapped_time(&self, x: f32, size: Size) -> f32 {
+		let layout = TimelineLayout::from_bounds(Rectangle::new(Point::ORIGIN, size));
+		let fps = self.fps.max(1.0);
+		(self.state.x_to_time(x, layout.content.x) * fps).round().max(0.0) / fps
+	}
+}
+
 impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
-	type State = keyboard::Modifiers;
+	type State = CanvasState;
 
 	fn draw(
 		&self,
@@ -934,13 +996,50 @@ impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
 			.position_in(bounds)
 			.map(|pos| Point::new(bounds.x + pos.x, bounds.y + pos.y));
 
+		// キーフレームの菱形をドラッグして時間を変える（クリップのドラッグより優先）
+		if let Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) = event
+			&& let Some(local) = cursor.position_in(bounds)
+			&& let Some((clip_id, time)) = self.keyframe_at(local, bounds.size())
+		{
+			canvas_state.key_drag = Some(KeyDrag {
+				clip_id,
+				origin: time,
+				last: time,
+			});
+			return Some(canvas::Action::capture());
+		}
+		if let Some(drag) = canvas_state.key_drag {
+			match event {
+				Event::Mouse(mouse::Event::CursorMoved { position }) => {
+					let time = self.snapped_time(position.x - bounds.x, bounds.size());
+					if (time - drag.last).abs() < 1e-5 {
+						return Some(canvas::Action::capture());
+					}
+					canvas_state.key_drag = Some(KeyDrag { last: time, ..drag });
+					return Some(
+						canvas::Action::publish(TimelineMessage::KeyframeDragged {
+							clip_id: drag.clip_id,
+							origin: drag.origin,
+							time,
+						})
+						.and_capture(),
+					);
+				}
+				Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+					canvas_state.key_drag = None;
+					return Some(canvas::Action::capture());
+				}
+				_ => {}
+			}
+		}
+
 		match event {
 			Event::Mouse(mouse_event) => match mouse_event {
 				mouse::Event::ButtonPressed(mouse::Button::Left) => cursor_pos.map(|position| {
 					canvas::Action::publish(TimelineMessage::CanvasEvent(TimelineCanvasEvent::MousePressed {
 						position,
 						bounds,
-						modifiers: *canvas_state,
+						modifiers: canvas_state.modifiers,
 					}))
 				}),
 				mouse::Event::ButtonReleased(mouse::Button::Left) => Some(canvas::Action::publish(
@@ -959,11 +1058,11 @@ impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
 			},
 			Event::Keyboard(key_event) => match key_event {
 				keyboard::Event::ModifiersChanged(modifiers) => {
-					*canvas_state = *modifiers;
+					canvas_state.modifiers = *modifiers;
 					None
 				}
 				keyboard::Event::KeyPressed { key, modifiers, .. } => {
-					*canvas_state = *modifiers;
+					canvas_state.modifiers = *modifiers;
 					Some(canvas::Action::publish(TimelineMessage::CanvasEvent(
 						TimelineCanvasEvent::KeyPressed {
 							key: key.clone(),
@@ -972,7 +1071,7 @@ impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
 					)))
 				}
 				keyboard::Event::KeyReleased { key, modifiers, .. } => {
-					*canvas_state = *modifiers;
+					canvas_state.modifiers = *modifiers;
 					Some(canvas::Action::publish(TimelineMessage::CanvasEvent(
 						TimelineCanvasEvent::KeyReleased {
 							key: key.clone(),
@@ -987,10 +1086,19 @@ impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
 
 	fn mouse_interaction(
 		&self,
-		_canvas_state: &Self::State,
+		canvas_state: &Self::State,
 		bounds: Rectangle,
 		cursor: mouse::Cursor,
 	) -> mouse::Interaction {
+		if canvas_state.key_drag.is_some() {
+			return mouse::Interaction::ResizingHorizontally;
+		}
+		if cursor
+			.position_in(bounds)
+			.is_some_and(|local| self.keyframe_at(local, bounds.size()).is_some())
+		{
+			return mouse::Interaction::Pointer;
+		}
 		cursor
 			.position_in(bounds)
 			.map(|pos| {
@@ -998,5 +1106,34 @@ impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
 					.get_mouse_interaction(self.model, Point::new(bounds.x + pos.x, bounds.y + pos.y), bounds)
 			})
 			.unwrap_or_default()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::TimelineTrack;
+
+	#[test]
+	fn finds_keyframe_diamonds_under_the_pointer() {
+		let state = TimelineInteraction::new();
+		let mut model = TimelineModel::new();
+		let mut track = TimelineTrack::new("Layer");
+		track.add_clip(TimelineClip::new(7, "Layer", 0.0, 5.0));
+		model.add_track(track);
+		let widget = TimelineWidget::new(&state, &model)
+			.frame_rate(10.0)
+			.keyframes(HashMap::from([(7, vec![1.0, 2.0])]));
+
+		let size = Size::new(900.0, 300.0);
+		let lanes = TimelineLayout::from_bounds(Rectangle::new(Point::ORIGIN, size)).content;
+		let y = lanes.y + TRACK_HEIGHT * 0.5;
+		let x = state.time_to_x(2.0, lanes.x);
+		assert_eq!(widget.keyframe_at(Point::new(x + 1.0, y), size), Some((7, 2.0)));
+		assert_eq!(widget.keyframe_at(Point::new(x + 30.0, y), size), None);
+		assert_eq!(widget.keyframe_at(Point::new(x, y + TRACK_HEIGHT), size), None);
+		// フレーム単位にスナップ
+		let snapped = widget.snapped_time(state.time_to_x(1.23, lanes.x), size);
+		assert!((snapped - 1.2).abs() < 1e-5, "{snapped}");
 	}
 }

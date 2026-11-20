@@ -154,6 +154,13 @@ impl Default for TimelinePanelState {
 	}
 }
 
+/// Keys being dragged on the timeline, pinned when the drag starts.
+struct KeyDragSession {
+	clip_id: usize,
+	origin: f32,
+	keys: Vec<(TransformProperty, u64)>,
+}
+
 /// Main application state managing the UI, rendering, and project data
 pub(super) struct NadeApp {
 	/// Project data (assets, metadata, etc.)
@@ -190,6 +197,8 @@ pub(super) struct NadeApp {
 	render_dirty: bool,
 	/// 直近の再生ティック時刻（実時間で再生を進めるため）
 	last_play_tick: Option<Instant>,
+	/// タイムライン上でドラッグ中のキー
+	key_drag: Option<KeyDragSession>,
 
 	/// FPS計算用カウンタ
 	frame_count: u32,
@@ -269,6 +278,7 @@ impl NadeApp {
 			render_shutdown_rx: Arc::new(std::sync::Mutex::new(shutdown_rx)),
 			render_dirty: false,
 			last_play_tick: None,
+			key_drag: None,
 			frame_count: 0,
 			fps_update_time: Instant::now(),
 			render_fps: 0.0,
@@ -475,7 +485,10 @@ impl NadeApp {
 		crate::platform::sync_scroll_phase(&mut self.timeline.state);
 		match &message {
 			Message::PanelSystem(PanelSystemMessage::FocusPointer) => self.pointer_down = true,
-			Message::PointerReleased => self.pointer_down = false,
+			Message::PointerReleased => {
+				self.pointer_down = false;
+				self.key_drag = None;
+			}
 			_ => {}
 		}
 		let records_history = !matches!(
@@ -1461,6 +1474,10 @@ impl NadeApp {
 	}
 
 	fn apply_timeline_message(&mut self, msg: TimelineMessage) {
+		if let TimelineMessage::KeyframeDragged { clip_id, origin, time } = msg {
+			self.drag_clip_keys(clip_id, origin, time);
+			return;
+		}
 		let previous_selection = self.timeline.state.primary_selection();
 		let current_time = self.current_model.preview.time;
 		let timeline_update = self
@@ -2062,6 +2079,54 @@ impl NadeApp {
 				Some((clip.id, times))
 			})
 			.collect()
+	}
+
+	/// Timeline keyframe drag: keys that sat at `origin` move to `time`. The
+	/// key ids are pinned when the drag starts, so keys that get clamped by
+	/// their neighbours keep following the pointer.
+	fn drag_clip_keys(&mut self, clip_id: usize, origin: f32, time: f32) {
+		let Some((composition, instance)) = self
+			.timeline
+			.model
+			.tracks
+			.iter()
+			.flat_map(|track| track.clips.iter())
+			.find(|clip| clip.id == clip_id)
+			.and_then(|clip| Some((clip.composition_id?, clip.instance_id?)))
+		else {
+			return;
+		};
+		let Some(layer) = self
+			.project
+			.composition_mut(&composition)
+			.and_then(|comp| comp.get_mut(instance))
+		else {
+			return;
+		};
+		let same_drag = self
+			.key_drag
+			.as_ref()
+			.is_some_and(|drag| drag.clip_id == clip_id && drag.origin == origin);
+		if !same_drag {
+			let keys = TransformProperty::ALL
+				.into_iter()
+				.filter_map(|property| Some((property, layer.animation.curve(property).key_at(origin)?.id)))
+				.collect();
+			self.key_drag = Some(KeyDragSession { clip_id, origin, keys });
+		}
+		let Some(KeyDragSession { keys, .. }) = &self.key_drag else {
+			return;
+		};
+		for (property, id) in keys {
+			let curve = layer.animation.curve_mut(*property);
+			if let Some(value) = curve.key(*id).map(|key| key.value) {
+				curve.set_key(*id, time, value);
+			}
+		}
+		if !same_drag {
+			self.select_object(ObjectId::Instance { composition, instance });
+		}
+		self.request_preview_refresh();
 	}
 
 	/// 現在時刻で表示中のレイヤーのビューア上の境界（背面 → 前面）
