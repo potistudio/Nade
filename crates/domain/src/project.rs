@@ -5,8 +5,10 @@ use std::path::Path;
 use crate::{
 	asset::{Asset, AssetType},
 	composition::Composition,
+	instance::{Instance, InstanceContent},
 	node::Node,
 };
+use core::id::InstanceId;
 
 /// Project is the top-level container that holds all compositions, assets, and nodes in a project.
 #[derive(Debug)]
@@ -132,12 +134,98 @@ impl Project {
 
 	/// Adds a new composition to the project with the given description and returns its ID
 	pub fn create_composition(&mut self, name: impl Into<String>, width: u32, height: u32, fps: f32) -> CompositionId {
-		let id = CompositionId::new(self.compositions.len());
+		// 削除があっても衝突しないよう最大 ID の次を採番する
+		let id = CompositionId::new(self.compositions.keys().map(|id| id.value() + 1).max().unwrap_or(0));
 		let composition = Composition::new(id, name, width, height, fps);
 
 		self.compositions.insert(id, composition);
 
 		id
+	}
+
+	/// Whether `outer` plays `inner`, directly or through other nested comps
+	/// (or is `inner` itself). Nesting `inner` into `outer` would then loop.
+	pub fn contains_composition(&self, outer: CompositionId, inner: CompositionId) -> bool {
+		let mut stack = vec![outer];
+		let mut seen = std::collections::HashSet::new();
+		while let Some(id) = stack.pop() {
+			if id == inner {
+				return true;
+			}
+			if seen.insert(id)
+				&& let Some(composition) = self.composition(&id)
+			{
+				stack.extend(composition.nested_compositions());
+			}
+		}
+		false
+	}
+
+	/// Whether `inner` can be placed as a layer inside `outer`.
+	pub fn can_nest(&self, outer: CompositionId, inner: CompositionId) -> bool {
+		self.composition(&inner).is_some() && !self.contains_composition(inner, outer)
+	}
+
+	/// After Effects' Pre-compose (move all attributes): moves `layers` of
+	/// `composition` into a new composition of the same size, frame rate and
+	/// length, and replaces them with one layer playing it. Returns the new
+	/// composition and the layer that plays it.
+	pub fn precompose(
+		&mut self,
+		composition: CompositionId,
+		layers: &[InstanceId],
+		name: impl Into<String>,
+		time: f32,
+	) -> Option<(CompositionId, InstanceId)> {
+		let source = self.composition(&composition)?;
+		let mut moved: Vec<Instance> = layers.iter().filter_map(|id| source.get(*id)).cloned().collect();
+		if moved.is_empty() {
+			return None;
+		}
+		moved.sort_by_key(|instance| (instance.track_index(), instance.id()));
+		let (width, height, fps, duration) = (source.width(), source.height(), source.fps(), source.duration());
+		let top_track = moved[0].track_index();
+		let name = name.into();
+		let moved_ids: Vec<InstanceId> = moved.iter().map(Instance::id).collect();
+
+		let nested_id = self.create_composition(name.clone(), width, height, fps);
+		let node_id = self.create_node();
+
+		// 外へ残る親子関係は見た目を保ったまま外す
+		let source = self.composition_mut(&composition)?;
+		for id in source.all_objects().map(Instance::id).collect::<Vec<_>>() {
+			let Some(parent) = source.get(id).and_then(|instance| instance.parent) else {
+				continue;
+			};
+			if moved_ids.contains(&id) != moved_ids.contains(&parent) {
+				source.set_parent(id, None, time);
+			}
+		}
+		let moved: Vec<Instance> = moved_ids.iter().filter_map(|id| source.get(*id)).cloned().collect();
+		for id in &moved_ids {
+			source.remove(*id);
+		}
+		source.insert_track(top_track);
+		let mut layer = Instance::new(InstanceId::new(0), node_id, &name, 0.0, duration);
+		layer.set_content(InstanceContent::Composition(nested_id));
+		let layer_id = source.insert_instance(layer, Some(top_track));
+		source.compact_tracks();
+
+		let nested = self.composition_mut(&nested_id)?;
+		nested.set_duration(duration);
+		let mut id_map = HashMap::new();
+		for instance in moved {
+			let (old, track) = (instance.id(), instance.track_index());
+			let new = nested.insert_instance(instance, Some(track));
+			id_map.insert(old, new);
+		}
+		for new in id_map.values().copied().collect::<Vec<_>>() {
+			if let Some(instance) = nested.get_mut(new) {
+				instance.parent = instance.parent.and_then(|parent| id_map.get(&parent).copied());
+			}
+		}
+		nested.compact_tracks();
+		Some((nested_id, layer_id))
 	}
 
 	/// Adds a new node to the project and returns its ID
@@ -409,5 +497,39 @@ mod tests {
 			asset.source_path.as_deref(),
 			Some(std::path::Path::new("/tmp/demo.png"))
 		);
+	}
+
+	#[test]
+	fn precompose_moves_layers_into_a_nested_comp() {
+		let mut project = Project::default();
+		let main = project.create_composition("Main", 640, 360, 30.0);
+		let (a, b, c) = {
+			let comp = project.composition_mut(&main).unwrap();
+			let a = comp.add_instance_named(NodeId::new(0), "A").id();
+			let b = comp.add_instance_named(NodeId::new(1), "B").id();
+			let c = comp.add_instance_named(NodeId::new(2), "C").id();
+			comp.set_parent(c, Some(b), 0.0);
+			(a, b, c)
+		};
+
+		let (nested, layer) = project.precompose(main, &[b, c], "Pre-comp 1", 0.0).unwrap();
+		let comp = project.composition(&main).unwrap();
+		assert_eq!(comp.len(), 2);
+		assert_eq!(comp.get(a).unwrap().track_index(), 0);
+		let layer = comp.get(layer).unwrap();
+		assert_eq!(layer.content().as_composition(), Some(nested));
+		assert_eq!(layer.track_index(), 1);
+
+		let inner = project.composition(&nested).unwrap();
+		assert_eq!((inner.width(), inner.height(), inner.len()), (640, 360, 2));
+		let tracks: Vec<usize> = inner.objects_in_draw_order().map(Instance::track_index).collect();
+		assert_eq!(tracks, vec![1, 0]);
+		// 一緒に移したレイヤー間の親子関係は残る
+		let child = inner.all_objects().find(|instance| instance.name() == "C").unwrap();
+		let parent = inner.all_objects().find(|instance| instance.name() == "B").unwrap();
+		assert_eq!(child.parent, Some(parent.id()));
+
+		assert!(!project.can_nest(nested, main), "main already plays the pre-comp");
+		assert!(project.can_nest(main, nested));
 	}
 }

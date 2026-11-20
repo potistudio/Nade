@@ -142,6 +142,7 @@ fn view_instance<'a>(
 			domain::MediaKind::Video => Icon::Video,
 			domain::MediaKind::Audio => Icon::Audio,
 		},
+		domain::InstanceContent::Composition(_) => Icon::Comp,
 	};
 
 	TreeRow {

@@ -330,6 +330,33 @@ impl Composition {
 		true
 	}
 
+	/// Open an empty track at `index`: layers on it and below move down one.
+	pub fn insert_track(&mut self, index: usize) {
+		for instance in &mut self.instances {
+			if instance.track_index() >= index {
+				instance.set_track_index(instance.track_index() + 1);
+			}
+		}
+	}
+
+	/// Remove empty tracks so layers occupy `0..n` in the same order.
+	pub fn compact_tracks(&mut self) {
+		let mut used: Vec<usize> = self.instances.iter().map(Instance::track_index).collect();
+		used.sort_unstable();
+		used.dedup();
+		for instance in &mut self.instances {
+			let rank = used.binary_search(&instance.track_index()).unwrap_or(0);
+			instance.set_track_index(rank);
+		}
+	}
+
+	/// Compositions this one plays directly as layers.
+	pub fn nested_compositions(&self) -> impl Iterator<Item = CompositionId> + '_ {
+		self.instances
+			.iter()
+			.filter_map(|instance| instance.content().as_composition())
+	}
+
 	/// オブジェクトの数を取得
 	pub fn len(&self) -> usize {
 		self.instances.len()

@@ -1,4 +1,4 @@
-use core::{AnimationCurve, AssetId, BlendMode, MediaInfo, NodeId, Transform, id::InstanceId};
+use core::{AnimationCurve, AssetId, BlendMode, CompositionId, MediaInfo, NodeId, Transform, id::InstanceId};
 use std::path::PathBuf;
 
 /// A scalar channel of an instance transform.
@@ -175,6 +175,8 @@ pub enum InstanceContent {
 	Solid { width: f32, height: f32, color: [f32; 4] },
 	/// 画像・動画・音声フッテージ
 	Media(MediaSource),
+	/// 別のコンポジション（ネスト / プリコンポーズ）
+	Composition(CompositionId),
 }
 
 impl InstanceContent {
@@ -268,6 +270,14 @@ impl InstanceContent {
 		}
 	}
 
+	/// Composition a nested-comp layer plays.
+	pub fn as_composition(&self) -> Option<CompositionId> {
+		match self {
+			Self::Composition(id) => Some(*id),
+			_ => None,
+		}
+	}
+
 	/// Whether the layer's length is bound to footage that has its own timing.
 	pub fn is_timed_media(&self) -> bool {
 		self.as_media()
@@ -285,6 +295,7 @@ impl InstanceContent {
 				MediaKind::Video => "Video Layer",
 				MediaKind::Audio => "Audio Layer",
 			},
+			Self::Composition(_) => "Composition Layer",
 		}
 	}
 }
