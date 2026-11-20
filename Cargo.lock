@@ -1374,8 +1374,8 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "core",
- "env_logger",
  "log",
+ "media",
 ]
 
 [[package]]
