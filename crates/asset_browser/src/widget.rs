@@ -12,7 +12,7 @@ pub struct AssetBrowserWidget<'a> {
 	project: &'a Project,
 }
 
-//* -------- Public API -------- */
+//* -------- Public API ----------------------------------------------------- */
 impl<'a> AssetBrowserWidget<'a> {
 	pub fn new(project: &'a Project) -> Self {
 		Self { project }
@@ -65,7 +65,7 @@ impl<'a> AssetBrowserWidget<'a> {
 	}
 }
 
-//* -------- Private API -------- */
+//* -------- Internal ------------------------------------------------------- */
 fn tool_button<'a>(glyph: Icon, label: &'a str, message: AssetBrowserMessage) -> Element<'a, AssetBrowserMessage> {
 	widgets::tip(
 		button(button_body_center(icon(glyph, 13.0, TEXT_SECONDARY_COLOR)))
