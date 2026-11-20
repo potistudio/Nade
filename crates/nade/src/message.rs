@@ -75,6 +75,20 @@ pub enum TransportMessage {
 	ToggleLoop,
 }
 
+/// 編集コマンド（メニュー・ショートカット共通）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditCommand {
+	Undo,
+	Redo,
+	/// 再生ヘッド位置で選択レイヤー（無選択なら再生ヘッド下の全レイヤー）を分割
+	Split,
+	Duplicate,
+	Copy,
+	Cut,
+	Paste,
+	Delete,
+}
+
 /// ウィンドウ上部のツールバー／タイトルストリップからの操作
 #[derive(Debug, Clone, Copy)]
 pub enum ShellMessage {
@@ -97,8 +111,10 @@ pub enum Message {
 	Transport(TransportMessage),
 	/// ツールバー操作
 	Shell(ShellMessage),
-	/// 選択中のレイヤーを削除
-	DeleteSelection,
+	/// 編集コマンド
+	Edit(EditCommand),
+	/// マウスボタンが離された（ドラッグ操作の区切り。Undo 履歴の確定に使う）
+	PointerReleased,
 	/// ウィンドウサイズ変更
 	WindowResized(iced::Size),
 	/// 定期更新（再生中のアニメーション用）

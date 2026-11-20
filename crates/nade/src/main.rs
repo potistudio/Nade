@@ -3,6 +3,7 @@
 mod app;
 #[cfg(debug_assertions)]
 mod devtools;
+mod history;
 mod message;
 mod panel_content;
 mod panels;

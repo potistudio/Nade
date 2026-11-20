@@ -242,6 +242,17 @@ impl TimelineInteraction {
 		self.selected_clip.or_else(|| self.selected_clips.first().copied())
 	}
 
+	/// 選択中の全クリップ `(track_index, clip_id)`（単一選択を含む）
+	pub fn selected_clip_ids(&self) -> Vec<(usize, usize)> {
+		let mut clips: Vec<(usize, usize)> = self.selected_clip.into_iter().collect();
+		for clip in &self.selected_clips {
+			if !clips.contains(clip) {
+				clips.push(*clip);
+			}
+		}
+		clips
+	}
+
 	pub fn select_clip(&mut self, track_index: usize, clip_id: usize) {
 		self.selected_clip = Some((track_index, clip_id));
 		self.selected_clips.clear();

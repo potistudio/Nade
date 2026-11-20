@@ -19,10 +19,13 @@ use std::sync::Arc;
 use timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
 
 use core::{AssetId, CompositionId, CoreEffect, FrameData, InstanceId, MediaInfo, Model, Msg, update};
-use domain::{AssetType, InstanceContent, MediaKind, MediaSource, Project, TransformAnimation, TransformProperty};
+use domain::{
+	AssetType, Instance, InstanceContent, MediaKind, MediaSource, Project, TransformAnimation, TransformProperty,
+};
 use renderer::Scene;
 
-use crate::message::{AppPanelMessage, Message, PreviewMessage, ShellMessage, TransportMessage};
+use crate::history::History;
+use crate::message::{AppPanelMessage, EditCommand, Message, PreviewMessage, ShellMessage, TransportMessage};
 use crate::panel_content::PanelContent;
 use crate::panels;
 use crate::services::render_service::{RenderConnection, build_render_stream};
@@ -47,6 +50,7 @@ fn on_window_event(event: iced::Event, status: iced::event::Status, _id: iced::w
 		iced::Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => {
 			Some(Message::PanelSystem(PanelSystemMessage::FocusPointer))
 		}
+		iced::Event::Mouse(iced::mouse::Event::ButtonReleased(_)) => Some(Message::PointerReleased),
 		iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. })
 			if status == iced::event::Status::Ignored =>
 		{
@@ -56,11 +60,29 @@ fn on_window_event(event: iced::Event, status: iced::event::Status, _id: iced::w
 	}
 }
 
-/// After Effects / Final Cut 風の単キーショートカット
+/// After Effects / Premiere 風のショートカット
 fn shortcut(key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Message> {
 	use keyboard::key::Named;
 
-	if modifiers.command() || modifiers.control() || modifiers.alt() {
+	if modifiers.command() {
+		let keyboard::Key::Character(c) = key.as_ref() else {
+			return None;
+		};
+		let edit = |command| Some(Message::Edit(command));
+		return match (c.to_ascii_lowercase().as_str(), modifiers.shift()) {
+			("z", false) => edit(EditCommand::Undo),
+			("z", true) => edit(EditCommand::Redo),
+			("k", false) | ("d", true) => edit(EditCommand::Split),
+			("d", false) => edit(EditCommand::Duplicate),
+			("c", false) => edit(EditCommand::Copy),
+			("x", false) => edit(EditCommand::Cut),
+			("v", false) => edit(EditCommand::Paste),
+			("y", false) => Some(Message::Shell(ShellMessage::NewSolid)),
+			("i", false) => Some(Message::Shell(ShellMessage::ImportMedia)),
+			_ => None,
+		};
+	}
+	if modifiers.control() || modifiers.alt() {
 		return None;
 	}
 
@@ -70,7 +92,7 @@ fn shortcut(key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Messa
 		keyboard::Key::Named(Named::End) => Some(Message::Transport(TransportMessage::GoToEnd)),
 		keyboard::Key::Named(Named::ArrowLeft) => Some(Message::Transport(TransportMessage::StepBackward)),
 		keyboard::Key::Named(Named::ArrowRight) => Some(Message::Transport(TransportMessage::StepForward)),
-		keyboard::Key::Named(Named::Delete | Named::Backspace) => Some(Message::DeleteSelection),
+		keyboard::Key::Named(Named::Delete | Named::Backspace) => Some(Message::Edit(EditCommand::Delete)),
 		keyboard::Key::Character(c) => Tool::from_key(c).map(|tool| Message::Shell(ShellMessage::SelectTool(tool))),
 		_ => None,
 	}
@@ -170,6 +192,12 @@ pub(super) struct NadeApp {
 	viewer_size: Size,
 	/// プロパティパネルの UI 状態
 	inspector_ui: panels::inspector::InspectorUi,
+	/// Undo / Redo 履歴
+	history: History,
+	/// コピーしたレイヤー（貼り付け時はクリップ群の先頭を再生ヘッドに合わせる）
+	clipboard: Vec<Instance>,
+	/// マウスボタン押下中（ドラッグ中は履歴を確定しない）
+	pointer_down: bool,
 	/// デバッグ用スクリーンショット（`NADE_SCREENSHOT`）
 	#[cfg(debug_assertions)]
 	capture: Option<crate::devtools::Capture>,
@@ -192,6 +220,7 @@ impl NadeApp {
 		let (shutdown_tx, shutdown_rx) = bounded(1);
 		let render_worker = RenderWorker::start(render_tx);
 
+		let project_for_history = project.snapshot();
 		let mut app = Self {
 			project,
 			current_model: Model::default(),
@@ -220,6 +249,9 @@ impl NadeApp {
 			viewer: ViewerSettings::default(),
 			viewer_size: Size::new(960.0, 540.0),
 			inspector_ui: panels::inspector::InspectorUi::default(),
+			history: History::with_snapshot(project_for_history),
+			clipboard: Vec::new(),
+			pointer_down: false,
 			#[cfg(debug_assertions)]
 			capture: crate::devtools::Capture::from_env(),
 		};
@@ -398,7 +430,20 @@ impl NadeApp {
 
 	pub(super) fn update(&mut self, message: Message) -> Task<Message> {
 		crate::platform::sync_scroll_phase(&mut self.timeline.state);
+		match &message {
+			Message::PanelSystem(PanelSystemMessage::FocusPointer) => self.pointer_down = true,
+			Message::PointerReleased => self.pointer_down = false,
+			_ => {}
+		}
+		let records_history = !matches!(
+			message,
+			Message::Tick | Message::RenderCompleted(_) | Message::Edit(EditCommand::Undo | EditCommand::Redo)
+		);
 		let task = self.update_inner(message);
+		// ドラッグ中の連続した変更は、ボタンを離した時点で 1 ステップにまとめる
+		if records_history && !self.pointer_down {
+			self.history.checkpoint(&self.project);
+		}
 		crate::platform::sync_scroll_phase(&mut self.timeline.state);
 		task
 	}
@@ -419,10 +464,12 @@ impl NadeApp {
 
 			Message::Shell(shell_message) => self.apply_shell_message(shell_message),
 
-			Message::DeleteSelection => {
-				self.delete_selected_layer();
+			Message::Edit(command) => {
+				self.apply_edit(command);
 				Task::none()
 			}
+
+			Message::PointerReleased => Task::none(),
 
 			Message::WindowResized(size) => {
 				self.window_size = size;
@@ -649,24 +696,253 @@ impl NadeApp {
 			|| self.toast.as_ref().is_some_and(|toast| toast.is_active(self.now))
 	}
 
-	/// 選択中のレイヤーを削除（カーブエディタにフォーカスがある時はキー削除を優先）
-	fn delete_selected_layer(&mut self) {
-		if matches!(self.panel_system.focused_content(), Some(PanelContent::CurveEditor)) {
+	// -------------------------------------------------------------------------
+	// 編集コマンド
+	// -------------------------------------------------------------------------
+
+	fn apply_edit(&mut self, command: EditCommand) {
+		match command {
+			EditCommand::Undo => {
+				if self.history.undo(&mut self.project) {
+					self.after_history_change();
+					self.show_toast(Icon::Undo, "Undo");
+				} else {
+					self.show_toast(Icon::Undo, "Nothing to undo");
+				}
+			}
+			EditCommand::Redo => {
+				if self.history.redo(&mut self.project) {
+					self.after_history_change();
+					self.show_toast(Icon::Redo, "Redo");
+				} else {
+					self.show_toast(Icon::Redo, "Nothing to redo");
+				}
+			}
+			EditCommand::Split => self.split_at_playhead(),
+			EditCommand::Duplicate => self.duplicate_selection(),
+			EditCommand::Copy => {
+				self.copy_selection();
+			}
+			EditCommand::Cut => {
+				if self.copy_selection() {
+					self.delete_selected_layers();
+				}
+			}
+			EditCommand::Paste => self.paste_clipboard(),
+			EditCommand::Delete => self.delete_selected_layers(),
+		}
+	}
+
+	/// Undo / Redo 後に UI 側の派生状態を作り直す
+	fn after_history_change(&mut self) {
+		let Some(composition) = self.target_composition() else {
+			return;
+		};
+		if self.project.composition(&composition).is_none() {
 			return;
 		}
-		let Some(ObjectId::Instance { composition, instance }) = self.project_pane.selected_id else {
+		// 消えたレイヤーを選択したままにしない
+		if let Some(ObjectId::Instance { instance, .. }) = self.project_pane.selected_id
+			&& self
+				.project
+				.composition(&composition)
+				.and_then(|comp| comp.get(instance))
+				.is_none()
+		{
+			self.project_pane.selected_id = Some(ObjectId::Composition(composition));
+		}
+		let selected = self.project_pane.selected_id;
+		self.rebuild_timeline_for_composition(composition);
+		if let Some(id) = selected {
+			self.sync_timeline_selection_from_object(id);
+		}
+		self.request_preview_refresh();
+	}
+
+	/// 選択中のレイヤー（タイムラインの複数選択を優先）
+	fn selected_instances(&self) -> Vec<(CompositionId, InstanceId)> {
+		let from_timeline: Vec<_> = self
+			.timeline
+			.state
+			.selected_clip_ids()
+			.into_iter()
+			.filter_map(|(track_index, clip_id)| {
+				let clip = self
+					.timeline
+					.model
+					.tracks
+					.get(track_index)?
+					.clips
+					.iter()
+					.find(|clip| clip.id == clip_id)?;
+				Some((clip.composition_id?, clip.instance_id?))
+			})
+			.collect();
+		if !from_timeline.is_empty() {
+			return from_timeline;
+		}
+		match self.project_pane.selected_id {
+			Some(ObjectId::Instance { composition, instance }) => vec![(composition, instance)],
+			_ => Vec::new(),
+		}
+	}
+
+	/// 編集後にタイムラインを作り直し、`instance` を選択する
+	fn finish_layer_edit(&mut self, composition: CompositionId, select: Option<InstanceId>) {
+		self.rebuild_timeline_for_composition(composition);
+		self.project_pane.expanded_ids.insert(composition);
+		match select {
+			Some(instance) => self.select_object(ObjectId::Instance { composition, instance }),
+			None => self.project_pane.selected_id = Some(ObjectId::Composition(composition)),
+		}
+		self.request_preview_refresh();
+	}
+
+	fn split_at_playhead(&mut self) {
+		let Some(composition) = self.target_composition() else {
+			return;
+		};
+		let time = self.current_model.preview.time;
+		let crossing = self
+			.project
+			.composition(&composition)
+			.map(|comp| comp.instances_at(time))
+			.unwrap_or_default();
+		// 選択レイヤーのうち再生ヘッドを跨ぐもの。無ければ再生ヘッド下の全レイヤー
+		let mut targets: Vec<InstanceId> = self
+			.selected_instances()
+			.into_iter()
+			.filter(|(comp, instance)| *comp == composition && crossing.contains(instance))
+			.map(|(_, instance)| instance)
+			.collect();
+		if targets.is_empty() {
+			targets = crossing;
+		}
+		let Some(comp) = self.project.composition_mut(&composition) else {
+			return;
+		};
+		let parts: Vec<InstanceId> = targets
+			.into_iter()
+			.filter_map(|instance| comp.split_instance(instance, time))
+			.collect();
+		if parts.is_empty() {
+			self.show_toast(Icon::Scissors, "Nothing to split at the playhead");
+			return;
+		}
+		let count = parts.len();
+		self.finish_layer_edit(composition, parts.first().copied());
+		let timecode = core::timecode::format(time, self.composition_fps());
+		self.show_toast(
+			Icon::Scissors,
+			if count == 1 {
+				format!("Split at {timecode}")
+			} else {
+				format!("Split {count} layers at {timecode}")
+			},
+		);
+	}
+
+	fn duplicate_selection(&mut self) {
+		let selected = self.selected_instances();
+		let Some(&(composition, _)) = selected.first() else {
 			return;
 		};
 		let Some(comp) = self.project.composition_mut(&composition) else {
 			return;
 		};
-		let name = comp.get(instance).map(|obj| obj.name().to_string()).unwrap_or_default();
-		comp.remove(instance);
+		let copies: Vec<InstanceId> = selected
+			.iter()
+			.filter(|(comp_id, _)| *comp_id == composition)
+			.filter_map(|(_, instance)| comp.duplicate_instance(*instance))
+			.collect();
+		let count = copies.len();
+		self.finish_layer_edit(composition, copies.last().copied());
+		self.show_toast(
+			Icon::Insert,
+			if count == 1 {
+				"Duplicated layer".to_string()
+			} else {
+				format!("Duplicated {count} layers")
+			},
+		);
+	}
 
-		self.rebuild_timeline_for_composition(composition);
-		self.project_pane.selected_id = Some(ObjectId::Composition(composition));
-		self.request_preview_refresh();
-		self.show_toast(Icon::Trash, format!("Deleted “{name}”"));
+	/// 選択レイヤーをクリップボードへ。コピーしたら `true`。
+	fn copy_selection(&mut self) -> bool {
+		let copies: Vec<Instance> = self
+			.selected_instances()
+			.into_iter()
+			.filter_map(|(composition, instance)| self.project.composition(&composition)?.get(instance).cloned())
+			.collect();
+		if copies.is_empty() {
+			return false;
+		}
+		let count = copies.len();
+		self.clipboard = copies;
+		self.show_toast(
+			Icon::Insert,
+			if count == 1 {
+				"Copied layer".to_string()
+			} else {
+				format!("Copied {count} layers")
+			},
+		);
+		true
+	}
+
+	/// クリップボードのレイヤーを再生ヘッド位置へ貼り付ける
+	fn paste_clipboard(&mut self) {
+		let Some(composition) = self.target_composition() else {
+			return;
+		};
+		let Some(base) = self.clipboard.iter().map(Instance::start_time).reduce(f32::min) else {
+			return;
+		};
+		let time = self.current_model.preview.time;
+		let copies = self.clipboard.clone();
+		let Some(comp) = self.project.composition_mut(&composition) else {
+			return;
+		};
+		let mut last = None;
+		for mut copy in copies {
+			let track = copy.track_index();
+			copy.set_start_time(time + copy.start_time() - base);
+			last = Some(comp.insert_instance(copy, Some(track)));
+		}
+		let end = comp.content_end();
+		if end > comp.duration() {
+			comp.set_duration(end);
+		}
+		self.finish_layer_edit(composition, last);
+		self.show_toast(Icon::Insert, "Pasted");
+	}
+
+	/// 選択中のレイヤーを削除（カーブエディタにフォーカスがある時はキー削除を優先）
+	fn delete_selected_layers(&mut self) {
+		if matches!(self.panel_system.focused_content(), Some(PanelContent::CurveEditor)) {
+			return;
+		}
+		let selected = self.selected_instances();
+		let Some(&(composition, _)) = selected.first() else {
+			return;
+		};
+		let mut names = Vec::new();
+		if let Some(comp) = self.project.composition_mut(&composition) {
+			for (_, instance) in selected.iter().filter(|(comp_id, _)| *comp_id == composition) {
+				if let Some(obj) = comp.get(*instance) {
+					names.push(obj.name().to_string());
+				}
+				comp.remove(*instance);
+			}
+		}
+
+		self.finish_layer_edit(composition, None);
+		self.timeline.state.clear_selection();
+		match names.as_slice() {
+			[] => {}
+			[name] => self.show_toast(Icon::Trash, format!("Deleted “{name}”")),
+			_ => self.show_toast(Icon::Trash, format!("Deleted {} layers", names.len())),
+		}
 	}
 
 	fn apply_timeline_message(&mut self, msg: TimelineMessage) {
