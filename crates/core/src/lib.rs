@@ -6,10 +6,12 @@ pub use core::{
 	AssetId, EvalContext, EvalError, Image, NodeId, NodeState, OperatorState, Output, OutputType, Value, ValueKind,
 	ValueParam,
 };
+pub mod affine;
 pub mod bitdepth;
 pub mod media;
 pub mod sample_rate;
 
+pub use affine::{Affine, BlendMode};
 pub use bitdepth::BitDepth;
 pub use media::MediaInfo;
 pub use sample_rate::SampleRate;
@@ -239,6 +241,10 @@ pub fn update(mut model: Model, msg: Msg) -> (Model, Vec<CoreEffect>) {
 /// 3次元トランスフォーム
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Transform {
+	/// Point of the layer (relative to its center, layer px) that sits at
+	/// `position` and that rotation / scale pivot around.
+	#[serde(default)]
+	pub anchor: [f32; 3],
 	pub position: [f32; 3],
 	pub rotation: [f32; 3],
 	pub scale: [f32; 3],
@@ -248,6 +254,7 @@ pub struct Transform {
 impl Default for Transform {
 	fn default() -> Self {
 		Self {
+			anchor: [0.0, 0.0, 0.0],
 			position: [0.0, 0.0, 0.0],
 			rotation: [0.0, 0.0, 0.0],
 			scale: [1.0, 1.0, 1.0],
@@ -256,9 +263,36 @@ impl Default for Transform {
 	}
 }
 
+impl Transform {
+	/// Layer space (origin at the layer center) → parent space.
+	pub fn local_matrix(&self) -> Affine {
+		Affine::translate(self.position[0], self.position[1])
+			.then_apply(Affine::rotate(self.rotation[2]))
+			.then_apply(Affine::scale(self.scale[0], self.scale[1]))
+			.then_apply(Affine::translate(-self.anchor[0], -self.anchor[1]))
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn anchor_is_the_pivot() {
+		let transform = Transform {
+			anchor: [10.0, 0.0, 0.0],
+			position: [100.0, 50.0, 0.0],
+			rotation: [0.0, 0.0, 90.0],
+			scale: [2.0, 2.0, 1.0],
+			opacity: 1.0,
+		};
+		let matrix = transform.local_matrix();
+		let pivot = matrix.apply([10.0, 0.0]);
+		assert!((pivot[0] - 100.0).abs() < 1e-4 && (pivot[1] - 50.0).abs() < 1e-4);
+		// 中心はアンカーの逆側へ 2 倍・90° 回転して (100, 30)
+		let center = matrix.apply([0.0, 0.0]);
+		assert!((center[0] - 100.0).abs() < 1e-4 && (center[1] - 30.0).abs() < 1e-4);
+	}
 
 	#[test]
 	fn set_time_requests_render() {
