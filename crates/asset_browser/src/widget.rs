@@ -237,8 +237,8 @@ fn drop_overlay<'a>(target: DropTarget<'a>) -> Element<'a, AssetBrowserMessage> 
 		Some(folder) => format!("Into “{folder}”"),
 		None => "Into Project".to_owned(),
 	};
-	// 一覧の文字と重ならないよう、案内は不透明なカードに載せる
-	let card = container(
+	// 案内を枠で囲うとボタンに見えるので、背景ごと一覧を沈めて文字だけを載せる
+	container(
 		column![
 			icon(Icon::Import, 24.0, ACCENT_BRIGHT_COLOR),
 			ui_label("Drop to Import", FONT_UI).color(TEXT_PRIMARY_COLOR),
@@ -247,26 +247,30 @@ fn drop_overlay<'a>(target: DropTarget<'a>) -> Element<'a, AssetBrowserMessage> 
 		.spacing(SPACE_3)
 		.align_x(Alignment::Center),
 	)
-	.padding([SPACE_5, SPACE_6])
-	.style(widgets::hud(1.0));
-	container(card)
-		.center(Length::Fill)
-		.style(|_| container::Style {
-			background: Some(
-				Color {
-					a: 0.12,
-					..ACCENT_COLOR
-				}
-				.into(),
-			),
-			border: Border {
-				color: ACCENT_COLOR,
-				width: 1.5,
-				radius: BORDER_RADIUS.into(),
-			},
-			..Default::default()
-		})
-		.into()
+	.center(Length::Fill)
+	.style(|_| container::Style {
+		background: Some(drop_overlay_color().into()),
+		border: Border {
+			color: ACCENT_COLOR,
+			width: 1.5,
+			radius: BORDER_RADIUS.into(),
+		},
+		..Default::default()
+	})
+	.into()
+}
+
+/// Panel surface tinted toward the accent, nearly opaque so the rows behind
+/// only ghost through and the message stays legible.
+fn drop_overlay_color() -> Color {
+	const TINT: f32 = 0.12;
+	let mix = |panel: f32, accent: f32| panel + (accent - panel) * TINT;
+	Color {
+		r: mix(PANEL_COLOR.r, ACCENT_COLOR.r),
+		g: mix(PANEL_COLOR.g, ACCENT_COLOR.g),
+		b: mix(PANEL_COLOR.b, ACCENT_COLOR.b),
+		a: 0.96,
+	}
 }
 
 /// In-place name field: Enter commits, Esc (handled by the shell) cancels.
