@@ -319,10 +319,30 @@ impl<'a> CurveEditorWidget<'a> {
 	}
 
 	pub fn view(self) -> Element<'a, CurveEditorMessage> {
-		use constants::icons::{Icon, icon};
-		use constants::widgets::{self, button_body, button_body_center, mono_label, ui_label};
+		let sidebar = self.sidebar();
+		let toolbar = self.toolbar();
+		let canvas: Element<'a, CurveEditorMessage> = Canvas::new(self).width(Length::Fill).height(Length::Fill).into();
 
-		let sidebar = EDITABLE_PROPERTIES
+		row![
+			container(sidebar)
+				.width(SIDEBAR_WIDTH)
+				.height(Length::Fill)
+				.padding([SPACE_3, SPACE_3]),
+			container(Space::new().width(1).height(Length::Fill)).style(|_| container::Style {
+				background: Some(BORDER_SUBTLE_COLOR.into()),
+				..Default::default()
+			}),
+			column![toolbar, canvas].width(Length::Fill).height(Length::Fill),
+		]
+		.into()
+	}
+
+	/// Property list with key counts.
+	fn sidebar(&self) -> Element<'a, CurveEditorMessage> {
+		use constants::icons::{Icon, icon};
+		use constants::widgets::{self, button_body, mono_label, ui_label};
+
+		EDITABLE_PROPERTIES
 			.into_iter()
 			.fold(column![].spacing(1), |column, property| {
 				let selected = property == self.state.selected_property;
@@ -364,7 +384,14 @@ impl<'a> CurveEditorWidget<'a> {
 						.style(widgets::button_toggle(selected))
 						.on_press(CurveEditorMessage::SelectProperty(property)),
 				)
-			});
+			})
+			.into()
+	}
+
+	/// Selected property name, key actions and interpolation buttons.
+	fn toolbar(&self) -> Element<'a, CurveEditorMessage> {
+		use constants::icons::{Icon, icon};
+		use constants::widgets::{self, button_body_center, ui_label};
 
 		let interpolation = self
 			.state
@@ -405,7 +432,7 @@ impl<'a> CurveEditorWidget<'a> {
 		};
 
 		let selected_name = self.state.selected_property.label();
-		let toolbar = row![
+		row![
 			ui_label(selected_name, FONT_UI).color(TEXT_PRIMARY_COLOR),
 			Space::new().width(Length::Fill),
 			icon_button(
@@ -430,21 +457,7 @@ impl<'a> CurveEditorWidget<'a> {
 		.spacing(SPACE_1)
 		.align_y(Alignment::Center)
 		.padding([0.0, SPACE_4])
-		.height(TOOLBAR_HEIGHT);
-
-		let canvas: Element<'a, CurveEditorMessage> = Canvas::new(self).width(Length::Fill).height(Length::Fill).into();
-
-		row![
-			container(sidebar)
-				.width(SIDEBAR_WIDTH)
-				.height(Length::Fill)
-				.padding([SPACE_3, SPACE_3]),
-			container(Space::new().width(1).height(Length::Fill)).style(|_| container::Style {
-				background: Some(BORDER_SUBTLE_COLOR.into()),
-				..Default::default()
-			}),
-			column![toolbar, canvas].width(Length::Fill).height(Length::Fill),
-		]
+		.height(TOOLBAR_HEIGHT)
 		.into()
 	}
 }
