@@ -13,7 +13,7 @@ pub struct ProjectPaneWidget<'a> {
 	project: &'a Project,
 }
 
-//* -------- Public API ----------------------------------------------------- */
+// -------- Public API ---------------------------------------------------------
 impl<'a> ProjectPaneWidget<'a> {
 	pub fn new(project: &'a Project) -> Self {
 		Self { project }
@@ -63,7 +63,7 @@ impl<'a> ProjectPaneWidget<'a> {
 	}
 }
 
-//* -------- Internal ------------------------------------------------------- */
+// -------- Internal -----------------------------------------------------------
 fn tool_button<'a>(glyph: Icon, label: &'a str, message: ProjectPaneMessage) -> Element<'a, ProjectPaneMessage> {
 	widgets::tip(
 		button(button_body_center(icon(glyph, 13.0, TEXT_SECONDARY_COLOR)))

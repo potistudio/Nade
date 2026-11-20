@@ -44,7 +44,7 @@ pub struct TimelineWidget<'a> {
 	work_area: Option<[f32; 2]>,
 }
 
-//* -------- Public API -------- */
+// -------- Public API ---------------------------------------------------------
 impl<'a> TimelineWidget<'a> {
 	/// Create a new TimelineWidget
 	pub fn new(state: &'a TimelineInteraction, model: &'a TimelineModel) -> Self {

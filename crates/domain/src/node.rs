@@ -11,7 +11,7 @@ pub struct Node {
 	pub state: NodeState,
 }
 
-/// -------- Public API --------
+// -------- Public API ---------------------------------------------------------
 impl Node {
 	pub fn new(id: NodeId) -> Self {
 		Self {
