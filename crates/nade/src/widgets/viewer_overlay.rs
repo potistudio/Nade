@@ -2,7 +2,7 @@
 //! input of the viewer (tools, pan, zoom). Drawn on top of the video shader.
 
 use constants::style::{ACCENT_BRIGHT_COLOR, ACCENT_COLOR};
-use core::InstanceId;
+use core::{Affine, InstanceId};
 use iced::widget::canvas::{self, Frame, Geometry, LineDash, Path, Program, Stroke};
 use iced::{Color, Event, Point, Rectangle, Renderer, Size, Theme, Vector, keyboard, mouse};
 
@@ -16,40 +16,73 @@ const CLICK_ZOOM_FACTOR: f32 = 1.5;
 /// Extra hit area around layer bounds (screen px).
 const HIT_SLOP: f32 = 4.0;
 const HANDLE_SIZE: f32 = 6.0;
+/// Grab radius of a scale handle (screen px).
+const HANDLE_HIT: f32 = 6.0;
+/// Scale handles in units of the half size: corners, then edge midpoints.
+const HANDLES: [[f32; 2]; 8] = [
+	[-1.0, -1.0],
+	[1.0, -1.0],
+	[1.0, 1.0],
+	[-1.0, 1.0],
+	[0.0, -1.0],
+	[1.0, 0.0],
+	[0.0, 1.0],
+	[-1.0, 0.0],
+];
 
-/// Screen-independent bounds of a layer in comp space.
+/// Placement of a visible layer, in comp space (origin at the comp center).
 #[derive(Debug, Clone, Copy)]
 pub struct LayerBox {
 	pub id: InstanceId,
-	/// Center relative to the comp center (comp px).
-	pub center: [f32; 2],
-	/// Half extents after scale (comp px). Zero for layers without content.
-	pub half_size: [f32; 2],
-	/// Z rotation in degrees (clockwise on screen).
-	pub rotation: f32,
+	/// Layer space (origin at the layer center, layer px) → comp space.
+	pub matrix: Affine,
+	/// Space `position` lives in (the parent's layer space) → comp space.
+	pub parent: Affine,
+	/// Unscaled content size (layer px). Zero for layers without content.
+	pub size: [f32; 2],
+	/// Anchor point relative to the layer center (layer px).
+	pub anchor: [f32; 2],
+	/// Current scale (1.0 = 100%).
+	pub scale: [f32; 2],
 }
 
 impl LayerBox {
-	fn rotate(&self, local: [f32; 2], sign: f32) -> [f32; 2] {
-		let (sin, cos) = (self.rotation.to_radians() * sign).sin_cos();
-		[local[0] * cos - local[1] * sin, local[0] * sin + local[1] * cos]
+	fn half(&self) -> [f32; 2] {
+		[self.size[0] * 0.5, self.size[1] * 0.5]
+	}
+
+	fn has_area(&self) -> bool {
+		self.size[0] > 0.0 && self.size[1] > 0.0
 	}
 
 	fn corners(&self) -> [[f32; 2]; 4] {
-		let [hw, hh] = self.half_size;
-		[[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(|corner| {
-			let rotated = self.rotate(corner, 1.0);
-			[self.center[0] + rotated[0], self.center[1] + rotated[1]]
-		})
+		let [hw, hh] = self.half();
+		[[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(|corner| self.matrix.apply(corner))
+	}
+
+	/// Handle position in layer space.
+	fn handle_local(&self, handle: [f32; 2]) -> [f32; 2] {
+		let [hw, hh] = self.half();
+		[handle[0] * hw, handle[1] * hh]
+	}
+
+	/// Anchor point in comp space (the layer's position on screen).
+	fn anchor_point(&self) -> [f32; 2] {
+		self.matrix.apply(self.anchor)
 	}
 
 	fn contains(&self, comp: [f32; 2], slop: f32) -> bool {
-		let local = self.rotate([comp[0] - self.center[0], comp[1] - self.center[1]], -1.0);
-		let [hw, hh] = self.half_size;
-		if hw <= 0.0 || hh <= 0.0 {
-			return local[0].hypot(local[1]) <= slop * 2.0;
+		if !self.has_area() {
+			let anchor = self.anchor_point();
+			return (comp[0] - anchor[0]).hypot(comp[1] - anchor[1]) <= slop * 2.0;
 		}
-		local[0].abs() <= hw + slop && local[1].abs() <= hh + slop
+		let Some(inverse) = self.matrix.inverse() else {
+			return false;
+		};
+		let local = inverse.apply(comp);
+		let [sx, sy] = self.matrix.axis_scales();
+		let [hw, hh] = self.half();
+		local[0].abs() <= hw + slop / sx.max(1e-6) && local[1].abs() <= hh + slop / sy.max(1e-6)
 	}
 }
 
@@ -68,9 +101,28 @@ pub struct ViewerOverlay {
 
 #[derive(Debug, Clone, Copy)]
 enum Drag {
-	Pan { last: Point },
-	Move { last: [f32; 2] },
-	Rotate { center: Point, last_angle: f32 },
+	Pan {
+		last: Point,
+	},
+	Move {
+		last: [f32; 2],
+	},
+	Rotate {
+		center: Point,
+		last_angle: f32,
+	},
+	/// Scale handle drag; everything is measured against the layer as it was
+	/// when the drag started.
+	Scale {
+		handle: [f32; 2],
+		local: [f32; 2],
+		inverse: Affine,
+		anchor: [f32; 2],
+		scale: [f32; 2],
+	},
+	Anchor {
+		last: [f32; 2],
+	},
 }
 
 #[derive(Debug, Default)]
@@ -100,6 +152,26 @@ impl ViewerOverlay {
 
 	fn selected_layer(&self) -> Option<&LayerBox> {
 		self.layers.iter().find(|layer| Some(layer.id) == self.selected)
+	}
+
+	/// Scale handle of the selected layer under `point` (screen space).
+	fn hit_handle(&self, viewport: &Viewport, point: Point) -> Option<(&LayerBox, [f32; 2])> {
+		let layer = self.selected_layer().filter(|layer| layer.has_area())?;
+		HANDLES
+			.into_iter()
+			.map(|handle| (layer, handle))
+			.find(|(layer, handle)| {
+				let screen = viewport.comp_to_screen(layer.matrix.apply(layer.handle_local(*handle)));
+				(screen.x - point.x).hypot(screen.y - point.y) <= HANDLE_HIT
+			})
+	}
+
+	/// Convert a comp-space delta into the layer's parent space.
+	fn to_parent(layer: &LayerBox, delta: [f32; 2]) -> [f32; 2] {
+		layer
+			.parent
+			.inverse()
+			.map_or(delta, |inverse| inverse.apply_vector(delta))
 	}
 
 	fn view_changed(zoom: f32, offset: Vector) -> PreviewMessage {
@@ -132,15 +204,30 @@ impl ViewerOverlay {
 			}
 			Tool::Text => Some(canvas::Action::publish(PreviewMessage::CreateText { position: comp }).and_capture()),
 			Tool::Select => {
+				if let Some((layer, handle)) = self.hit_handle(viewport, point) {
+					state.drag = Some(Drag::Scale {
+						handle,
+						local: layer.handle_local(handle),
+						inverse: layer.matrix.inverse()?,
+						anchor: layer.anchor,
+						scale: layer.scale,
+					});
+					return Some(canvas::Action::capture());
+				}
 				let Some(hit) = self.hit_test(viewport, point) else {
 					return Some(canvas::Action::publish(PreviewMessage::SelectLayer(None)).and_capture());
 				};
 				state.drag = Some(Drag::Move { last: comp });
 				Some(Self::select_then_capture(hit.id, self.selected))
 			}
+			Tool::Anchor => {
+				let target = self.hit_test(viewport, point).or_else(|| self.selected_layer())?;
+				state.drag = Some(Drag::Anchor { last: comp });
+				Some(Self::select_then_capture(target.id, self.selected))
+			}
 			Tool::Rotate => {
 				let target = self.hit_test(viewport, point).or_else(|| self.selected_layer())?;
-				let center = viewport.comp_to_screen(target.center);
+				let center = viewport.comp_to_screen(target.anchor_point());
 				state.drag = Some(Drag::Rotate {
 					center,
 					last_angle: (point.y - center.y).atan2(point.x - center.x).to_degrees(),
@@ -179,7 +266,59 @@ impl ViewerOverlay {
 						delta[0] = 0.0;
 					}
 				}
-				Some(PreviewMessage::MoveLayer { delta })
+				let layer = self.selected_layer()?;
+				Some(PreviewMessage::MoveLayer {
+					delta: Self::to_parent(layer, delta),
+				})
+			}
+			Drag::Scale {
+				handle,
+				local,
+				inverse,
+				anchor,
+				scale,
+			} => {
+				let pointer = inverse.apply(viewport.screen_to_comp(point));
+				let from = [local[0] - anchor[0], local[1] - anchor[1]];
+				let to = [pointer[0] - anchor[0], pointer[1] - anchor[1]];
+				let ratio = |axis: usize| {
+					if handle[axis] == 0.0 || from[axis].abs() < 1e-3 {
+						1.0
+					} else {
+						to[axis] / from[axis]
+					}
+				};
+				let mut factor = [ratio(0), ratio(1)];
+				// Shift: 縦横比を保つ（角はアンカー→ハンドル方向へ射影）
+				if state.modifiers.shift() {
+					let uniform = if handle[0] != 0.0 && handle[1] != 0.0 {
+						let length = from[0] * from[0] + from[1] * from[1];
+						if length > 1e-6 {
+							(to[0] * from[0] + to[1] * from[1]) / length
+						} else {
+							1.0
+						}
+					} else if handle[0] != 0.0 {
+						factor[0]
+					} else {
+						factor[1]
+					};
+					factor = [uniform, uniform];
+				}
+				Some(PreviewMessage::ScaleLayer {
+					scale: [scale[0] * factor[0], scale[1] * factor[1]],
+				})
+			}
+			Drag::Anchor { last } => {
+				let comp = viewport.screen_to_comp(point);
+				state.drag = Some(Drag::Anchor { last: comp });
+				let delta = [comp[0] - last[0], comp[1] - last[1]];
+				let layer = self.selected_layer()?;
+				let anchor = layer.matrix.inverse()?.apply_vector(delta);
+				Some(PreviewMessage::MoveAnchor {
+					anchor,
+					position: Self::to_parent(layer, delta),
+				})
 			}
 			Drag::Rotate { center, last_angle } => {
 				let angle = (point.y - center.y).atan2(point.x - center.x).to_degrees();
@@ -268,7 +407,7 @@ impl ViewerOverlay {
 	}
 
 	fn layer_outline(viewport: &Viewport, layer: &LayerBox) -> Option<Path> {
-		if layer.half_size[0] <= 0.0 || layer.half_size[1] <= 0.0 {
+		if !layer.has_area() {
 			return None;
 		}
 		let corners = layer.corners().map(|corner| viewport.comp_to_screen(corner));
@@ -284,8 +423,8 @@ impl ViewerOverlay {
 	fn draw_gizmo(&self, frame: &mut Frame, viewport: &Viewport, layer: &LayerBox) {
 		if let Some(outline) = Self::layer_outline(viewport, layer) {
 			frame.stroke(&outline, Stroke::default().with_color(ACCENT_COLOR).with_width(1.25));
-			for corner in layer.corners() {
-				let point = viewport.comp_to_screen(corner);
+			for handle in HANDLES {
+				let point = viewport.comp_to_screen(layer.matrix.apply(layer.handle_local(handle)));
 				let handle = Path::rectangle(
 					Point::new(point.x - HANDLE_SIZE * 0.5, point.y - HANDLE_SIZE * 0.5),
 					Size::new(HANDLE_SIZE, HANDLE_SIZE),
@@ -295,8 +434,8 @@ impl ViewerOverlay {
 			}
 		}
 
-		// アンカー（位置）: 円 + 十字
-		let anchor = viewport.comp_to_screen(layer.center);
+		// アンカーポイント: 円 + 十字
+		let anchor = viewport.comp_to_screen(layer.anchor_point());
 		let ring = Path::circle(anchor, 5.0);
 		frame.fill(&ring, Color::from_rgba(0.0, 0.0, 0.0, 0.35));
 		frame.stroke(&ring, Stroke::default().with_color(Color::WHITE).with_width(1.25));
@@ -317,8 +456,16 @@ impl ViewerOverlay {
 		);
 
 		if self.tool == Tool::Rotate {
-			let scale = viewport.display_scale();
-			let radius = layer.half_size[0].hypot(layer.half_size[1]) * scale + 14.0;
+			// アンカーから最も遠い角までの距離 + 余白
+			let radius = layer
+				.corners()
+				.into_iter()
+				.map(|corner| {
+					let corner = viewport.comp_to_screen(corner);
+					(corner.x - anchor.x).hypot(corner.y - anchor.y)
+				})
+				.fold(0.0, f32::max)
+				+ 14.0;
 			frame.stroke(
 				&Path::circle(anchor, radius.max(24.0)),
 				Stroke {
@@ -334,6 +481,17 @@ impl ViewerOverlay {
 						.with_width(1.25)
 				},
 			);
+		}
+	}
+}
+
+impl ViewerOverlay {
+	fn handle_cursor(handle: [f32; 2]) -> mouse::Interaction {
+		match handle {
+			[0.0, _] => mouse::Interaction::ResizingVertically,
+			[_, 0.0] => mouse::Interaction::ResizingHorizontally,
+			[x, y] if x * y > 0.0 => mouse::Interaction::ResizingDiagonallyDown,
+			_ => mouse::Interaction::ResizingDiagonallyUp,
 		}
 	}
 }
@@ -413,7 +571,7 @@ impl Program<PreviewMessage> for ViewerOverlay {
 		self.draw_guides(&mut frame, viewport.frame_rect());
 
 		// ホバー中のレイヤーを薄く縁取る（選択・回転ツールのみ）
-		if matches!(self.tool, Tool::Select | Tool::Rotate)
+		if matches!(self.tool, Tool::Select | Tool::Rotate | Tool::Anchor)
 			&& state.drag.is_none()
 			&& let Some(point) = cursor.position_in(bounds)
 			&& let Some(hovered) = self.hit_test(&viewport, point)
@@ -440,6 +598,8 @@ impl Program<PreviewMessage> for ViewerOverlay {
 			Some(Drag::Pan { .. }) => return mouse::Interaction::Grabbing,
 			Some(Drag::Move { .. }) => return mouse::Interaction::Move,
 			Some(Drag::Rotate { .. }) => return mouse::Interaction::Grabbing,
+			Some(Drag::Scale { handle, .. }) => return Self::handle_cursor(handle),
+			Some(Drag::Anchor { .. }) => return mouse::Interaction::Crosshair,
 			None => {}
 		}
 		let Some(point) = cursor.position_in(bounds) else {
@@ -450,9 +610,12 @@ impl Program<PreviewMessage> for ViewerOverlay {
 			Tool::Zoom if state.modifiers.alt() => mouse::Interaction::ZoomOut,
 			Tool::Zoom => mouse::Interaction::ZoomIn,
 			Tool::Text => mouse::Interaction::Text,
-			Tool::Rotate => mouse::Interaction::Crosshair,
+			Tool::Rotate | Tool::Anchor => mouse::Interaction::Crosshair,
 			Tool::Select => {
-				if self.hit_test(&self.viewport(bounds.size()), point).is_some() {
+				let viewport = self.viewport(bounds.size());
+				if let Some((_, handle)) = self.hit_handle(&viewport, point) {
+					Self::handle_cursor(handle)
+				} else if self.hit_test(&viewport, point).is_some() {
 					mouse::Interaction::Move
 				} else {
 					mouse::Interaction::Idle
@@ -465,13 +628,21 @@ impl Program<PreviewMessage> for ViewerOverlay {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use core::Transform;
 
 	fn layer(rotation: f32) -> LayerBox {
+		let transform = Transform {
+			position: [100.0, 50.0, 0.0],
+			rotation: [0.0, 0.0, rotation],
+			..Transform::default()
+		};
 		LayerBox {
 			id: InstanceId::new(0),
-			center: [100.0, 50.0],
-			half_size: [40.0, 10.0],
-			rotation,
+			matrix: transform.local_matrix(),
+			parent: Affine::IDENTITY,
+			size: [80.0, 20.0],
+			anchor: [0.0, 0.0],
+			scale: [1.0, 1.0],
 		}
 	}
 
@@ -485,10 +656,21 @@ mod tests {
 	#[test]
 	fn empty_layers_hit_near_anchor() {
 		let empty = LayerBox {
-			half_size: [0.0, 0.0],
+			size: [0.0, 0.0],
 			..layer(0.0)
 		};
 		assert!(empty.contains([103.0, 52.0], 4.0));
 		assert!(!empty.contains([130.0, 50.0], 4.0));
+	}
+
+	#[test]
+	fn moves_are_converted_into_parent_space() {
+		let child = LayerBox {
+			parent: Affine::rotate(90.0).then_apply(Affine::scale(2.0, 2.0)),
+			..layer(0.0)
+		};
+		// 画面で右へ 10 → 親空間（90° 回転・2 倍）では下へ 5
+		let [x, y] = ViewerOverlay::to_parent(&child, [10.0, 0.0]);
+		assert!(x.abs() < 1e-4 && (y + 5.0).abs() < 1e-4, "({x}, {y})");
 	}
 }

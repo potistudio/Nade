@@ -39,9 +39,20 @@ pub enum PreviewMessage {
 	Transport(TransportMessage),
 	/// ビューア上でレイヤーを選択（None で選択解除）
 	SelectLayer(Option<InstanceId>),
-	/// 選択レイヤーを移動（コンポジション座標の差分）
+	/// 選択レイヤーを移動（親空間＝position の座標系での差分）
 	MoveLayer {
 		delta: [f32; 2],
+	},
+	/// 選択レイヤーのスケールを設定（倍率、1.0 = 100%）
+	ScaleLayer {
+		scale: [f32; 2],
+	},
+	/// アンカーポイントだけを動かし、見た目は保つ（Pan Behind）
+	MoveAnchor {
+		/// レイヤー空間での差分
+		anchor: [f32; 2],
+		/// 親空間での position の差分
+		position: [f32; 2],
 	},
 	/// 選択レイヤーを回転（度）
 	RotateLayer {

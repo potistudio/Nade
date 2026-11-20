@@ -9,11 +9,20 @@ pub enum Tool {
 	Hand,
 	Zoom,
 	Rotate,
+	/// Pan Behind (anchor point) tool.
+	Anchor,
 	Text,
 }
 
 impl Tool {
-	pub const ALL: [Self; 5] = [Self::Select, Self::Hand, Self::Zoom, Self::Rotate, Self::Text];
+	pub const ALL: [Self; 6] = [
+		Self::Select,
+		Self::Hand,
+		Self::Zoom,
+		Self::Rotate,
+		Self::Anchor,
+		Self::Text,
+	];
 
 	pub fn index(self) -> usize {
 		Self::ALL.iter().position(|tool| *tool == self).unwrap_or(0)
@@ -25,6 +34,7 @@ impl Tool {
 			Self::Hand => Icon::ToolHand,
 			Self::Zoom => Icon::ToolZoom,
 			Self::Rotate => Icon::ToolRotate,
+			Self::Anchor => Icon::ToolAnchor,
 			Self::Text => Icon::ToolText,
 		}
 	}
@@ -35,6 +45,7 @@ impl Tool {
 			Self::Hand => "Hand Tool",
 			Self::Zoom => "Zoom Tool",
 			Self::Rotate => "Rotation Tool",
+			Self::Anchor => "Pan Behind (Anchor Point) Tool",
 			Self::Text => "Type Tool",
 		}
 	}
@@ -45,6 +56,7 @@ impl Tool {
 			Self::Hand => "H",
 			Self::Zoom => "Z",
 			Self::Rotate => "W",
+			Self::Anchor => "Y",
 			Self::Text => "T",
 		}
 	}

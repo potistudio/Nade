@@ -1733,6 +1733,18 @@ impl NadeApp {
 				self.edit_selected_property(TransformProperty::PositionY, |value| value + delta[1]);
 				self.request_preview_refresh();
 			}
+			PreviewMessage::ScaleLayer { scale } => {
+				self.edit_selected_property(TransformProperty::ScaleX, |_| scale[0]);
+				self.edit_selected_property(TransformProperty::ScaleY, |_| scale[1]);
+				self.request_preview_refresh();
+			}
+			PreviewMessage::MoveAnchor { anchor, position } => {
+				self.edit_selected_property(TransformProperty::AnchorX, |value| value + anchor[0]);
+				self.edit_selected_property(TransformProperty::AnchorY, |value| value + anchor[1]);
+				self.edit_selected_property(TransformProperty::PositionX, |value| value + position[0]);
+				self.edit_selected_property(TransformProperty::PositionY, |value| value + position[1]);
+				self.request_preview_refresh();
+			}
 			PreviewMessage::RotateLayer { degrees } => {
 				self.edit_selected_property(TransformProperty::RotationZ, |value| value + degrees);
 				self.request_preview_refresh();
@@ -1799,6 +1811,7 @@ impl NadeApp {
 			.filter(|instance| self.timeline.model.is_track_rendered(instance.track_index()))
 			.map(|instance| {
 				let transform = instance.transform_at(time);
+				let parent = comp.parent_matrix(instance.id(), time);
 				let size = match instance.content() {
 					InstanceContent::Text {
 						text,
@@ -1817,12 +1830,11 @@ impl NadeApp {
 				};
 				LayerBox {
 					id: instance.id(),
-					center: [transform.position[0], transform.position[1]],
-					half_size: [
-						size[0] * transform.scale[0].abs() * 0.5,
-						size[1] * transform.scale[1].abs() * 0.5,
-					],
-					rotation: transform.rotation[2],
+					matrix: parent.then_apply(transform.local_matrix()),
+					parent,
+					size,
+					anchor: [transform.anchor[0], transform.anchor[1]],
+					scale: [transform.scale[0], transform.scale[1]],
 				}
 			})
 			.collect()

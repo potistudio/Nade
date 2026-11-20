@@ -80,6 +80,7 @@ icon_set! {
 	StepBack => "step_back",
 	StepForward => "step_forward",
 	Stopwatch => "stopwatch",
+	ToolAnchor => "tool_anchor",
 	ToolHand => "tool_hand",
 	ToolRotate => "tool_rotate",
 	ToolSelect => "tool_select",
