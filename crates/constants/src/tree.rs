@@ -27,6 +27,8 @@ pub struct TreeRow<'a, Message> {
 	pub icon: Icon,
 	pub icon_color: Color,
 	pub label: &'a str,
+	/// Replaces the label while the name is edited in place (fills the row).
+	pub editor: Option<Element<'a, Message>>,
 	/// Trailing mono label; borrowed when the caller already owns the text.
 	pub meta: Option<Cow<'a, str>>,
 	pub selected: bool,
@@ -57,12 +59,19 @@ impl<'a, Message: Clone + 'a> TreeRow<'a, Message> {
 			None => Space::new().width(14).into(),
 		};
 
+		let name: Element<'a, Message> = match self.editor {
+			Some(editor) => editor,
+			None => row![
+				ui_label(self.label, FONT_LABEL).color(fg(TEXT_PRIMARY_COLOR)),
+				Space::new().width(Length::Fill),
+			]
+			.into(),
+		};
 		let mut content = row![
 			Space::new().width(self.depth as f32 * TREE_INDENT),
 			disclosure,
 			icon(self.icon, 14.0, fg(self.icon_color)),
-			ui_label(self.label, FONT_LABEL).color(fg(TEXT_PRIMARY_COLOR)),
-			Space::new().width(Length::Fill),
+			name,
 		]
 		.spacing(SPACE_3)
 		.align_y(Alignment::Center)
