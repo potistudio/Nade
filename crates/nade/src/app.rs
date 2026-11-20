@@ -2819,8 +2819,8 @@ impl NadeApp {
 					nested,
 				})
 			}
-			None => InspectorTarget::Empty,
-			Some(ObjectId::Composition(_)) => {
+			// 選択が無くても、開いているコンポの設定を出す
+			Some(ObjectId::Composition(_)) | None => {
 				let Some(id) = self.active_composition else {
 					return InspectorTarget::Empty;
 				};
