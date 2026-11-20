@@ -364,6 +364,7 @@ fn layer_header<'a>(layer: &LayerTarget<'a>) -> Element<'a, InspectorMessage> {
 			MediaKind::Video => Icon::Video,
 			MediaKind::Audio => Icon::Audio,
 		},
+		InstanceContent::Composition(_) => Icon::Comp,
 	};
 
 	let span = format!("{kind}  ·  {:.2}s", instance.duration());

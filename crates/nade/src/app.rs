@@ -416,10 +416,16 @@ impl NadeApp {
 			return true;
 		};
 		let model = &self.timeline.model;
-		let scene = Scene::from_composition(comp, time, self.viewer.resolution.factor(), |track| {
-			// タイムライン未作成のトラックは描画する
-			track >= model.tracks.len() || model.is_track_rendered(track)
-		});
+		let scene = Scene::from_composition(
+			comp,
+			time,
+			self.viewer.resolution.factor(),
+			|track| {
+				// タイムライン未作成のトラックは描画する
+				track >= model.tracks.len() || model.is_track_rendered(track)
+			},
+			&self.project,
+		);
 
 		let submitted = self.render_worker.try_submit(RenderJob { scene });
 		self.render_dirty = !submitted;
@@ -835,7 +841,14 @@ impl NadeApp {
 			.map(|track| self.timeline.model.is_track_rendered(track))
 			.collect();
 		log::info!("Exporting “{}” to {}", composition.name(), path.display());
-		self.export = Some(ExportTask::start(composition, track_rendered, path));
+		// ネストしたコンポも描けるよう、全コンポのコピーを渡す
+		let library = self
+			.project
+			.compositions()
+			.iter()
+			.filter_map(|id| self.project.composition(id).cloned())
+			.collect();
+		self.export = Some(ExportTask::start(composition, library, track_rendered, path));
 		self.show_toast(Icon::Export, "Export started  ·  Esc to cancel");
 	}
 
@@ -907,9 +920,12 @@ impl NadeApp {
 			return;
 		};
 		let model = &self.timeline.model;
-		let clips = renderer::export_settings(comp, std::path::Path::new(""), |track| {
-			track >= model.tracks.len() || model.is_track_rendered(track)
-		})
+		let clips = renderer::export_settings(
+			comp,
+			std::path::Path::new(""),
+			|track| track >= model.tracks.len() || model.is_track_rendered(track),
+			&self.project,
+		)
 		.audio;
 		let until = comp.duration();
 		self.audio_started = Some((self.now, time));
@@ -1793,6 +1809,10 @@ impl NadeApp {
 					} => renderer::measure_text(font_path, text, *font_size, *spacing).unwrap_or([0.0, 0.0]),
 					InstanceContent::Solid { width, height, .. } => [*width, *height],
 					InstanceContent::Media(source) => source.size(),
+					InstanceContent::Composition(id) => self
+						.project
+						.composition(id)
+						.map_or([0.0, 0.0], |nested| [nested.width() as f32, nested.height() as f32]),
 					InstanceContent::Empty => [0.0, 0.0],
 				};
 				LayerBox {

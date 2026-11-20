@@ -8,7 +8,7 @@ mod scene;
 
 pub use compositor::{Compositor, render_scene};
 pub use export::{export_composition, export_settings, frame_count};
-pub use scene::{LayerKind, Scene, SceneLayer};
+pub use scene::{CompositionLibrary, LayerKind, Scene, SceneLayer};
 
 use anyhow::Result;
 use core::{FrameBuffer, RectangleObject, RenderContext, RgbColor, SceneObjectData, TextObject};

@@ -2,34 +2,27 @@
 
 use anyhow::{Result, bail};
 use core::FrameBuffer;
-use domain::Composition;
+use domain::{Composition, Instance};
 use encoder::{AudioClip, Encoder, ExportSettings, FfmpegEncoder};
 use std::path::Path;
 
-use crate::{Compositor, Scene};
+use crate::{CompositionLibrary, Compositor, Scene};
 
 /// Output settings for `composition`, including its audible clips.
 pub fn export_settings(
 	composition: &Composition,
 	path: &Path,
 	is_track_rendered: impl Fn(usize) -> bool,
+	library: &(impl CompositionLibrary + ?Sized),
 ) -> ExportSettings {
-	let audio = composition
-		.all_objects()
-		.filter(|instance| is_track_rendered(instance.track_index()))
-		.filter_map(|instance| {
-			let source = instance.content().as_media()?;
-			if !source.has_audio() {
-				return None;
-			}
-			Some(AudioClip {
-				path: source.path.clone(),
-				source_offset: instance.source_offset,
-				start: instance.start_time(),
-				duration: instance.duration(),
-			})
-		})
-		.collect();
+	let mut audio = Vec::new();
+	collect_audio(
+		composition,
+		&is_track_rendered,
+		library,
+		&mut vec![composition.id()],
+		&mut audio,
+	);
 	ExportSettings {
 		path: path.to_path_buf(),
 		width: composition.width().max(1),
@@ -38,6 +31,61 @@ pub fn export_settings(
 		duration: composition.duration(),
 		audio,
 	}
+}
+
+/// Audible clips of `composition` in its own time, nested comps included.
+fn collect_audio(
+	composition: &Composition,
+	is_track_rendered: &dyn Fn(usize) -> bool,
+	library: &(impl CompositionLibrary + ?Sized),
+	stack: &mut Vec<core::CompositionId>,
+	out: &mut Vec<AudioClip>,
+) {
+	for instance in composition
+		.all_objects()
+		.filter(|instance| is_track_rendered(instance.track_index()))
+	{
+		if let Some(source) = instance.content().as_media() {
+			if source.has_audio() {
+				out.push(AudioClip {
+					path: source.path.clone(),
+					source_offset: instance.source_offset,
+					start: instance.start_time(),
+					duration: instance.duration(),
+				});
+			}
+			continue;
+		}
+		let Some(id) = instance.content().as_composition() else {
+			continue;
+		};
+		let Some(nested) = library
+			.composition(id)
+			.filter(|_| !stack.contains(&id) && stack.len() < 16)
+		else {
+			continue;
+		};
+		stack.push(id);
+		let mut inner = Vec::new();
+		collect_audio(nested, &|_| true, library, stack, &mut inner);
+		stack.pop();
+		out.extend(inner.into_iter().filter_map(|clip| shift_into_layer(clip, instance)));
+	}
+}
+
+/// Map a clip from a nested comp's time onto the comp layer playing it,
+/// trimmed to the layer's in / out points.
+fn shift_into_layer(clip: AudioClip, layer: &Instance) -> Option<AudioClip> {
+	let shift = layer.start_time() - layer.source_offset;
+	let start = clip.start + shift;
+	let end = start + clip.duration;
+	let (visible_start, visible_end) = (start.max(layer.start_time()), end.min(layer.end_time()));
+	(visible_end - visible_start > 1e-4).then(|| AudioClip {
+		source_offset: clip.source_offset + (visible_start - start),
+		start: visible_start,
+		duration: visible_end - visible_start,
+		path: clip.path,
+	})
 }
 
 /// Number of frames written for `settings`.
@@ -53,6 +101,7 @@ pub fn export_composition(
 	composition: &Composition,
 	settings: ExportSettings,
 	is_track_rendered: impl Fn(usize) -> bool,
+	library: &(impl CompositionLibrary + ?Sized),
 	mut progress: impl FnMut(u32, u32) -> bool,
 ) -> Result<()> {
 	let total = frame_count(&settings);
@@ -63,7 +112,7 @@ pub fn export_composition(
 
 	for index in 0..total {
 		let time = index as f32 / fps;
-		let scene = Scene::from_composition(composition, time, 1.0, &is_track_rendered);
+		let scene = Scene::from_composition(composition, time, 1.0, &is_track_rendered, library);
 		let image = compositor.render(&scene);
 		let frame = FrameBuffer {
 			width: scene.width,
@@ -88,6 +137,11 @@ mod tests {
 
 	fn composition_with_audio() -> Composition {
 		let mut composition = Composition::new(CompositionId::new(0), "Export", 64, 36, 10.0);
+		add_audio_layers(&mut composition);
+		composition
+	}
+
+	fn add_audio_layers(composition: &mut Composition) {
 		composition.set_duration(1.0);
 		let solid = composition.add_instance_at(NodeId::new(0), "Solid", 0.0, 1.0);
 		solid.set_content(InstanceContent::solid(32.0, 18.0, [1.0, 0.0, 0.0, 1.0]));
@@ -103,13 +157,12 @@ mod tests {
 				..MediaInfo::default()
 			},
 		}));
-		composition
 	}
 
 	#[test]
 	fn settings_collect_audible_clips() {
 		let composition = composition_with_audio();
-		let settings = export_settings(&composition, Path::new("out.mp4"), |_| true);
+		let settings = export_settings(&composition, Path::new("out.mp4"), |_| true, &());
 		assert_eq!((settings.width, settings.height, settings.fps), (64, 36, 10.0));
 		assert_eq!(frame_count(&settings), 10);
 		assert_eq!(
@@ -121,8 +174,31 @@ mod tests {
 				duration: 0.5,
 			}]
 		);
-		let muted = export_settings(&composition, Path::new("out.mp4"), |track| track == 0);
+		let muted = export_settings(&composition, Path::new("out.mp4"), |track| track == 0, &());
 		assert!(muted.audio.is_empty(), "hidden tracks are muted");
+	}
+
+	#[test]
+	fn nested_audio_follows_the_comp_layer() {
+		let mut project = domain::Project::default();
+		let main = project.create_composition("Main", 64, 36, 10.0);
+		let inner = project.create_composition("Inner", 64, 36, 10.0);
+		add_audio_layers(project.composition_mut(&inner).unwrap());
+		let layer = project
+			.composition_mut(&main)
+			.unwrap()
+			.add_instance_at(NodeId::new(9), "Inner", 2.0, 0.5);
+		layer.set_content(InstanceContent::Composition(inner));
+		// ネスト側 0.5s から再生 → 音（0.25..0.75）の後半 0.25s だけが 2.0s から鳴る
+		layer.source_offset = 0.5;
+
+		let comp = project.composition(&main).unwrap();
+		let settings = export_settings(comp, Path::new("out.mp4"), |_| true, &project);
+		assert_eq!(settings.audio.len(), 1);
+		let clip = &settings.audio[0];
+		assert!((clip.start - 2.0).abs() < 1e-5, "{clip:?}");
+		assert!((clip.duration - 0.25).abs() < 1e-5, "{clip:?}");
+		assert!((clip.source_offset - 2.25).abs() < 1e-5, "{clip:?}");
 	}
 
 	#[test]
@@ -154,12 +230,13 @@ mod tests {
 			source.path = tone.clone();
 		}
 		let output = dir.join("export.mp4");
-		let settings = export_settings(&composition, &output, |_| true);
+		let settings = export_settings(&composition, &output, |_| true, &());
 		let mut calls = 0;
 		export_composition(
 			&composition,
 			settings,
 			|_| true,
+			&(),
 			|done, total| {
 				calls += 1;
 				assert!(done <= total);
@@ -182,8 +259,8 @@ mod tests {
 		let mut composition = Composition::new(CompositionId::new(0), "Export", 64, 36, 10.0);
 		composition.set_duration(1.0);
 		let output = dir.join("cancel.mp4");
-		let settings = export_settings(&composition, &output, |_| true);
-		let result = export_composition(&composition, settings, |_| true, |done, _| done < 3);
+		let settings = export_settings(&composition, &output, |_| true, &());
+		let result = export_composition(&composition, settings, |_| true, &(), |done, _| done < 3);
 		if result
 			.as_ref()
 			.is_err_and(|error| error.to_string().contains("starting"))

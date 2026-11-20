@@ -1,8 +1,41 @@
 //! Render-ready description of one composition frame.
 
-use core::{Affine, BlendMode, MediaInfo, SceneObjectId, TextObject};
-use domain::{Composition, Instance, InstanceContent, MediaKind};
+use core::{Affine, BlendMode, CompositionId, MediaInfo, SceneObjectId, TextObject};
+use domain::{Composition, Instance, InstanceContent, MediaKind, Project};
 use std::path::PathBuf;
+
+/// Where nested compositions are looked up.
+pub trait CompositionLibrary {
+	fn composition(&self, id: CompositionId) -> Option<&Composition>;
+}
+
+impl CompositionLibrary for Project {
+	fn composition(&self, id: CompositionId) -> Option<&Composition> {
+		Project::composition(self, &id)
+	}
+}
+
+impl CompositionLibrary for [Composition] {
+	fn composition(&self, id: CompositionId) -> Option<&Composition> {
+		self.iter().find(|composition| composition.id() == id)
+	}
+}
+
+impl CompositionLibrary for Vec<Composition> {
+	fn composition(&self, id: CompositionId) -> Option<&Composition> {
+		self.as_slice().composition(id)
+	}
+}
+
+/// No nested compositions (they draw nothing).
+impl CompositionLibrary for () {
+	fn composition(&self, _id: CompositionId) -> Option<&Composition> {
+		None
+	}
+}
+
+/// Nesting depth after which comp layers stop drawing (guards against loops).
+const MAX_NESTING: usize = 16;
 
 /// What a layer draws.
 #[derive(Debug, Clone)]
@@ -21,8 +54,9 @@ pub enum LayerKind {
 		info: MediaInfo,
 		source_time: f32,
 	},
-	/// Another composition rendered offscreen and drawn like footage.
-	Nested { scene: Box<Scene> },
+	/// Another composition rendered offscreen (transparent background) and
+	/// drawn like footage over `size` layer pixels.
+	Nested { scene: Box<Scene>, size: [f32; 2] },
 }
 
 /// One drawable layer, already evaluated at the frame time.
@@ -48,45 +82,98 @@ impl Scene {
 	/// Evaluate `composition` at `time`.
 	///
 	/// `factor` scales the output (preview resolution); `is_track_rendered`
-	/// filters hidden / non-solo tracks.
+	/// filters hidden / non-solo tracks of the top-level composition;
+	/// `library` resolves nested compositions.
 	pub fn from_composition(
 		composition: &Composition,
 		time: f32,
 		factor: f32,
 		is_track_rendered: impl Fn(usize) -> bool,
+		library: &(impl CompositionLibrary + ?Sized),
 	) -> Self {
 		let factor = if factor.is_finite() && factor > 0.0 {
 			factor
 		} else {
 			1.0
 		};
-		let scaled = |value: u32| ((value as f32 * factor).round() as u32).max(1);
-		let (width, height) = (scaled(composition.width()), scaled(composition.height()));
-		// コンポ空間（中心原点）→ 出力画素。解像度を落とすときは全体を縮める
-		let output =
-			Affine::translate(width as f32 / 2.0, height as f32 / 2.0).then_apply(Affine::scale(factor, factor));
-		let layers = composition
-			.objects_in_draw_order()
-			.filter(|instance| instance.is_active_at(time) && is_track_rendered(instance.track_index()))
-			.filter_map(|instance| {
-				let matrix = output.then_apply(composition.world_matrix(instance.id(), time));
-				scene_layer(instance, time, matrix)
-			})
-			.collect();
-		Self {
-			width,
-			height,
-			background: composition.background(),
-			layers,
-		}
+		let mut scene = build(composition, time, factor, &is_track_rendered, library, &mut Vec::new());
+		scene.background = composition.background();
+		scene
 	}
 }
 
-fn scene_layer(instance: &Instance, time: f32, matrix: Affine) -> Option<SceneLayer> {
-	let transform = instance.transform_at(time);
-	if transform.opacity <= 0.0 {
+fn build(
+	composition: &Composition,
+	time: f32,
+	factor: f32,
+	is_track_rendered: &dyn Fn(usize) -> bool,
+	library: &(impl CompositionLibrary + ?Sized),
+	stack: &mut Vec<CompositionId>,
+) -> Scene {
+	let scaled = |value: u32| ((value as f32 * factor).round() as u32).max(1);
+	let (width, height) = (scaled(composition.width()), scaled(composition.height()));
+	// コンポ空間（中心原点）→ 出力画素。解像度を落とすときは全体を縮める
+	let output = Affine::translate(width as f32 / 2.0, height as f32 / 2.0).then_apply(Affine::scale(factor, factor));
+	stack.push(composition.id());
+	let layers = composition
+		.objects_in_draw_order()
+		.filter(|instance| instance.is_active_at(time) && is_track_rendered(instance.track_index()))
+		.filter_map(|instance| {
+			let matrix = output.then_apply(composition.world_matrix(instance.id(), time));
+			let kind = match instance.content().as_composition() {
+				Some(id) => nested_layer(id, instance, time, matrix, library, stack)?,
+				None => layer_kind(composition.id(), instance, time)?,
+			};
+			scene_layer(instance, time, matrix, kind)
+		})
+		.collect();
+	stack.pop();
+	Scene {
+		width,
+		height,
+		// ネストしたコンポは透明背景で合成する（呼び出し元が上書きする）
+		background: [0.0; 4],
+		layers,
+	}
+}
+
+/// A comp layer: the nested composition at the layer's source time, rendered
+/// at the resolution the layer is shown at (never above 100%).
+fn nested_layer(
+	id: CompositionId,
+	instance: &Instance,
+	time: f32,
+	matrix: Affine,
+	library: &(impl CompositionLibrary + ?Sized),
+	stack: &mut Vec<CompositionId>,
+) -> Option<LayerKind> {
+	if stack.contains(&id) || stack.len() >= MAX_NESTING {
 		return None;
 	}
+	let nested = library.composition(id)?;
+	let factor = matrix.max_scale().clamp(1.0 / 32.0, 1.0);
+	let scene = build(nested, instance.source_time_at(time), factor, &|_| true, library, stack);
+	Some(LayerKind::Nested {
+		scene: Box::new(scene),
+		size: [nested.width() as f32, nested.height() as f32],
+	})
+}
+
+fn scene_layer(instance: &Instance, time: f32, matrix: Affine, kind: LayerKind) -> Option<SceneLayer> {
+	let opacity = instance.property_at(domain::TransformProperty::Opacity, time);
+	if opacity <= 0.0 {
+		return None;
+	}
+	Some(SceneLayer {
+		matrix,
+		opacity,
+		blend: instance.blend_mode,
+		kind,
+	})
+}
+
+fn layer_kind(composition: CompositionId, instance: &Instance, time: f32) -> Option<LayerKind> {
+	let transform = instance.transform_at(time);
 
 	let kind = match instance.content() {
 		InstanceContent::Empty => return None,
@@ -124,16 +211,13 @@ fn scene_layer(instance: &Instance, time: f32, matrix: Affine) -> Option<SceneLa
 			},
 			MediaKind::Video => LayerKind::Video {
 				path: source.path.clone(),
-				key: instance.id().value() as u64,
+				// 同じファイルを複数のコンポで使ってもデコーダを分ける
+				key: ((composition.value() as u64) << 32) | instance.id().value() as u64,
 				info: source.info,
 				source_time: instance.source_time_at(time),
 			},
 		},
+		InstanceContent::Composition(_) => return None,
 	};
-	Some(SceneLayer {
-		matrix,
-		opacity: transform.opacity,
-		blend: instance.blend_mode,
-		kind,
-	})
+	Some(kind)
 }

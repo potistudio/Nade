@@ -73,10 +73,9 @@ impl Compositor {
 					draw_picture(image, &picture, size, &paint);
 				}
 			}
-			LayerKind::Nested { scene } => {
+			LayerKind::Nested { scene, size } => {
 				let picture = self.render_premultiplied(scene);
-				let size = [scene.width as f32, scene.height as f32];
-				draw_picture(image, &picture, size, &paint);
+				draw_picture(image, &picture, *size, &paint);
 			}
 		}
 	}
@@ -416,16 +415,16 @@ mod tests {
 		bottom.set_start_time(6.0);
 		composition.add_instance_named(NodeId::new(2), "Null");
 
-		let at_one = Scene::from_composition(&composition, 1.0, 0.5, |_| true);
+		let at_one = Scene::from_composition(&composition, 1.0, 0.5, |_| true, &());
 		assert_eq!((at_one.width, at_one.height), (100, 50));
 		assert_eq!(at_one.layers.len(), 1, "inactive and empty layers are skipped");
 		// 半分の解像度: 中心 (50,25) + 20*0.5
 		assert_eq!(at_one.layers[0].matrix.apply([0.0, 0.0]), [60.0, 25.0]);
 		assert_eq!(at_one.layers[0].matrix.axis_scales(), [0.5, 0.5]);
 
-		let at_seven = Scene::from_composition(&composition, 7.0, 1.0, |_| true);
+		let at_seven = Scene::from_composition(&composition, 7.0, 1.0, |_| true, &());
 		assert_eq!(at_seven.layers.len(), 1);
-		let hidden = Scene::from_composition(&composition, 1.0, 1.0, |track| track != 0);
+		let hidden = Scene::from_composition(&composition, 1.0, 1.0, |track| track != 0, &());
 		assert!(hidden.layers.is_empty());
 	}
 
@@ -440,8 +439,54 @@ mod tests {
 		composition.set_parent(child, Some(parent), 0.0);
 		composition.get_mut(parent).unwrap().transform.rotation[2] = 90.0;
 
-		let scene = Scene::from_composition(&composition, 0.0, 1.0, |_| true);
+		let scene = Scene::from_composition(&composition, 0.0, 1.0, |_| true, &());
 		let [x, y] = scene.layers[0].matrix.apply([0.0, 0.0]);
 		assert!((x - 50.0).abs() < 1e-3 && (y - 60.0).abs() < 1e-3, "({x}, {y})");
+	}
+
+	#[test]
+	fn nested_compositions_render_inside_their_layer() {
+		let mut project = domain::Project::default();
+		let main = project.create_composition("Main", 100, 100, 30.0);
+		let inner = project.create_composition("Inner", 100, 100, 30.0);
+		{
+			let inner = project.composition_mut(&inner).unwrap();
+			inner.set_background([1.0, 1.0, 1.0, 1.0]);
+			let solid = inner.add_instance_named(NodeId::new(0), "Red");
+			solid.set_content(InstanceContent::solid(20.0, 20.0, [1.0, 0.0, 0.0, 1.0]));
+			solid.set_start_time(1.0);
+		}
+		let layer = project
+			.composition_mut(&main)
+			.unwrap()
+			.add_instance_named(NodeId::new(1), "Inner");
+		layer.set_content(InstanceContent::Composition(inner));
+		layer.transform.position = [25.0, 0.0, 0.0];
+		layer.source_offset = 1.0;
+
+		let comp = project.composition(&main).unwrap();
+		let scene = Scene::from_composition(comp, 0.0, 1.0, |_| true, &project);
+		let image = render_scene(&scene);
+		// ネスト側の背景は透明、中身はレイヤー位置ぶんずれる
+		assert_eq!(image.get_pixel(75, 50).0, [255, 0, 0, 255]);
+		assert_eq!(image.get_pixel(50, 50).0, [0, 0, 0, 255]);
+
+		// 自分自身を含むループは描かない
+		let looped = project
+			.composition_mut(&inner)
+			.unwrap()
+			.add_instance_named(NodeId::new(2), "Loop");
+		looped.set_content(InstanceContent::Composition(main));
+		let comp = project.composition(&main).unwrap();
+		let scene = Scene::from_composition(comp, 0.0, 1.0, |_| true, &project);
+		let LayerKind::Nested { scene: nested, .. } = &scene.layers[0].kind else {
+			panic!("expected nested layer");
+		};
+		assert!(
+			nested
+				.layers
+				.iter()
+				.all(|layer| !matches!(layer.kind, LayerKind::Nested { .. }))
+		);
 	}
 }

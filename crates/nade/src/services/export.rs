@@ -22,15 +22,21 @@ pub struct ExportTask {
 
 impl ExportTask {
 	/// Render `composition` (a copy, so editing can continue) on a worker thread.
-	pub fn start(composition: Composition, track_rendered: Vec<bool>, path: PathBuf) -> Self {
+	/// `library` holds the compositions nested comp layers may play.
+	pub fn start(
+		composition: Composition,
+		library: Vec<Composition>,
+		track_rendered: Vec<bool>,
+		path: PathBuf,
+	) -> Self {
 		let shared = Arc::new(Shared::default());
 		let worker = Arc::clone(&shared);
 		let output = path.clone();
 		let spawned = thread::Builder::new().name("nade-export".into()).spawn(move || {
 			let is_rendered = |track: usize| track_rendered.get(track).copied().unwrap_or(true);
-			let settings = renderer::export_settings(&composition, &output, is_rendered);
+			let settings = renderer::export_settings(&composition, &output, is_rendered, &library);
 			worker.total.store(renderer::frame_count(&settings), Ordering::Relaxed);
-			let result = renderer::export_composition(&composition, settings, is_rendered, |done, _| {
+			let result = renderer::export_composition(&composition, settings, is_rendered, &library, |done, _| {
 				worker.done.store(done, Ordering::Relaxed);
 				!worker.cancel.load(Ordering::Relaxed)
 			});
