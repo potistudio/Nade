@@ -3,9 +3,9 @@
 use crate::HIT_RADIUS;
 use crate::helpers::distance;
 use crate::message::{CurveCanvasEvent, CurveEditorMessage, CurveEditorUpdate};
-use core::{AnimationCurve, HandleSide, Transform};
-use domain::{TransformAnimation, TransformProperty};
 use iced::{Point, Size, Vector, mouse};
+use nade_core::{AnimationCurve, HandleSide, Transform};
+use nade_domain::{TransformAnimation, TransformProperty};
 
 #[derive(Debug, Clone)]
 pub(crate) enum DragState {

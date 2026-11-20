@@ -9,9 +9,9 @@ use iced::{
 
 impl TimelineWidget<'_> {
 	pub(super) fn zoom_control_view(time_scale: f32) -> Element<'static, TimelineMessage> {
-		use constants::icons::{Icon, icon};
-		use constants::style::{FONT_TINY, SPACE_1, SPACE_4, TEXT_SECONDARY_COLOR, TOOLBAR_HEIGHT};
-		use constants::widgets;
+		use nade_constants::icons::{Icon, icon};
+		use nade_constants::style::{FONT_TINY, SPACE_1, SPACE_4, TEXT_SECONDARY_COLOR, TOOLBAR_HEIGHT};
+		use nade_constants::widgets;
 
 		let icon_button = |glyph: Icon, label: &'static str, message: TimelineMessage| {
 			widgets::tip(

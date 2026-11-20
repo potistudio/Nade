@@ -1,8 +1,8 @@
 //! What the panel shows: nothing, a composition or a layer.
 
-use core::{CompositionId, CompositionSummary, InstanceId};
-use domain::Instance;
 use iced::Color;
+use nade_core::{CompositionId, CompositionSummary, InstanceId};
+use nade_domain::Instance;
 
 pub struct LayerTarget<'a> {
 	pub instance: &'a Instance,

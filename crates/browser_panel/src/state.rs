@@ -1,4 +1,4 @@
-use core::CompositionId;
+use nade_core::CompositionId;
 use std::collections::HashSet;
 
 use crate::ObjectId;

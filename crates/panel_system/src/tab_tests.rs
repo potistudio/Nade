@@ -473,7 +473,7 @@ fn tab_geometry_shares_width_and_caps_it() {
 
 	let narrow = TabBarGeometry::new(Rectangle::new(Point::ORIGIN, Size::new(200.0, 300.0)), 4, true);
 	assert!(narrow.tab_width < TAB_MAX_WIDTH);
-	assert!(narrow.add_button_x() + constants::style::CONTROL_CONTENT_HEIGHT <= 200.0);
+	assert!(narrow.add_button_x() + nade_constants::style::CONTROL_CONTENT_HEIGHT <= 200.0);
 	assert_eq!(narrow.slot_at(-50.0), 0);
 	assert_eq!(narrow.slot_at(10_000.0), 4);
 }

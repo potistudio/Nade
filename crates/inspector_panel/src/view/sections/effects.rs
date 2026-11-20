@@ -1,11 +1,11 @@
 //! Effects section: "Add Effect" picker and the layer's effect stack.
 
-use constants::icons::{Icon, icon};
-use constants::style::{FONT_UI, SPACE_1, SPACE_2, TEXT_MUTED_COLOR, TEXT_SECONDARY_COLOR};
-use constants::widgets::{self, button_body_center, ui_label};
-use domain::{EffectKind, InstanceContent, MediaKind};
 use iced::widget::{button, column, container, pick_list, row, tooltip};
 use iced::{Alignment, Element, Length};
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::{FONT_UI, SPACE_1, SPACE_2, TEXT_MUTED_COLOR, TEXT_SECONDARY_COLOR};
+use nade_constants::widgets::{self, button_body_center, ui_label};
+use nade_domain::{EffectKind, InstanceContent, MediaKind};
 
 use crate::state::InspectorUi;
 use crate::target::LayerTarget;

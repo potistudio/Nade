@@ -3,14 +3,14 @@ name = "nade"
 description = "Built to Create. Programmed to Kill Adobe."
 repository = "https://github.com/potistudio/Nade"
 keywords = [
-	"audio",
-	"composition",
-	"effect",
-	"graphics",
-	"linux",
-	"macos",
-	"video",
-	"windows",
+  "nade_audio",
+  "composition",
+  "effect",
+  "graphics",
+  "linux",
+  "macos",
+  "video",
+  "windows",
 ]
 categories = ["multimedia::video", "gui"]
 version.workspace = true
@@ -32,31 +32,31 @@ env_logger.workspace = true
 log.workspace = true
 image = "0.25.10"
 iced = { version = "0.14.0", features = [
-	"wgpu",
-	"image",
-	"svg",
-	"tokio",
-	"canvas",
-	"advanced",
+  "wgpu",
+  "image",
+  "svg",
+  "tokio",
+  "canvas",
+  "advanced",
 ] }
-browser_panel = { path = "../browser_panel" }
-asset_browser = { path = "../asset_browser" }
-constants = { workspace = true }
-core = { workspace = true }
-curve_editor_panel = { workspace = true }
-domain.workspace = true
-panel_system = { path = "../panel_system" }
-timeline_panel = { path = "../timeline_panel" }
-inspector_panel = { path = "../inspector_panel" }
-viewer_panel.workspace = true
+nade_browser_panel = { path = "../browser_panel" }
+nade_asset_browser = { path = "../asset_browser" }
+nade_constants = { workspace = true }
+nade_core = { workspace = true }
+nade_curve_editor_panel = { workspace = true }
+nade_domain.workspace = true
+nade_panel_system = { path = "../panel_system" }
+nade_timeline_panel = { path = "../timeline_panel" }
+nade_inspector_panel = { path = "../inspector_panel" }
+nade_viewer_panel.workspace = true
 rayon = "1.12.0"
 crossbeam-channel = "0.5.17"
 tokio = { version = "1.53.2", features = ["sync"] }
 bytes = "1.12.1"
 iced_wgpu = "0.14.0"
-renderer = { path = "../renderer" }
-media = { workspace = true }
-audio = { workspace = true }
+nade_renderer = { path = "../renderer" }
+nade_media = { workspace = true }
+nade_audio = { workspace = true }
 rfd = "0.17.2"
 serde = "1.0.229"
 

@@ -1,14 +1,14 @@
 //! Composition settings: facts, duration, background and nesting.
 
-use constants::icons::{Icon, icon};
-use constants::style::{
+use iced::widget::{Space, button, column, container, pick_list, row, scrollable, tooltip};
+use iced::{Alignment, Border, Color, Element, Length};
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::{
 	FONT_TINY, FONT_TITLE, FONT_UI, LABEL_COLORS, SPACE_1, SPACE_2, SPACE_3, SPACE_4, SPACE_5, TEXT_MUTED_COLOR,
 	TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR,
 };
-use constants::widgets::{self, button_body_center, mono_label, ui_label};
-use core::CompositionSummary;
-use iced::widget::{Space, button, column, container, pick_list, row, scrollable, tooltip};
-use iced::{Alignment, Border, Color, Element, Length};
+use nade_constants::widgets::{self, button_body_center, mono_label, ui_label};
+use nade_core::CompositionSummary;
 
 use crate::InspectorMessage;
 use crate::draggable_number::number_field;
@@ -23,7 +23,7 @@ pub(crate) fn composition_view<'a>(
 	nest_targets: Vec<CompositionChoice>,
 ) -> Element<'a, InspectorMessage> {
 	let header = row![
-		badge(Icon::Comp, constants::style::ACCENT_COLOR),
+		badge(Icon::Comp, nade_constants::style::ACCENT_COLOR),
 		column![
 			ui_label(summary.name, FONT_TITLE + 1.0).color(TEXT_PRIMARY_COLOR),
 			ui_label("Composition", FONT_TINY + 1.0).color(TEXT_MUTED_COLOR),
@@ -60,7 +60,7 @@ pub(crate) fn composition_view<'a>(
 			.suffix(" s")
 			.step(0.05)
 			.precision(2),
-		mono_label(core::timecode::format(summary.duration, summary.fps), FONT_UI).color(TEXT_MUTED_COLOR),
+		mono_label(nade_core::timecode::format(summary.duration, summary.fps), FONT_UI).color(TEXT_MUTED_COLOR),
 		widgets::tip(
 			button(button_body_center(icon(Icon::Fit, 12.0, TEXT_SECONDARY_COLOR)))
 				.padding(0)

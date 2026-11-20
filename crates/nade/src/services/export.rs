@@ -1,6 +1,6 @@
 //! Background export of a composition to a movie file.
 
-use domain::Composition;
+use nade_domain::Composition;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -36,13 +36,21 @@ impl ExportTask {
 		let spawned = thread::Builder::new().name("nade-export".into()).spawn(move || {
 			let is_rendered = |track: usize| track_rendered.get(track).copied().unwrap_or(true);
 			let range = composition.work_area();
-			let settings = renderer::export_settings(&composition, &output, range, is_rendered, &library);
-			worker.total.store(renderer::frame_count(&settings), Ordering::Relaxed);
-			let result =
-				renderer::export_composition(&composition, settings, range[0], is_rendered, &library, |done, _| {
+			let settings = nade_renderer::export_settings(&composition, &output, range, is_rendered, &library);
+			worker
+				.total
+				.store(nade_renderer::frame_count(&settings), Ordering::Relaxed);
+			let result = nade_renderer::export_composition(
+				&composition,
+				settings,
+				range[0],
+				is_rendered,
+				&library,
+				|done, _| {
 					worker.done.store(done, Ordering::Relaxed);
 					!worker.cancel.load(Ordering::Relaxed)
-				});
+				},
+			);
 			if let Ok(mut slot) = worker.result.lock() {
 				*slot = Some(result.map_err(|error| format!("{error:#}")));
 			}

@@ -2,12 +2,12 @@
 
 use crate::interaction::TimelineInteraction;
 use crate::widget::TimelineWidget;
-use constants::style::MONOSPACE_FONT;
-use constants::timeline::*;
 use iced::{
 	Color, Point, Rectangle, Size,
 	widget::canvas::{self, Text},
 };
+use nade_constants::style::MONOSPACE_FONT;
+use nade_constants::timeline::*;
 
 /// Minimum spacing between labelled ruler ticks (px).
 pub(super) const MIN_LABEL_SPACING: f32 = 76.0;
@@ -79,7 +79,7 @@ impl TimelineWidget<'_> {
 			if is_major {
 				self.draw_vertical_line(frame, x, lanes.y, lanes.y + lanes.height, colors::GRID_LINE);
 				frame.fill_text(Text {
-					content: core::timecode::format_ruler(time, self.fps),
+					content: nade_core::timecode::format_ruler(time, self.fps),
 					position: Point::new(x + 4.0, rect.y + 4.0),
 					color: colors::TEXT_SECONDARY,
 					size: 9.5.into(),
@@ -119,7 +119,7 @@ impl TimelineWidget<'_> {
 				);
 			}
 		}
-		let accent = constants::style::ACCENT_COLOR;
+		let accent = nade_constants::style::ACCENT_COLOR;
 		frame.fill_rectangle(
 			Point::new(left, ruler.y + ruler.height - 4.0),
 			Size::new(right - left, 3.0),

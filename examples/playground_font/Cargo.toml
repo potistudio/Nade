@@ -1,5 +1,5 @@
 [package]
-name = "playground_font"
+name = "nade_playground_font"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

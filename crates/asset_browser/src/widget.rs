@@ -1,11 +1,11 @@
 use crate::{AssetBrowserMessage, AssetBrowserState};
-use constants::icons::{Icon, icon};
-use constants::style::*;
-use constants::tree::{Disclosure, TreeRow};
-use constants::widgets::{self, button_body_center, ui_label};
-use domain::{Asset, AssetType, Project};
 use iced::widget::{Space, button, column, container, mouse_area, row, scrollable, text_input, tooltip};
 use iced::{Alignment, Color, Element, Length};
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::*;
+use nade_constants::tree::{Disclosure, TreeRow};
+use nade_constants::widgets::{self, button_body_center, ui_label};
+use nade_domain::{Asset, AssetType, Project};
 
 #[derive(Debug)]
 pub struct AssetBrowserWidget<'a> {

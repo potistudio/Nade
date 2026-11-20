@@ -1,9 +1,9 @@
 //! Scroll offset, elastic overscroll and the momentum spring.
 
 use crate::interaction::TimelineInteraction;
-use constants::timeline::*;
-use core::TimelineModel;
 use iced::{Rectangle, Vector, mouse};
+use nade_constants::timeline::*;
+use nade_core::TimelineModel;
 
 impl TimelineInteraction {
 	/// Clamp the scroll offset to valid bounds

@@ -1,15 +1,15 @@
 //! Unified toolbar: tool palette and create actions.
 
-use constants::icons::{Icon, icon};
-use constants::style::{SPACE_2, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
-use constants::widgets::{self, button_body_center};
 use iced::widget::{Space, button, container, row, tooltip};
 use iced::{Alignment, Element, Length};
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::{SPACE_2, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
+use nade_constants::widgets::{self, button_body_center};
 
 use crate::message::{Message, ShellMessage};
 use crate::theme::{SHELL_GUTTER, SHELL_TOOLBAR_HEIGHT, TOOL_SEGMENT};
 use crate::widgets::segmented::{Segment, segmented};
-use viewer_panel::Tool;
+use nade_viewer_panel::Tool;
 
 pub struct ToolbarState {
 	pub tool: Tool,

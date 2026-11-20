@@ -1,4 +1,4 @@
-use core::{NodeId, NodeState, Operator};
+use nade_core::{NodeId, NodeState, Operator};
 
 /// Node represents a processing unit in the graph, which can contain multiple operators and maintain its state.
 #[derive(Debug)]

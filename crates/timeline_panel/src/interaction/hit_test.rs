@@ -1,9 +1,9 @@
 //! Clip and track hit testing.
 
 use crate::interaction::TimelineInteraction;
-use constants::timeline::*;
-use core::{TimelineClip, TimelineModel};
 use iced::{Point, Rectangle};
+use nade_constants::timeline::*;
+use nade_core::{TimelineClip, TimelineModel};
 
 impl TimelineInteraction {
 	pub(super) fn find_clips_in_rect(

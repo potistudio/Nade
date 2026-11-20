@@ -1,4 +1,4 @@
-use core::{Affine, CompositionId, NodeId, id::InstanceId};
+use nade_core::{Affine, CompositionId, NodeId, id::InstanceId};
 
 use crate::instance::{Instance, TransformProperty};
 
@@ -421,7 +421,7 @@ impl Composition {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core::NodeId;
+	use nade_core::NodeId;
 
 	#[test]
 	fn new_instances_stack_on_free_tracks() {

@@ -1,16 +1,16 @@
 //! Application menus: the menu bar in the title strip and right-click
 //! context menus, drawn as floating panels over the window.
 
-use constants::style::{FONT_UI, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
-use constants::widgets::{self, mono_label, ui_label};
 use iced::widget::{Space, button, column, container, mouse_area, row};
 use iced::{Alignment, Element, Length, Padding, Point, Size};
+use nade_constants::style::{FONT_UI, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
+use nade_constants::widgets::{self, mono_label, ui_label};
 
 use crate::message::{MenuMessage, Message};
 
 /// Width of a dropdown / context menu.
 pub const MENU_WIDTH: f32 = 240.0;
-const ITEM_HEIGHT: f32 = constants::style::ROW_HEIGHT;
+const ITEM_HEIGHT: f32 = nade_constants::style::ROW_HEIGHT;
 const ITEM_SPACING: f32 = 1.0;
 const SEPARATOR_HEIGHT: f32 = 9.0;
 const PANEL_PADDING: f32 = 4.0;

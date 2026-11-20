@@ -1,13 +1,13 @@
 use crate::message::PreviewMessage;
-use core::FrameData;
 use iced::advanced::graphics::Viewport;
 use iced::widget::shader::{Pipeline, Primitive, Program};
 use iced::{Color, Rectangle, Vector, mouse};
+use nade_core::FrameData;
 use std::fmt::Debug;
 
 use wgpu;
 
-use constants::style;
+use nade_constants::style;
 
 /// Backdrop around the comp frame (pasteboard).
 const CANVAS_BG: Color = style::WELL_COLOR;

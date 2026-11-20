@@ -1,7 +1,7 @@
 //! Typed messages and property groups of the panel.
 
-use core::{BlendMode, CompositionId, InstanceId};
-use domain::{EffectKind, TransformProperty};
+use nade_core::{BlendMode, CompositionId, InstanceId};
+use nade_domain::{EffectKind, TransformProperty};
 
 /// A row in the Transform section. Vector rows edit several channels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

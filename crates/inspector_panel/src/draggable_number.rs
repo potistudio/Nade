@@ -5,10 +5,6 @@
 //!   elsewhere commits.
 //! - Command-click resets to the default value.
 
-use constants::style::{
-	ACCENT_COLOR, BORDER_RADIUS, FONT_LABEL, INPUT_HEIGHT, KEYFRAME_COLOR, TEXT_PRIMARY_COLOR, WELL_COLOR,
-	WIDGET_COLOR, WIDGET_HOVER_COLOR, mix,
-};
 use iced::advanced::layout::{self, Layout};
 use iced::advanced::renderer;
 use iced::advanced::text::{self as advanced_text};
@@ -18,6 +14,10 @@ use iced::event::Event;
 use iced::keyboard::{self, key::Named};
 use iced::mouse::Cursor;
 use iced::{Border, Color, Element, Length, Pixels, Point, Rectangle, Size};
+use nade_constants::style::{
+	ACCENT_COLOR, BORDER_RADIUS, FONT_LABEL, INPUT_HEIGHT, KEYFRAME_COLOR, TEXT_PRIMARY_COLOR, WELL_COLOR,
+	WIDGET_COLOR, WIDGET_HOVER_COLOR, mix,
+};
 
 /// Keyframe state of the property behind a field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

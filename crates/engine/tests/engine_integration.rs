@@ -1,4 +1,4 @@
-use constants::TICK_INTERVAL_MS;
+use nade_constants::TICK_INTERVAL_MS;
 use nade_engine::{AudioEngine, clock::MasterClock, state::EngineState};
 use std::{
 	sync::Arc,

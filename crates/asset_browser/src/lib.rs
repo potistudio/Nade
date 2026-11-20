@@ -1,6 +1,4 @@
-//! # Asset Browser
-//!
-//! Project media / folder bin for Iced.
+//! # Asset browser panel
 
 mod message;
 mod state;

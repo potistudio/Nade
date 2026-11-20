@@ -1,12 +1,12 @@
 //! A layer's page: header followed by its sections.
 
-use constants::icons::Icon;
-use constants::style::{SPACE_1, SPACE_4};
-use constants::widgets;
-use domain::MediaKind;
 use iced::Element;
 use iced::time::Instant;
 use iced::widget::{column, scrollable};
+use nade_constants::icons::Icon;
+use nade_constants::style::{SPACE_1, SPACE_4};
+use nade_constants::widgets;
+use nade_domain::MediaKind;
 
 use crate::state::InspectorUi;
 use crate::target::LayerTarget;
@@ -108,7 +108,7 @@ pub(crate) fn layer_view<'a>(
 		));
 	}
 
-	scrollable(sections.padding([SPACE_4 + 2.0, SPACE_4 + 2.0]))
+	scrollable(sections.padding([SPACE_4, SPACE_4]))
 		.style(widgets::scrollable)
 		.into()
 }

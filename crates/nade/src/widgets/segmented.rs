@@ -2,9 +2,9 @@
 //! segments. The caller owns the pill position (an animated segment index) so
 //! the control itself stays stateless.
 
-use constants::widgets::{self, button_body_center, button_segment};
 use iced::widget::{Space, button, container, row, stack, tooltip};
 use iced::{Border, Color, Element, Length, Shadow, Vector};
+use nade_constants::widgets::{self, button_body_center, button_segment};
 
 /// Inner padding between the track and the segments.
 const TRACK_PADDING: f32 = 2.0;

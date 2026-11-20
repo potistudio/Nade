@@ -1,4 +1,4 @@
-use core::{
+use nade_core::{
 	EvalAccess, EvalContext, EvalError, NodeId, ParamDescriptor, ParamKind, ParamValue, Value, ValueKind, ValueParam,
 	ValueParamUi,
 };

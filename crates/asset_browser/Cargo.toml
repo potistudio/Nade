@@ -1,5 +1,5 @@
 [package]
-name = "asset_browser"
+name = "nade_asset_browser"
 description = "Asset browser panel"
 version.workspace = true
 edition.workspace = true
@@ -12,6 +12,6 @@ workspace = true
 
 [dependencies]
 iced.workspace = true
-domain.workspace = true
-constants.workspace = true
-core = { workspace = true }
+nade_domain.workspace = true
+nade_constants.workspace = true
+nade_core = { workspace = true }

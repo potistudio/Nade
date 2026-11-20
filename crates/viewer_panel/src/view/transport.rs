@@ -1,13 +1,13 @@
 //! Transport bar: timecode, playback controls and resolution.
 
-use constants::icons::{Icon, icon};
-use constants::style::{
+use iced::widget::{Canvas, Space, button, container, pick_list, row, stack, tooltip};
+use iced::{Alignment, Element, Length};
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::{
 	FONT_TINY, FONT_UI, ICON_SIZE, SPACE_1, SPACE_2, SPACE_4, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR,
 	TEXT_SECONDARY_COLOR,
 };
-use constants::widgets::{self, button_body_center, mono_label, ui_label};
-use iced::widget::{Canvas, Space, button, container, pick_list, row, stack, tooltip};
-use iced::{Alignment, Element, Length};
+use nade_constants::widgets::{self, button_body_center, mono_label, ui_label};
 
 use crate::message::{PreviewMessage, TransportMessage};
 use crate::settings::Resolution;
@@ -20,8 +20,12 @@ pub(super) fn transport<'a>(props: &ViewerProps<'a>) -> Element<'a, PreviewMessa
 	let playing = props.preview.is_playing;
 
 	let timecode = row![
-		mono_label(core::timecode::format(props.preview.time, fps), FONT_UI).color(TEXT_PRIMARY_COLOR),
-		mono_label(format!("/ {}", core::timecode::format(duration, fps)), FONT_TINY + 1.0).color(TEXT_MUTED_COLOR),
+		mono_label(nade_core::timecode::format(props.preview.time, fps), FONT_UI).color(TEXT_PRIMARY_COLOR),
+		mono_label(
+			format!("/ {}", nade_core::timecode::format(duration, fps)),
+			FONT_TINY + 1.0
+		)
+		.color(TEXT_MUTED_COLOR),
 	]
 	.spacing(SPACE_2 + 2.0)
 	.align_y(Alignment::Center);
@@ -56,7 +60,7 @@ pub(super) fn transport<'a>(props: &ViewerProps<'a>) -> Element<'a, PreviewMessa
 				Icon::Loop,
 				ICON_SIZE,
 				if props.loop_playback {
-					constants::style::ACCENT_BRIGHT_COLOR
+					nade_constants::style::ACCENT_BRIGHT_COLOR
 				} else {
 					TEXT_SECONDARY_COLOR
 				},

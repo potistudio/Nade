@@ -4,7 +4,7 @@
 //! slot. Vector parameters (points, colors) span several consecutive slots so
 //! every channel keys like a transform channel does.
 
-use core::AnimationCurve;
+use nade_core::AnimationCurve;
 use std::ops::Range;
 
 /// Effects & Presets category an effect is listed under.

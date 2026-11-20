@@ -1,8 +1,8 @@
 //! Messages and updates of the curve editor.
 
-use core::Interpolation;
-use domain::TransformProperty;
 use iced::{Point, Size, mouse};
+use nade_core::Interpolation;
+use nade_domain::TransformProperty;
 
 #[derive(Debug, Clone)]
 pub enum CurveEditorMessage {

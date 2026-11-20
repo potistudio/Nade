@@ -1,7 +1,7 @@
 //! Reading stream facts from media files.
 
 use anyhow::{Context, Result, bail};
-use core::MediaInfo;
+use nade_core::MediaInfo;
 use std::path::Path;
 use std::process::Command;
 

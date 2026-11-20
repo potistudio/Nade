@@ -5,13 +5,13 @@ use crate::{
 	interaction::TimelineLayout,
 	message::{TimelineCanvasEvent, TimelineMessage},
 };
-use constants::timeline::*;
 use iced::{
 	Event, Point, Rectangle, Size, Theme,
 	keyboard::{self},
 	mouse,
 	widget::canvas::{self, Geometry},
 };
+use nade_constants::timeline::*;
 
 /// Canvas-local input state.
 #[derive(Debug, Default)]

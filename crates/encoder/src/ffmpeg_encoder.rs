@@ -1,6 +1,6 @@
 use super::*;
 use anyhow::{Context, Result, bail};
-use core::FrameBuffer;
+use nade_core::FrameBuffer;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -223,13 +223,13 @@ impl FfmpegEncoder {
 impl Encoder for FfmpegEncoder {
 	fn prepare(&mut self) -> Result<()> {
 		log::debug!("Preparing FFmpeg encoder: {:?}", self.settings);
-		let mut child = Command::new(media::ffmpeg_path())
+		let mut child = Command::new(nade_media::ffmpeg_path())
 			.args(self.settings.ffmpeg_args())
 			.stdin(Stdio::piped())
 			.stdout(Stdio::null())
 			.stderr(Stdio::piped())
 			.spawn()
-			.with_context(|| format!("starting {}", media::ffmpeg_path().display()))?;
+			.with_context(|| format!("starting {}", nade_media::ffmpeg_path().display()))?;
 		self.stdin = child.stdin.take();
 		// stderr を溜め込むと ffmpeg が書き込みで止まるので別スレッドで読み切る
 		self.stderr = child.stderr.take().map(|mut stderr| {
@@ -365,7 +365,7 @@ mod tests {
 		}
 		encoder.finish().unwrap();
 		assert!(std::fs::metadata(&settings.path).unwrap().len() > 0);
-		let info = media::probe(&settings.path).unwrap();
+		let info = nade_media::probe(&settings.path).unwrap();
 		assert_eq!((info.width, info.height), (66, 36));
 	}
 }

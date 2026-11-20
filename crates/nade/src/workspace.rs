@@ -1,6 +1,6 @@
 //! Workspace presets: whole-window panel layouts tuned for a task.
 
-use panel_system::{DockNode, LayoutBuilder};
+use nade_panel_system::{DockNode, LayoutBuilder};
 
 use crate::panel_content::PanelContent;
 

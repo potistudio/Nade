@@ -6,14 +6,14 @@ use crate::{
 	icons::{draw_eye_icon, draw_solo_icon},
 	interaction::TimelineInteraction,
 };
-use constants::style::MONOSPACE_FONT;
-use constants::timeline::*;
-use core::TrackVisibilityDisplay;
 use iced::{
 	Color, Point, Rectangle, Size,
 	alignment::Vertical,
 	widget::canvas::{self, LineCap, Path, Stroke, Text},
 };
+use nade_constants::style::MONOSPACE_FONT;
+use nade_constants::timeline::*;
+use nade_core::TrackVisibilityDisplay;
 
 impl TimelineWidget<'_> {
 	pub(super) fn draw_track_labels(
@@ -193,7 +193,7 @@ impl TimelineWidget<'_> {
 				..colors::TEXT_MUTED
 			}
 		} else if active {
-			constants::style::WARNING_COLOR
+			nade_constants::style::WARNING_COLOR
 		} else {
 			colors::TEXT_MUTED
 		};

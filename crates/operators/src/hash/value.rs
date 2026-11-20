@@ -1,7 +1,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use core::Value;
+use nade_core::Value;
 
 pub(crate) fn hash_f32(value: f32) -> u64 {
 	let mut hasher = DefaultHasher::new();

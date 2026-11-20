@@ -1,5 +1,5 @@
 [package]
-name = "cli"
+name = "nade_cli"
 description = "Nade app (CLI)"
 version.workspace = true
 edition.workspace = true

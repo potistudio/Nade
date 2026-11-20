@@ -2,18 +2,18 @@
 //!
 //! アプリケーション全体で使用されるメッセージ型を定義します。
 
-use curve_editor_panel::CurveEditorMessage;
-use panel_system::PanelSystemMessage;
+use nade_curve_editor_panel::CurveEditorMessage;
+use nade_panel_system::PanelSystemMessage;
+use nade_timeline_panel::TimelineMessage;
 use std::path::PathBuf;
-use timeline_panel::TimelineMessage;
 
 use crate::panel_content::PanelContent;
 use crate::workspace::Workspace;
-use core::{FrameData, MediaInfo};
+use nade_core::{FrameData, MediaInfo};
 
-pub use asset_browser::AssetBrowserMessage;
-pub use browser_panel::ProjectPaneMessage;
-pub use viewer_panel::{PreviewMessage, Tool, TransportMessage};
+pub use nade_asset_browser::AssetBrowserMessage;
+pub use nade_browser_panel::ProjectPaneMessage;
+pub use nade_viewer_panel::{PreviewMessage, Tool, TransportMessage};
 
 /// メニューバーとコンテキストメニュー
 #[derive(Debug, Clone)]
@@ -39,7 +39,7 @@ pub enum AppPanelMessage {
 	CurveEditor(CurveEditorMessage),
 	Project(ProjectPaneMessage),
 	Assets(AssetBrowserMessage),
-	Inspector(inspector_panel::InspectorMessage),
+	Inspector(nade_inspector_panel::InspectorMessage),
 	Preview(PreviewMessage),
 }
 

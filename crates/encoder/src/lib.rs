@@ -1,7 +1,7 @@
 pub mod ffmpeg_encoder;
 
 use anyhow::Result;
-use core::FrameBuffer;
+use nade_core::FrameBuffer;
 
 pub use ffmpeg_encoder::{AudioClip, ExportSettings, FfmpegEncoder, preview_audio_args};
 

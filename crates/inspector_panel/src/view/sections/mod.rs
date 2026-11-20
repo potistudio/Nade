@@ -10,12 +10,12 @@ pub(crate) mod solid;
 pub(crate) mod text;
 pub(crate) mod transform;
 
-use constants::icons::{Icon, icon, icon_transformed};
-use constants::style::{FONT_UI, SPACE_1, SPACE_2, SPACE_3, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
-use constants::widgets::{self, ui_label};
 use iced::time::Instant;
 use iced::widget::{button, column, container, row};
 use iced::{Alignment, Element, Length};
+use nade_constants::icons::{Icon, icon, icon_transformed};
+use nade_constants::style::{FONT_UI, SPACE_1, SPACE_2, SPACE_3, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
+use nade_constants::widgets::{self, ui_label};
 
 use crate::state::InspectorUi;
 use crate::view::ROW_HEIGHT;

@@ -1,11 +1,11 @@
 //! Playhead line.
 
 use crate::widget::CurveEditorWidget;
-use constants::style::ACCENT_COLOR;
 use iced::{
 	Point, Size,
 	widget::canvas::{self, Path, Stroke},
 };
+use nade_constants::style::ACCENT_COLOR;
 
 impl CurveEditorWidget<'_> {
 	pub(super) fn draw_playhead(&self, frame: &mut canvas::Frame, height: f32) {

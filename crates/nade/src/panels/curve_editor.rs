@@ -1,15 +1,15 @@
 use crate::message::AppPanelMessage;
 use crate::panel_content::PanelContent;
-use constants::icons::{Icon, icon};
-use constants::style::{FONT_TITLE, FONT_UI, SPACE_3, TEXT_MUTED_COLOR, TEXT_SECONDARY_COLOR};
-use constants::widgets::{self, ui_label};
-use curve_editor_panel::{CurveEditorState, CurveEditorWidget};
-use domain::TransformAnimation;
 use iced::{
 	Element, Length,
 	widget::{column, container},
 };
-use panel_system::PanelSystemMessage;
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::{FONT_TITLE, FONT_UI, SPACE_3, TEXT_MUTED_COLOR, TEXT_SECONDARY_COLOR};
+use nade_constants::widgets::{self, ui_label};
+use nade_curve_editor_panel::{CurveEditorState, CurveEditorWidget};
+use nade_domain::TransformAnimation;
+use nade_panel_system::PanelSystemMessage;
 
 pub fn view<'a>(
 	state: &'a CurveEditorState,

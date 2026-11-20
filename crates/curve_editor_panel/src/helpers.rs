@@ -1,8 +1,8 @@
 //! Editable properties, their colors and grid / formatting math.
 
-use constants::style::{AXIS_X_COLOR, AXIS_Y_COLOR, AXIS_Z_COLOR, LABEL_COLORS, TEXT_SECONDARY_COLOR};
-use domain::TransformProperty;
 use iced::{Color, Point};
+use nade_constants::style::{AXIS_X_COLOR, AXIS_Y_COLOR, AXIS_Z_COLOR, LABEL_COLORS, TEXT_SECONDARY_COLOR};
+use nade_domain::TransformProperty;
 
 /// Channels editable on 2D layers, in panel order.
 pub(crate) const EDITABLE_PROPERTIES: [TransformProperty; 6] = [

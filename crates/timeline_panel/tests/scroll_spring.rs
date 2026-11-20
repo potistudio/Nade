@@ -1,6 +1,6 @@
 use iced::{Rectangle, mouse};
+use nade_timeline_panel::{TimelineCanvasEvent, TimelineInteraction, TimelineMessage, TimelineModel};
 use std::time::{Duration, Instant};
-use timeline_panel::{TimelineCanvasEvent, TimelineInteraction, TimelineMessage, TimelineModel};
 
 fn scroll(state: &mut TimelineInteraction, x: f32, y: f32) {
 	state.apply_message(

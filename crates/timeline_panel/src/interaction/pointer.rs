@@ -1,9 +1,9 @@
 //! Mouse press / drag / release: playhead, clips, resizing, track reordering and range selection.
 
 use crate::interaction::{DragState, TimelineInteraction, TimelineLayout};
-use constants::timeline::*;
-use core::TimelineModel;
 use iced::{Point, Rectangle};
+use nade_constants::timeline::*;
+use nade_core::TimelineModel;
 
 impl TimelineInteraction {
 	/// Is a clip being dragged?

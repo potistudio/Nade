@@ -1,13 +1,13 @@
 //! Transform section: keyframe-aware anchor / position / scale / rotation / opacity rows.
 
-use constants::icons::{Icon, icon};
-use constants::style::{
-	AXIS_X_COLOR, AXIS_Y_COLOR, FONT_UI, KEYFRAME_COLOR, SPACE_2, SPACE_3, TEXT_MUTED_COLOR, TEXT_SECONDARY_COLOR,
-};
-use constants::widgets::{self, button_body_center, ui_label};
-use domain::{Instance, TransformProperty};
 use iced::widget::{Space, button, row, slider, tooltip};
 use iced::{Alignment, Color, Element, Length};
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::{
+	AXIS_X_COLOR, AXIS_Y_COLOR, FONT_UI, KEYFRAME_COLOR, SPACE_2, SPACE_3, TEXT_MUTED_COLOR, TEXT_SECONDARY_COLOR,
+};
+use nade_constants::widgets::{self, button_body_center, ui_label};
+use nade_domain::{Instance, TransformProperty};
 
 use crate::draggable_number::{KeyState, number_field};
 use crate::state::InspectorUi;
@@ -155,7 +155,7 @@ pub(crate) fn property_row<'a>(
 					Icon::Link,
 					12.0,
 					if ui.scale_linked {
-						constants::style::ACCENT_BRIGHT_COLOR
+						nade_constants::style::ACCENT_BRIGHT_COLOR
 					} else {
 						TEXT_MUTED_COLOR
 					},

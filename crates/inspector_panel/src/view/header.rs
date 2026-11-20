@@ -1,11 +1,11 @@
 //! Layer header: kind badge, editable name and span.
 
-use constants::icons::{Icon, icon};
-use constants::style::{FONT_TINY, FONT_TITLE, SPACE_1, SPACE_3, TEXT_MUTED_COLOR};
-use constants::widgets::{self, ui_label};
-use domain::{InstanceContent, MediaKind};
 use iced::widget::{column, container, row, text_input};
 use iced::{Alignment, Color, Element};
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::{FONT_TINY, FONT_TITLE, SPACE_1, SPACE_3, TEXT_MUTED_COLOR};
+use nade_constants::widgets::{self, ui_label};
+use nade_domain::{InstanceContent, MediaKind};
 
 use crate::InspectorMessage;
 use crate::target::LayerTarget;

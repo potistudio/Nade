@@ -1,6 +1,6 @@
 //! A layer's box in composition space and its geometry.
 
-use core::{Affine, InstanceId};
+use nade_core::{Affine, InstanceId};
 
 /// Placement of a visible layer, in comp space (origin at the comp center).
 #[derive(Debug, Clone, Copy)]

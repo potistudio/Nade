@@ -8,7 +8,7 @@ use std::thread;
 use std::time::Instant;
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
-use core::{CoreEffect, FrameData, Model, Msg, update};
+use nade_core::{CoreEffect, FrameData, Model, Msg, update};
 
 use crate::renderer;
 
@@ -100,7 +100,7 @@ pub fn core_loop(rx: Receiver<Msg>, tx: Sender<Model>) {
 						// 別スレッドでレンダリング実行
 						thread::spawn(move || {
 							let frame_num = (time * 60.0) as u32;
-							let img_buffer = renderer::render_frame(frame_num, width, height);
+							let img_buffer = nade_renderer::render_frame(frame_num, width, height);
 							let raw = img_buffer.into_raw();
 
 							let frame_data = FrameData {

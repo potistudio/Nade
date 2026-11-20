@@ -1,6 +1,6 @@
 use crate::common::{resolve_value_param, set_u32, set_value_param, u32_descriptor, value_param_descriptor};
 use crate::hash::image::hash_color_size;
-use core::{
+use nade_core::{
 	EvalAccess, EvalContext, EvalError, Image, NodeState, Operator, Output, OutputType, ParamDescriptor, ParamValue,
 	ResolvedOp, ValueKind, ValueParam, ValueParamUi,
 };

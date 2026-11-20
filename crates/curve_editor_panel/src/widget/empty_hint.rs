@@ -1,11 +1,11 @@
 //! Hint shown when the selected property has no keys.
 
 use crate::widget::CurveEditorWidget;
-use constants::style::TEXT_MUTED_COLOR;
 use iced::{
 	Point, Size,
 	widget::canvas::{self, Text},
 };
+use nade_constants::style::TEXT_MUTED_COLOR;
 
 impl CurveEditorWidget<'_> {
 	pub(super) fn draw_empty_hint(&self, frame: &mut canvas::Frame, size: Size) {

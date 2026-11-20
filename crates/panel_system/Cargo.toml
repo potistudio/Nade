@@ -1,5 +1,5 @@
 [package]
-name = "panel_system"
+name = "nade_panel_system"
 version.workspace = true
 edition.workspace = true
 description = "Blender-style area tiling system for Iced applications"
@@ -11,5 +11,5 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-constants = { path = "../constants" }
+nade_constants = { path = "../constants" }
 iced = { workspace = true, features = ["canvas", "image", "svg"] }

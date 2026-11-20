@@ -1,7 +1,7 @@
 //! Render-ready description of one composition frame.
 
-use core::{Affine, BlendMode, CompositionId, MediaInfo, SceneObjectId, TextObject};
-use domain::{Composition, EvaluatedEffect, Instance, InstanceContent, MediaKind, Project};
+use nade_core::{Affine, BlendMode, CompositionId, MediaInfo, SceneObjectId, TextObject};
+use nade_domain::{Composition, EvaluatedEffect, Instance, InstanceContent, MediaKind, Project};
 use std::path::PathBuf;
 
 /// Where nested compositions are looked up.
@@ -181,7 +181,7 @@ fn nested_layer(
 }
 
 fn scene_layer(instance: &Instance, time: f32, factor: f32, matrix: Affine, kind: LayerKind) -> Option<SceneLayer> {
-	let opacity = instance.property_at(domain::TransformProperty::Opacity, time);
+	let opacity = instance.property_at(nade_domain::TransformProperty::Opacity, time);
 	if opacity <= 0.0 {
 		return None;
 	}

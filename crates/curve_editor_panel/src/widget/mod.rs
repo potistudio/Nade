@@ -11,12 +11,12 @@ mod toolbar;
 use crate::SIDEBAR_WIDTH;
 use crate::message::CurveEditorMessage;
 use crate::state::CurveEditorState;
-use constants::style::{BORDER_SUBTLE_COLOR, SPACE_3};
-use domain::TransformAnimation;
 use iced::{
 	Element, Length,
 	widget::{Space, canvas::Canvas, column, container, row},
 };
+use nade_constants::style::{BORDER_SUBTLE_COLOR, SPACE_3};
+use nade_domain::TransformAnimation;
 
 pub struct CurveEditorWidget<'a> {
 	state: &'a CurveEditorState,

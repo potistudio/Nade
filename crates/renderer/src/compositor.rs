@@ -1,12 +1,12 @@
 //! Draws [`Scene`]s: solids, footage and text over the composition background.
 
-use core::{Affine, BlendMode};
 use image::{ImageBuffer, Rgba, RgbaImage};
-use media::{MediaCache, Picture};
+use nade_core::{Affine, BlendMode};
+use nade_media::{MediaCache, Picture};
 use rayon::prelude::*;
 
 use crate::scene::{LayerKind, Scene, SceneLayer};
-use effects::{EffectContext, Surface};
+use nade_effects::{EffectContext, Surface};
 
 /// Stateful frame renderer. Keeps decoded footage between frames, so use one
 /// per thread and feed it consecutive frames where possible.
@@ -75,7 +75,7 @@ impl Compositor {
 			width: width as usize,
 			height: height as usize,
 		};
-		effects::apply_stack(&mut surface, &layer.effects, &ctx);
+		nade_effects::apply_stack(&mut surface, &layer.effects, &ctx);
 		composite_surface(image, &surface, &paint);
 	}
 
@@ -324,8 +324,8 @@ pub fn render_scene(scene: &Scene) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
 mod tests {
 	use super::*;
 	use crate::scene::SceneLayer;
-	use core::{NodeId, Transform};
-	use domain::{Composition, InstanceContent};
+	use nade_core::{NodeId, Transform};
+	use nade_domain::{Composition, InstanceContent};
 
 	fn scene(layers: Vec<SceneLayer>) -> Scene {
 		Scene {
@@ -426,7 +426,7 @@ mod tests {
 	#[test]
 	fn effects_run_on_the_layer_before_opacity() {
 		let mut layer = solid(Transform::default(), [1.0, 0.0, 0.0, 1.0]);
-		layer.effects = vec![domain::LayerEffect::new(0, domain::EffectKind::Invert).evaluate(0.0)];
+		layer.effects = vec![nade_domain::LayerEffect::new(0, nade_domain::EffectKind::Invert).evaluate(0.0)];
 		layer.opacity = 0.5;
 		let image = render_scene(&scene(vec![layer]));
 		// 赤 → シアン、半透明で黒背景に乗る
@@ -441,7 +441,7 @@ mod tests {
 	#[test]
 	fn blurred_layers_spread_past_their_bounds() {
 		let mut layer = solid(Transform::default(), [1.0, 1.0, 1.0, 1.0]);
-		let mut blur = domain::LayerEffect::new(0, domain::EffectKind::GaussianBlur);
+		let mut blur = nade_domain::LayerEffect::new(0, nade_domain::EffectKind::GaussianBlur);
 		blur.set_value_at(0, 0.0, 8.0);
 		layer.effects = vec![blur.evaluate(0.0)];
 		let image = render_scene(&scene(vec![layer]));
@@ -491,7 +491,7 @@ mod tests {
 
 	#[test]
 	fn scene_follows_draw_order_visibility_and_resolution() {
-		let mut composition = Composition::new(core::CompositionId::new(0), "Test", 200, 100, 30.0);
+		let mut composition = Composition::new(nade_core::CompositionId::new(0), "Test", 200, 100, 30.0);
 		let top = composition.add_instance_named(NodeId::new(0), "Top");
 		top.set_content(InstanceContent::solid(10.0, 10.0, [1.0, 0.0, 0.0, 1.0]));
 		top.transform.position = [20.0, 0.0, 0.0];
@@ -515,7 +515,7 @@ mod tests {
 
 	#[test]
 	fn children_follow_their_parent() {
-		let mut composition = Composition::new(core::CompositionId::new(0), "Test", 100, 100, 30.0);
+		let mut composition = Composition::new(nade_core::CompositionId::new(0), "Test", 100, 100, 30.0);
 		let parent = composition.add_instance_named(NodeId::new(0), "Null").id();
 		let child = composition.add_instance_named(NodeId::new(1), "Child");
 		child.set_content(InstanceContent::solid(10.0, 10.0, [1.0, 1.0, 1.0, 1.0]));
@@ -531,7 +531,7 @@ mod tests {
 
 	#[test]
 	fn nested_compositions_render_inside_their_layer() {
-		let mut project = domain::Project::default();
+		let mut project = nade_domain::Project::default();
 		let main = project.create_composition("Main", 100, 100, 30.0);
 		let inner = project.create_composition("Inner", 100, 100, 30.0);
 		{

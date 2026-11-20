@@ -1,5 +1,5 @@
 [package]
-name = "nade-engine"
+name = "nade_engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,4 +11,4 @@ workspace = true
 
 [dependencies]
 log.workspace = true
-constants.workspace = true
+nade_constants.workspace = true

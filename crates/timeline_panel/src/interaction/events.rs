@@ -2,13 +2,13 @@
 
 use crate::interaction::{DragState, TimelineInteraction, TimelineLayout};
 use crate::message::{TimelineCanvasEvent, TimelineMessage, TimelineUpdate};
-use constants::timeline::*;
-use core::TimelineModel;
 use iced::{
 	Point, Rectangle, Vector,
 	keyboard::{self, Key},
 	mouse,
 };
+use nade_constants::timeline::*;
+use nade_core::TimelineModel;
 
 impl TimelineInteraction {
 	/// タイムラインメッセージを状態に適用

@@ -1,5 +1,5 @@
 [package]
-name = "media"
+name = "nade_media"
 description = "Media probing and decoding (images and FFmpeg-backed video)"
 version.workspace = true
 edition.workspace = true
@@ -12,6 +12,6 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
-core = { workspace = true }
+nade_core = { workspace = true }
 image = "0.25.10"
 log = { workspace = true }

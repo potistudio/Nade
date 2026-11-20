@@ -2,13 +2,13 @@
 
 use crate::widget::{KEYFRAME_RADIUS, TimelineWidget, rounded_rect};
 use crate::{TimelineClip, TimelineModel, interaction::TimelineInteraction};
-use constants::timeline::{
-	colors::{CLIP_HOVERED_OUTLINE, CLIP_RESIZE_HANDLE, CLIP_SELECTED_OUTLINE, CLIP_SHRINKING_OUTLINE},
-	*,
-};
 use iced::{
 	Color, Point, Rectangle, Size,
 	widget::canvas::{self, Path, Stroke},
+};
+use nade_constants::timeline::{
+	colors::{CLIP_HOVERED_OUTLINE, CLIP_RESIZE_HANDLE, CLIP_SELECTED_OUTLINE, CLIP_SHRINKING_OUTLINE},
+	*,
 };
 
 impl TimelineWidget<'_> {
@@ -118,7 +118,7 @@ impl TimelineWidget<'_> {
 			&body,
 			Color {
 				a: dim,
-				..constants::style::mix(label, Color::BLACK, 0.15)
+				..nade_constants::style::mix(label, Color::BLACK, 0.15)
 			},
 		);
 

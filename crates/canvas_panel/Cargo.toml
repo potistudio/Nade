@@ -1,5 +1,5 @@
 [package]
-name = "canvas_panel"
+name = "nade_canvas_panel"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

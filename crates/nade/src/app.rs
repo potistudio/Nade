@@ -2,27 +2,27 @@
 //!
 //! NadeのメインUIアプリケーション実装です。
 
-use asset_browser::{AssetBrowserMessage, AssetBrowserState};
-use browser_panel::{ObjectId, ProjectPaneMessage, ProjectPaneState};
-use constants::icons::Icon;
 use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
-use curve_editor_panel::{CurveEditorMessage, CurveEditorState};
 use iced::animation::Easing;
 use iced::keyboard;
 use iced::time::{Duration, Instant};
 use iced::widget::{column, container, stack};
 use iced::{Animation, Element, Length, Size, Subscription, Task};
-use inspector_panel::{EffectEdit, InspectorMessage, PropertyGroup};
-use panel_system::{PanelSystem, PanelSystemMessage};
+use nade_asset_browser::{AssetBrowserMessage, AssetBrowserState};
+use nade_browser_panel::{ObjectId, ProjectPaneMessage, ProjectPaneState};
+use nade_constants::icons::Icon;
+use nade_curve_editor_panel::{CurveEditorMessage, CurveEditorState};
+use nade_inspector_panel::{EffectEdit, InspectorMessage, PropertyGroup};
+use nade_panel_system::{PanelSystem, PanelSystemMessage};
+use nade_timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
 use std::path::PathBuf;
 use std::sync::Arc;
-use timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
 
-use core::{AssetId, CompositionId, CoreEffect, FrameData, InstanceId, MediaInfo, Model, Msg, update};
-use domain::{
+use nade_core::{AssetId, CompositionId, CoreEffect, FrameData, InstanceId, MediaInfo, Model, Msg, update};
+use nade_domain::{
 	AssetType, Instance, InstanceContent, MediaKind, MediaSource, Project, TransformAnimation, TransformProperty,
 };
-use renderer::Scene;
+use nade_renderer::Scene;
 
 use crate::history::History;
 use crate::message::{
@@ -37,7 +37,7 @@ use crate::shell::menu::{self, Entry, MenuKind, OpenMenu};
 use crate::shell::{self, toast::Toast};
 use crate::theme::{SHELL_GUTTER, STATUS_BAR_HEIGHT, TITLE_BAR_HEIGHT, panel_area};
 use crate::workspace::Workspace;
-use viewer_panel::{LayerBox, Tool, ViewerSettings, Viewport};
+use nade_viewer_panel::{LayerBox, Tool, ViewerSettings, Viewport};
 
 // =============================================================================
 // ウィンドウ・キーボードイベント
@@ -161,7 +161,7 @@ fn shortcut(key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Messa
 
 fn pill_animation(index: usize) -> Animation<f32> {
 	Animation::new(index as f32)
-		.duration(Duration::from_millis(constants::style::MOTION_STANDARD_MS))
+		.duration(Duration::from_millis(nade_constants::style::MOTION_STANDARD_MS))
 		.easing(Easing::EaseOutCubic)
 }
 
@@ -265,7 +265,7 @@ pub(super) struct NadeApp {
 	/// ビューア領域のサイズ（倍率表示用）
 	viewer_size: Size,
 	/// プロパティパネルの UI 状態
-	inspector_ui: inspector_panel::InspectorUi,
+	inspector_ui: nade_inspector_panel::InspectorUi,
 	/// Undo / Redo 履歴
 	history: History,
 	/// コピーしたレイヤー（貼り付け時はクリップ群の先頭を再生ヘッドに合わせる）
@@ -275,7 +275,7 @@ pub(super) struct NadeApp {
 	/// 実行中の書き出し
 	export: Option<ExportTask>,
 	/// 再生中の音声
-	audio: audio::AudioPreview,
+	audio: nade_audio::AudioPreview,
 	/// 今回の再生で音声の開始を試みた時刻と再生位置（シーク検出に使う）
 	audio_started: Option<(Instant, f32)>,
 	/// デバッグ用スクリーンショット（`NADE_SCREENSHOT`）
@@ -294,7 +294,7 @@ impl NadeApp {
 		let mut asset_browser = AssetBrowserState::default();
 		asset_browser.expanded_ids.insert(assets_folder);
 
-		let window_size = Size::new(constants::WINDOW_WIDTH, constants::WINDOW_HEIGHT);
+		let window_size = Size::new(nade_constants::WINDOW_WIDTH, nade_constants::WINDOW_HEIGHT);
 		let panel_system = Self::create_panel_layout(Workspace::default(), window_size);
 		let (render_tx, render_rx) = unbounded::<FrameData>();
 		let (shutdown_tx, shutdown_rx) = bounded(1);
@@ -330,12 +330,12 @@ impl NadeApp {
 			window_size,
 			viewer: ViewerSettings::default(),
 			viewer_size: Size::new(960.0, 540.0),
-			inspector_ui: inspector_panel::InspectorUi::default(),
+			inspector_ui: nade_inspector_panel::InspectorUi::default(),
 			history: History::with_snapshot(project_for_history),
 			clipboard: Vec::new(),
 			pointer_down: false,
 			export: None,
-			audio: audio::AudioPreview::new(),
+			audio: nade_audio::AudioPreview::new(),
 			audio_started: None,
 			#[cfg(debug_assertions)]
 			capture: crate::devtools::Capture::from_env(),
@@ -730,14 +730,14 @@ impl NadeApp {
 					self.open_project(path);
 					return Task::none();
 				}
-				if domain::AssetType::from_path(&path).is_none() {
+				if nade_domain::AssetType::from_path(&path).is_none() {
 					self.show_toast(Icon::Close, "Unsupported file type");
 					return Task::none();
 				}
 				// ffprobe はブロッキングなので UI スレッドの外で回す
 				Task::perform(
 					async move {
-						let info = media::probe(&path).map_err(|error| format!("{error:#}"));
+						let info = nade_media::probe(&path).map_err(|error| format!("{error:#}"));
 						vec![(path, info)]
 					},
 					Message::MediaImported,
@@ -870,14 +870,14 @@ impl NadeApp {
 		let fps = self.composition_fps();
 		let duration = self.composition_duration();
 		let time = self.current_model.preview.time;
-		let last_frame = core::timecode::frame_at(duration, fps).saturating_sub(1);
+		let last_frame = nade_core::timecode::frame_at(duration, fps).saturating_sub(1);
 
 		match transport {
 			TransportMessage::TogglePlay => {
 				// ワークエリアの外や終端で再生したらワークエリアの先頭から
 				let [start, end] = self.work_area();
-				let last = core::timecode::frame_at(end, fps).saturating_sub(1);
-				let outside = time < start - 1e-4 || core::timecode::frame_at(time, fps) >= last;
+				let last = nade_core::timecode::frame_at(end, fps).saturating_sub(1);
+				let outside = time < start - 1e-4 || nade_core::timecode::frame_at(time, fps) >= last;
 				if !self.current_model.preview.is_playing && outside {
 					self.apply_core_msg(Msg::SetTime(start));
 				}
@@ -887,16 +887,16 @@ impl NadeApp {
 			}
 			TransportMessage::GoToStart => self.apply_core_msg(Msg::SetTime(0.0)),
 			TransportMessage::GoToEnd => {
-				self.apply_core_msg(Msg::SetTime(core::timecode::time_of_frame(last_frame, fps)));
+				self.apply_core_msg(Msg::SetTime(nade_core::timecode::time_of_frame(last_frame, fps)));
 			}
 			TransportMessage::StepBackward | TransportMessage::StepForward => {
-				let frame = core::timecode::frame_at(time, fps);
+				let frame = nade_core::timecode::frame_at(time, fps);
 				let target = if matches!(transport, TransportMessage::StepForward) {
 					(frame + 1).min(last_frame)
 				} else {
 					frame.saturating_sub(1)
 				};
-				self.apply_core_msg(Msg::SetTime(core::timecode::time_of_frame(target, fps)));
+				self.apply_core_msg(Msg::SetTime(nade_core::timecode::time_of_frame(target, fps)));
 			}
 			TransportMessage::ToggleLoop => {
 				self.loop_playback = !self.loop_playback;
@@ -927,15 +927,15 @@ impl NadeApp {
 					points.into_iter().filter(|point| *point < time - 1e-4).reduce(f32::max)
 				};
 				if let Some(target) = target {
-					let frame = core::timecode::frame_at(target.clamp(0.0, duration), fps).min(last_frame);
-					self.apply_core_msg(Msg::SetTime(core::timecode::time_of_frame(frame, fps)));
+					let frame = nade_core::timecode::frame_at(target.clamp(0.0, duration), fps).min(last_frame);
+					self.apply_core_msg(Msg::SetTime(nade_core::timecode::time_of_frame(frame, fps)));
 				}
 			}
 		}
 	}
 
 	/// The layer I / O and F9 act on: the first selected layer of the shown comp.
-	fn focused_layer(&self) -> Option<&domain::Instance> {
+	fn focused_layer(&self) -> Option<&nade_domain::Instance> {
 		let composition = self.target_composition()?;
 		let (_, instance) = self
 			.selected_instances()
@@ -976,8 +976,8 @@ impl NadeApp {
 		} else {
 			self.apply_core_msg(Msg::TogglePlay);
 			let fps = self.composition_fps();
-			let last_frame = core::timecode::frame_at(end, fps).saturating_sub(1);
-			self.apply_core_msg(Msg::SetTime(core::timecode::time_of_frame(last_frame, fps)));
+			let last_frame = nade_core::timecode::frame_at(end, fps).saturating_sub(1);
+			self.apply_core_msg(Msg::SetTime(nade_core::timecode::time_of_frame(last_frame, fps)));
 		}
 	}
 
@@ -1107,7 +1107,7 @@ impl NadeApp {
 			return;
 		};
 		let model = &self.timeline.model;
-		let clips = renderer::export_settings(
+		let clips = nade_renderer::export_settings(
 			comp,
 			std::path::Path::new(""),
 			[0.0, comp.duration()],
@@ -1273,10 +1273,10 @@ impl NadeApp {
 		let can_paste = has_comp && !self.clipboard.is_empty();
 		let work_area = composition.is_some_and(|comp| comp.has_work_area());
 		let remove_parent = Message::PanelSystem(PanelSystemMessage::AppMessage(AppPanelMessage::Inspector(
-			inspector_panel::InspectorMessage::SetParent(None),
+			nade_inspector_panel::InspectorMessage::SetParent(None),
 		)));
 		let open_nested = Message::PanelSystem(PanelSystemMessage::AppMessage(AppPanelMessage::Inspector(
-			inspector_panel::InspectorMessage::OpenNestedComposition,
+			nade_inspector_panel::InspectorMessage::OpenNestedComposition,
 		)));
 
 		match kind {
@@ -1352,7 +1352,7 @@ impl NadeApp {
 					inspector(InspectorMessage::RemoveAllEffects),
 				)];
 				// カテゴリごとに区切って並べる（AE の Effect メニューと同じ構成）
-				for category in domain::EffectCategory::ALL {
+				for category in nade_domain::EffectCategory::ALL {
 					entries.push(Entry::Separator);
 					entries.extend(category.effects().map(|kind| {
 						Entry::when(selected, kind.name(), "", inspector(InspectorMessage::AddEffect(kind)))
@@ -1430,8 +1430,8 @@ impl NadeApp {
 			Icon::Loop,
 			format!(
 				"Work area {} – {}",
-				core::timecode::format(start, fps),
-				core::timecode::format(end, fps)
+				nade_core::timecode::format(start, fps),
+				nade_core::timecode::format(end, fps)
 			),
 		);
 	}
@@ -1661,7 +1661,7 @@ impl NadeApp {
 		}
 		let count = parts.len();
 		self.finish_layer_edit(composition, parts.first().copied());
-		let timecode = core::timecode::format(time, self.composition_fps());
+		let timecode = nade_core::timecode::format(time, self.composition_fps());
 		self.show_toast(
 			Icon::Scissors,
 			if count == 1 {
@@ -2234,7 +2234,7 @@ impl NadeApp {
 		// カーブエディタにフォーカスがある時だけキー削除として扱う
 		if matches!(
 			msg,
-			CurveEditorMessage::CanvasEvent(curve_editor_panel::CurveCanvasEvent::DeletePressed)
+			CurveEditorMessage::CanvasEvent(nade_curve_editor_panel::CurveCanvasEvent::DeletePressed)
 		) && !matches!(self.panel_system.focused_content(), Some(PanelContent::CurveEditor))
 		{
 			return;
@@ -2275,8 +2275,10 @@ impl NadeApp {
 			}
 			PreviewMessage::ZoomBy(factor) => {
 				let preview = &mut self.current_model.preview;
-				let zoom = (preview.view_zoom * factor)
-					.clamp(viewer_panel::viewport::MIN_ZOOM, viewer_panel::viewport::MAX_ZOOM);
+				let zoom = (preview.view_zoom * factor).clamp(
+					nade_viewer_panel::viewport::MIN_ZOOM,
+					nade_viewer_panel::viewport::MAX_ZOOM,
+				);
 				let applied = zoom / preview.view_zoom;
 				preview.view_zoom = zoom;
 				preview.view_offset = [preview.view_offset[0] * applied, preview.view_offset[1] * applied];
@@ -2468,7 +2470,7 @@ impl NadeApp {
 						font_size,
 						spacing,
 						..
-					} => renderer::measure_text(font_path, text, *font_size, *spacing).unwrap_or([0.0, 0.0]),
+					} => nade_renderer::measure_text(font_path, text, *font_size, *spacing).unwrap_or([0.0, 0.0]),
 					InstanceContent::Solid { width, height, .. } => [*width, *height],
 					InstanceContent::Media(source) => source.size(),
 					InstanceContent::Composition(id) => self
@@ -2489,15 +2491,15 @@ impl NadeApp {
 			.collect()
 	}
 
-	fn viewer_props(&self) -> viewer_panel::ViewerProps<'_> {
+	fn viewer_props(&self) -> nade_viewer_panel::ViewerProps<'_> {
 		let composition = self.target_composition().and_then(|id| self.project.composition(&id));
 		let selected = match self.project_pane.selected_id {
 			Some(ObjectId::Instance { instance, .. }) => Some(instance),
 			_ => None,
 		};
-		viewer_panel::ViewerProps {
+		nade_viewer_panel::ViewerProps {
 			preview: &self.current_model.preview,
-			composition: composition.map(|comp| core::CompositionSummary {
+			composition: composition.map(|comp| nade_core::CompositionSummary {
 				name: comp.name(),
 				width: comp.width(),
 				height: comp.height(),
@@ -2614,7 +2616,7 @@ impl NadeApp {
 						obj.toggle_key_at(*property, time);
 					}
 				}
-				let timecode = core::timecode::format(time, fps);
+				let timecode = nade_core::timecode::format(time, fps);
 				toast = Some(if on_key {
 					(Icon::Keyframe, format!("Removed {} key at {timecode}", group.label()))
 				} else {
@@ -2747,8 +2749,8 @@ impl NadeApp {
 		}
 		if let Some(effect) = added_effect {
 			self.inspector_ui.expand_effect(instance, effect);
-			if !self.inspector_ui.is_open(inspector_panel::Section::Effects) {
-				self.inspector_ui.toggle(inspector_panel::Section::Effects, now);
+			if !self.inspector_ui.is_open(nade_inspector_panel::Section::Effects) {
+				self.inspector_ui.toggle(nade_inspector_panel::Section::Effects, now);
 			}
 		}
 		if let Some((icon, text)) = toast {
@@ -2806,7 +2808,7 @@ impl NadeApp {
 			return;
 		};
 		comp.insert_track(0);
-		let mut layer = domain::Instance::new(InstanceId::new(0), node, &name, 0.0, duration);
+		let mut layer = nade_domain::Instance::new(InstanceId::new(0), node, &name, 0.0, duration);
 		layer.set_content(InstanceContent::Composition(inner));
 		let layer = comp.insert_instance(layer, Some(0));
 		comp.compact_tracks();
@@ -2849,8 +2851,8 @@ impl NadeApp {
 		}
 	}
 
-	fn inspector_target(&self) -> inspector_panel::InspectorTarget<'_> {
-		use inspector_panel::{InspectorTarget, LayerTarget};
+	fn inspector_target(&self) -> nade_inspector_panel::InspectorTarget<'_> {
+		use nade_inspector_panel::{InspectorTarget, LayerTarget};
 
 		match self.project_pane.selected_id {
 			Some(ObjectId::Instance { composition, instance }) => {
@@ -2862,13 +2864,13 @@ impl NadeApp {
 					return InspectorTarget::Empty;
 				};
 				let comp = self.project.composition(&composition).expect("layer found above");
-				let mut candidates: Vec<&domain::Instance> = comp
+				let mut candidates: Vec<&nade_domain::Instance> = comp
 					.all_objects()
 					.filter(|other| comp.can_parent(instance, other.id()))
 					.collect();
 				candidates.sort_by_key(|other| (other.track_index(), other.id()));
-				let parents = std::iter::once(inspector_panel::ParentChoice::none())
-					.chain(candidates.into_iter().map(|other| inspector_panel::ParentChoice {
+				let parents = std::iter::once(nade_inspector_panel::ParentChoice::none())
+					.chain(candidates.into_iter().map(|other| nade_inspector_panel::ParentChoice {
 						id: Some(other.id()),
 						name: format!("{}. {}", other.track_index() + 1, other.name()),
 					}))
@@ -2881,7 +2883,7 @@ impl NadeApp {
 				InspectorTarget::Layer(LayerTarget {
 					instance: obj,
 					time: self.current_model.preview.time,
-					label: constants::style::label_color(obj.track_index()),
+					label: nade_constants::style::label_color(obj.track_index()),
 					fps: self.composition_fps(),
 					parents,
 					nested,
@@ -2889,7 +2891,7 @@ impl NadeApp {
 			}
 			Some(ObjectId::Composition(id)) => match self.project.composition(&id) {
 				Some(comp) => InspectorTarget::Composition {
-					summary: core::CompositionSummary {
+					summary: nade_core::CompositionSummary {
 						name: comp.name(),
 						width: comp.width(),
 						height: comp.height(),
@@ -2906,7 +2908,7 @@ impl NadeApp {
 							.filter(|outer| *outer != id && self.project.can_nest(*outer, id))
 							.filter_map(|outer| {
 								let name = self.project.composition(&outer)?.name().to_string();
-								Some(inspector_panel::CompositionChoice { id: outer, name })
+								Some(nade_inspector_panel::CompositionChoice { id: outer, name })
 							})
 							.collect();
 						targets.sort_by_key(|choice| choice.id.value());
@@ -2984,7 +2986,7 @@ impl NadeApp {
 					.into_iter()
 					.map(|handle| {
 						let path = handle.path().to_path_buf();
-						let info = media::probe(&path).map_err(|error| format!("{error:#}"));
+						let info = nade_media::probe(&path).map_err(|error| format!("{error:#}"));
 						(path, info)
 					})
 					.collect()
@@ -3137,7 +3139,7 @@ impl NadeApp {
 			return;
 		};
 		let (width, height, duration) = (comp.width() as f32, comp.height() as f32, comp.duration());
-		let color = constants::style::label_color(comp.len());
+		let color = nade_constants::style::label_color(comp.len());
 		let instance = comp.add_instance_at(node_id, name.clone(), 0.0, duration);
 		instance.set_content(InstanceContent::solid(width, height, [color.r, color.g, color.b, 1.0]));
 		let instance_id = instance.id();
@@ -3187,7 +3189,7 @@ impl NadeApp {
 				export: self.export.as_ref().map(ExportTask::progress),
 				pulse,
 				render_fps: self.render_fps,
-				composition: composition.map(|comp| core::CompositionSummary {
+				composition: composition.map(|comp| nade_core::CompositionSummary {
 					name: comp.name(),
 					width: comp.width(),
 					height: comp.height(),
@@ -3199,7 +3201,7 @@ impl NadeApp {
 		let base = container(chrome)
 			.width(Length::Fill)
 			.height(Length::Fill)
-			.style(constants::widgets::window);
+			.style(nade_constants::widgets::window);
 
 		let mut layers = stack![base].width(Length::Fill).height(Length::Fill);
 		if let Some(toast) = self.toast.as_ref().filter(|toast| toast.is_active(self.now)) {
@@ -3270,13 +3272,13 @@ impl NadeApp {
 /// Apply an inspector edit to effect `id` of `layer`. Returns the toast to
 /// show and the time to jump to, if any.
 fn edit_effect(
-	layer: &mut domain::Instance,
+	layer: &mut nade_domain::Instance,
 	id: u32,
 	edit: EffectEdit,
 	time: f32,
 	fps: f32,
 ) -> (Option<(Icon, String)>, Option<f32>) {
-	let Some(name) = layer.effect(id).map(domain::LayerEffect::name) else {
+	let Some(name) = layer.effect(id).map(nade_domain::LayerEffect::name) else {
 		return (None, None);
 	};
 	match edit {
@@ -3308,7 +3310,7 @@ fn edit_effect(
 		}
 		EffectEdit::ToggleKey { param } => {
 			let label = effect.kind.params().get(param).map_or("", |param| param.name);
-			let timecode = core::timecode::format(time, fps);
+			let timecode = nade_core::timecode::format(time, fps);
 			let toast = if effect.toggle_key_at(param, time) {
 				(Icon::KeyframeFilled, format!("Keyed {label} at {timecode}"))
 			} else {
@@ -3412,7 +3414,7 @@ mod tests {
 		assert!(matches!(
 			press("y", Modifiers::empty()),
 			Some(Message::Shell(crate::message::ShellMessage::SelectTool(
-				viewer_panel::Tool::Anchor
+				nade_viewer_panel::Tool::Anchor
 			)))
 		));
 	}

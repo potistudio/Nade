@@ -1,10 +1,10 @@
 //! Title strip: hosts the traffic lights (macOS), the document title and,
 //! off macOS, the menu bar; dragging it moves the window.
 
-use constants::style::{FONT_UI, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
-use constants::widgets::ui_label;
 use iced::widget::{container, mouse_area, row, stack};
 use iced::{Alignment, Element, Length};
+use nade_constants::style::{FONT_UI, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
+use nade_constants::widgets::ui_label;
 
 use crate::message::{Message, ShellMessage};
 use crate::shell::menu::{self, MenuKind};

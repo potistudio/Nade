@@ -6,9 +6,9 @@ mod pointer;
 mod scroll;
 mod zoom;
 
-use constants::timeline::*;
-use core::TimelineClip;
 use iced::{Point, Rectangle, Vector};
+use nade_constants::timeline::*;
+use nade_core::TimelineClip;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) enum DragState {

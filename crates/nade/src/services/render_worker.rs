@@ -1,6 +1,6 @@
-use core::FrameData;
 use crossbeam_channel::{Receiver, Sender, TrySendError, bounded};
-use renderer::{Compositor, Scene};
+use nade_core::FrameData;
+use nade_renderer::{Compositor, Scene};
 use std::thread;
 
 /// 1フレーム分のレンダリング要求

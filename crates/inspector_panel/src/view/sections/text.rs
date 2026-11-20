@@ -1,9 +1,9 @@
 //! Text section: content, font metrics and fill.
 
-use constants::style::{FONT_UI, SPACE_1, SPACE_2, TEXT_MUTED_COLOR};
-use constants::widgets;
 use iced::Element;
 use iced::widget::{column, row, text_input};
+use nade_constants::style::{FONT_UI, SPACE_1, SPACE_2, TEXT_MUTED_COLOR};
+use nade_constants::widgets;
 
 use crate::InspectorMessage;
 use crate::draggable_number::number_field;

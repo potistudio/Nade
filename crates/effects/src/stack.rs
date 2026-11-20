@@ -1,6 +1,6 @@
 //! Runs a layer's evaluated effect stack over its rendered pixels.
 
-use domain::{EffectKind, EvaluatedEffect};
+use nade_domain::{EffectKind, EvaluatedEffect};
 
 use crate::surface::Surface;
 use crate::{blur, color, distort, generate, stylize, transition};
@@ -115,7 +115,7 @@ pub fn apply(surface: &mut Surface, effect: &EvaluatedEffect, ctx: &EffectContex
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use domain::LayerEffect;
+	use nade_domain::LayerEffect;
 
 	/// Every effect runs with its defaults and keeps the surface valid.
 	#[test]

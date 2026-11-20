@@ -2,11 +2,11 @@
 
 use crate::interaction::TimelineInteraction;
 use crate::widget::{TimelineWidget, rounded_rect};
-use constants::timeline::*;
 use iced::{
 	Color, Point, Rectangle,
 	widget::canvas::{self, LineCap, Path, Stroke},
 };
+use nade_constants::timeline::*;
 
 impl TimelineWidget<'_> {
 	pub(super) fn draw_playhead(

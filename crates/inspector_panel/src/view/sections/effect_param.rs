@@ -1,14 +1,14 @@
 //! One effect parameter row with its key cluster.
 
-use constants::icons::{Icon, icon};
-use constants::style::{
+use iced::widget::{Space, button, container, pick_list, row, slider, tooltip};
+use iced::{Alignment, Color, Element, Length};
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::{
 	AXIS_X_COLOR, AXIS_Y_COLOR, FONT_UI, KEYFRAME_COLOR, SPACE_1, SPACE_2, SPACE_3, TEXT_MUTED_COLOR,
 	TEXT_SECONDARY_COLOR,
 };
-use constants::widgets::{self, button_body_center, ui_label};
-use domain::{LayerEffect, ParamKind};
-use iced::widget::{Space, button, container, pick_list, row, slider, tooltip};
-use iced::{Alignment, Color, Element, Length};
+use nade_constants::widgets::{self, button_body_center, ui_label};
+use nade_domain::{LayerEffect, ParamKind};
 
 use crate::draggable_number::{KeyState, number_field};
 use crate::target::LayerTarget;
@@ -184,7 +184,7 @@ pub(crate) fn effect_param_row<'a>(
 					Icon::Check,
 					11.0,
 					if on {
-						constants::style::ACCENT_BRIGHT_COLOR
+						nade_constants::style::ACCENT_BRIGHT_COLOR
 					} else {
 						Color::TRANSPARENT
 					},

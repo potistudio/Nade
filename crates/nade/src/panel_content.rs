@@ -2,9 +2,9 @@
 //!
 //! パネルに表示するコンテンツの種類を定義します。
 
-use constants::icons::Icon;
 use iced::widget::svg;
-use panel_system::AreaKind;
+use nade_constants::icons::Icon;
+use nade_panel_system::AreaKind;
 
 /// パネルに表示するコンテンツの種類
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -1,11 +1,11 @@
 //! Footage section: source file facts.
 
-use constants::icons::{Icon, icon};
-use constants::style::{FONT_UI, SPACE_1, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
-use constants::widgets::{self, button_body_center, mono_label, ui_label};
-use domain::{Instance, MediaKind, MediaSource};
 use iced::Element;
 use iced::widget::{button, column, tooltip};
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::{FONT_UI, SPACE_1, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
+use nade_constants::widgets::{self, button_body_center, mono_label, ui_label};
+use nade_domain::{Instance, MediaKind, MediaSource};
 
 use crate::InspectorMessage;
 use crate::view::{ROW_HEIGHT, labelled};
@@ -52,8 +52,8 @@ pub(crate) fn footage_rows<'a>(
 		rows = rows.push(fact("Rate", format!("{rate:.2} fps")));
 	}
 	if let Some(duration) = source.info.duration.filter(|_| source.kind != MediaKind::Image) {
-		rows = rows.push(fact("Length", core::timecode::format(duration, fps)));
-		rows = rows.push(fact("In", core::timecode::format(instance.source_offset, fps)));
+		rows = rows.push(fact("Length", nade_core::timecode::format(duration, fps)));
+		rows = rows.push(fact("In", nade_core::timecode::format(instance.source_offset, fps)));
 	}
 	if source.has_audio() {
 		rows = rows.push(fact("Audio", "Yes".to_string()));

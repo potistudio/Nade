@@ -1,11 +1,11 @@
 //! One effect of the stack: header controls and its parameters.
 
-use constants::icons::{Icon, icon, icon_transformed};
-use constants::style::{FONT_UI, SPACE_1, SPACE_2, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
-use constants::widgets::{self, button_body_center, ui_label};
-use domain::LayerEffect;
 use iced::widget::{button, column, container, row, tooltip};
 use iced::{Alignment, Color, Element, Length};
+use nade_constants::icons::{Icon, icon, icon_transformed};
+use nade_constants::style::{FONT_UI, SPACE_1, SPACE_2, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
+use nade_constants::widgets::{self, button_body_center, ui_label};
+use nade_domain::LayerEffect;
 
 use crate::state::InspectorUi;
 use crate::target::LayerTarget;
@@ -74,7 +74,7 @@ pub(crate) fn effect_block<'a>(
 			Icon::Sparkle,
 			11.0,
 			if effect.enabled {
-				constants::style::ACCENT_BRIGHT_COLOR
+				nade_constants::style::ACCENT_BRIGHT_COLOR
 			} else {
 				TEXT_MUTED_COLOR
 			},

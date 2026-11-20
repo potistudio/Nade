@@ -1,11 +1,11 @@
 //! Transient HUD notifications ("Keyframe added", "Imported …").
 
-use constants::icons::{Icon, icon};
-use constants::style::{ACCENT_BRIGHT_COLOR, FONT_UI, MOTION_SLOW_MS, SPACE_3};
-use constants::widgets::{self, ui_label};
 use iced::time::Instant;
 use iced::widget::{Space, column, container, float, row};
 use iced::{Alignment, Element, Length, Vector};
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::{ACCENT_BRIGHT_COLOR, FONT_UI, MOTION_SLOW_MS, SPACE_3};
+use nade_constants::widgets::{self, ui_label};
 
 use crate::message::Message;
 use crate::theme::TOAST_HOLD_SECS;

@@ -17,18 +17,18 @@ lto = true
 
 # 未最適化のピクセル・グリフ処理はプレビューを実時間で回すには遅すぎる。
 # 依存クレートは一度ビルドすれば使い回せるのでフル最適化し、自前クレートは
-# ピクセルループを持つ renderer / effects のみ最適化して他はコンパイル速度を優先する。
+# ピクセルループを持つ nade_renderer / nade_effects のみ最適化して他はコンパイル速度を優先する。
 [profile.dev.package."*"]
 opt-level = 3
 debug = false
 
-[profile.dev.package.renderer]
+[profile.dev.package.nade_renderer]
 opt-level = 3
 
-[profile.dev.package.media]
+[profile.dev.package.nade_media]
 opt-level = 3
 
-[profile.dev.package.effects]
+[profile.dev.package.nade_effects]
 opt-level = 3
 
 [workspace.lints.clippy]
@@ -36,21 +36,21 @@ all = "warn"
 
 [workspace.dependencies]
 anyhow = "1.0.104"
-audio = { path = "crates/audio" }
-constants = { path = "crates/constants" }
-core = { path = "crates/core" }
-curve_editor_panel = { path = "crates/curve_editor_panel" }
-domain = { path = "crates/domain" }
 env_logger = "0.11.11"
-effects = { path = "crates/effects" }
-encoder = { path = "crates/encoder" }
 iced = { version = "0.14.0", features = ["advanced", "canvas", "svg"] }
-inspector_panel = { path = "crates/inspector_panel" }
 log = "0.4.35"
-media = { path = "crates/media" }
-nade-engine = { path = "crates/engine" }
-nade-timeline = { path = "crates/timeline_panel" }
-operators = { path = "crates/operators" }
+nade_audio = { path = "crates/audio" }
+nade_constants = { path = "crates/constants" }
+nade_core = { path = "crates/core" }
+nade_curve_editor_panel = { path = "crates/curve_editor_panel" }
+nade_domain = { path = "crates/domain" }
+nade_effects = { path = "crates/effects" }
+nade_encoder = { path = "crates/encoder" }
+nade_engine = { path = "crates/engine" }
+nade_inspector_panel = { path = "crates/inspector_panel" }
+nade_media = { path = "crates/media" }
+nade_operators = { path = "crates/operators" }
+nade_timeline_panel = { path = "crates/timeline_panel" }
+nade_viewer_panel = { path = "crates/viewer_panel" }
 serde = { version = "1.0.229", features = ["derive"] }
-viewer_panel = { path = "crates/viewer_panel" }
 uuid = { version = "1.29.2", features = ["v4", "serde"] }

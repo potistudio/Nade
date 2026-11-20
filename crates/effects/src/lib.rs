@@ -15,7 +15,7 @@ pub use stack::{EffectContext, apply, apply_stack};
 pub use surface::{Pixel, Surface};
 pub use wave::WaveEffect;
 
-use core::{RenderContext, RgbColor};
+use nade_core::{RenderContext, RgbColor};
 
 // =============================================================================
 // エフェクトトレイト

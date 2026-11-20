@@ -3,14 +3,14 @@ mod hash;
 pub mod image;
 pub mod value;
 
-use core::{NodeId, Value, ValueParam};
+use nade_core::{NodeId, Value, ValueParam};
 
 pub use image::{ImageBlur1DOp, ImageDelay1Op, ImageMixOp, ImageSolidColorOp};
 pub use value::{
 	ValueAddOp, ValueCompareGTOp, ValueConstOp, ValueDelay1Op, ValueLfoOp, ValueMulOp, ValueSelectOp, ValueSinOp,
 };
 
-pub use core::{EvalAccess, Operator, ResolvedHashes, ResolvedOp};
+pub use nade_core::{EvalAccess, Operator, ResolvedHashes, ResolvedOp};
 
 pub struct OperatorDefinition {
 	pub key: &'static str,

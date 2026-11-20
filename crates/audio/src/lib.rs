@@ -10,7 +10,7 @@
 use anyhow::{Context, Result, anyhow};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample, StreamConfig};
-use encoder::{AudioClip, preview_audio_args};
+use nade_encoder::{AudioClip, preview_audio_args};
 use std::collections::VecDeque;
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
@@ -113,13 +113,13 @@ fn start(clips: &[AudioClip], from: f32, until: f32) -> Result<Option<Playback>>
 		channels,
 	});
 
-	let child = Command::new(media::ffmpeg_path())
+	let child = Command::new(nade_media::ffmpeg_path())
 		.args(&args)
 		.stdin(Stdio::null())
 		.stdout(Stdio::piped())
 		.stderr(Stdio::null())
 		.spawn()
-		.with_context(|| format!("starting {}", media::ffmpeg_path().display()))?;
+		.with_context(|| format!("starting {}", nade_media::ffmpeg_path().display()))?;
 	spawn_decoder(child, Arc::clone(&shared))?;
 
 	// cpal のストリームはスレッド間で移動できないため、専用スレッドで保持する

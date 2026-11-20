@@ -27,48 +27,10 @@ fn load_app_icon() -> Option<iced::window::Icon> {
 
 	let image = image::open(&icon_path).ok()?.into_rgba8();
 	let (width, height) = image.dimensions();
+
 	let rgba = image.into_raw();
 
 	iced::window::icon::from_rgba(rgba, width, height).ok()
-}
-
-pub fn run_app() -> iced::Result {
-	#[cfg(target_os = "macos")]
-	#[allow(unsafe_code)]
-	unsafe {
-		unsafe extern "C" {
-			fn nade_install_scroll_observer();
-		}
-		// Observe scroll phases without consuming native input events.
-		nade_install_scroll_observer();
-	}
-
-	let window_settings = iced::window::Settings {
-		icon: load_app_icon(),
-		size: iced::Size::new(constants::WINDOW_WIDTH, constants::WINDOW_HEIGHT),
-		min_size: Some(iced::Size::new(960.0, 600.0)),
-		// 透明タイトルバー + フルサイズコンテンツで、ツールバーと地続きの一枚窓にする
-		#[cfg(target_os = "macos")]
-		platform_specific: iced::window::settings::PlatformSpecific {
-			title_hidden: true,
-			titlebar_transparent: true,
-			fullsize_content_view: true,
-		},
-		..Default::default()
-	};
-
-	iced::application(NadeApp::new, NadeApp::update, NadeApp::view)
-		.subscription(NadeApp::subscription)
-		.theme(constants::style::app_theme())
-		.font(INTER_FONT)
-		.font(JETBRAINS_MONO_FONT)
-		.default_font(iced::Font::with_name("Inter"))
-		.title("Nade")
-		.window(window_settings)
-		// CloseRequested をアプリ側で受け取り、バックグラウンドスレッドを
-		// 止めてから iced::exit() する（true だと購読より先に閉じられハングする）
-		.exit_on_close_request(false)
-		.run()
 }
 
 /// Entry point of the application (desktop)
@@ -93,5 +55,40 @@ pub fn main() -> iced::Result {
 
 	env_logger::init();
 
-	run_app()
+	#[cfg(target_os = "macos")]
+	#[allow(unsafe_code)]
+	unsafe {
+		unsafe extern "C" {
+			fn nade_install_scroll_observer();
+		}
+		// Observe scroll phases without consuming native input events.
+		nade_install_scroll_observer();
+	}
+
+	let window_settings = iced::window::Settings {
+		icon: load_app_icon(),
+		size: iced::Size::new(nade_constants::WINDOW_WIDTH, nade_constants::WINDOW_HEIGHT),
+		min_size: Some(iced::Size::new(960.0, 600.0)),
+		// 透明タイトルバー + フルサイズコンテンツで、ツールバーと地続きの一枚窓にする
+		#[cfg(target_os = "macos")]
+		platform_specific: iced::window::settings::PlatformSpecific {
+			title_hidden: true,
+			titlebar_transparent: true,
+			fullsize_content_view: true,
+		},
+		..Default::default()
+	};
+
+	iced::application(NadeApp::new, NadeApp::update, NadeApp::view)
+		.subscription(NadeApp::subscription)
+		.theme(nade_constants::style::app_theme())
+		.font(INTER_FONT)
+		.font(JETBRAINS_MONO_FONT)
+		.default_font(iced::Font::with_name("Inter"))
+		.title("Nade")
+		.window(window_settings)
+		// CloseRequested をアプリ側で受け取り、バックグラウンドスレッドを
+		// 止めてから iced::exit() する（true だと購読より先に閉じられハングする）
+		.exit_on_close_request(false)
+		.run()
 }

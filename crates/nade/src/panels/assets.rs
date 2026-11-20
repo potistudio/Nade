@@ -1,9 +1,9 @@
 use crate::message::AppPanelMessage;
 use crate::panel_content::PanelContent;
-use asset_browser::{AssetBrowserState, AssetBrowserWidget};
-use domain::Project;
 use iced::Element;
-use panel_system::PanelSystemMessage;
+use nade_asset_browser::{AssetBrowserState, AssetBrowserWidget};
+use nade_domain::Project;
+use nade_panel_system::PanelSystemMessage;
 
 pub fn view<'a>(
 	project: &'a Project,

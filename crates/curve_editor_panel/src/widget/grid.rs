@@ -2,11 +2,11 @@
 
 use crate::helpers::{format_value, grid_step};
 use crate::widget::CurveEditorWidget;
-use constants::style::{MONOSPACE_FONT, TEXT_MUTED_COLOR};
 use iced::{
 	Color, Point, Size,
 	widget::canvas::{self, Path, Stroke, Text},
 };
+use nade_constants::style::{MONOSPACE_FONT, TEXT_MUTED_COLOR};
 
 impl CurveEditorWidget<'_> {
 	pub(super) fn draw_grid(&self, frame: &mut canvas::Frame, size: Size) {

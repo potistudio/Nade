@@ -1,6 +1,6 @@
 use crate::common::{image_input_descriptor, set_image_input};
 use crate::hash::image::hash_image;
-use core::{
+use nade_core::{
 	EvalAccess, EvalContext, EvalError, Image, NodeId, NodeState, Operator, Output, OutputType, ParamDescriptor,
 	ParamValue, ResolvedOp,
 };

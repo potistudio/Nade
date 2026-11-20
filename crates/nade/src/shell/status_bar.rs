@@ -1,15 +1,15 @@
 //! Status bar: playback state, render rate and comp summary.
 
-use constants::style::{
-	FONT_TINY, FONT_UI, SPACE_2, SPACE_4, SPACE_5, SUCCESS_COLOR, TEXT_MUTED_COLOR, TEXT_SECONDARY_COLOR,
-};
-use constants::widgets::{self, mono_label, ui_label};
 use iced::widget::{Space, container, row};
 use iced::{Alignment, Border, Color, Element, Length};
+use nade_constants::style::{
+	FONT_TINY, FONT_UI, SPACE_2, SPACE_4, SPACE_5, SUCCESS_COLOR, TEXT_MUTED_COLOR, TEXT_SECONDARY_COLOR,
+};
+use nade_constants::widgets::{self, mono_label, ui_label};
 
 use crate::message::Message;
 use crate::theme::{SHELL_GUTTER, STATUS_BAR_HEIGHT};
-use core::CompositionSummary;
+use nade_core::CompositionSummary;
 
 pub struct StatusInfo<'a> {
 	pub playing: bool,
@@ -57,7 +57,7 @@ pub fn view<'a>(info: StatusInfo<'a>) -> Element<'a, Message> {
 					.height(4),
 			)
 			.style(|_| container::Style {
-				background: Some(constants::style::ACCENT_COLOR.into()),
+				background: Some(nade_constants::style::ACCENT_COLOR.into()),
 				border: Border {
 					radius: 2.0.into(),
 					..Default::default()
@@ -93,7 +93,7 @@ pub fn view<'a>(info: StatusInfo<'a>) -> Element<'a, Message> {
 			ui_label(comp.name, FONT_UI).color(TEXT_SECONDARY_COLOR),
 			chip(format!("{}×{}", comp.width, comp.height)),
 			chip(format!("{:.0} fps", comp.fps)),
-			chip(core::timecode::format(comp.duration, comp.fps)),
+			chip(nade_core::timecode::format(comp.duration, comp.fps)),
 		]
 		.spacing(SPACE_2)
 		.align_y(Alignment::Center)

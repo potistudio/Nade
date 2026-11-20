@@ -11,12 +11,12 @@ pub use export::{export_composition, export_settings, frame_count};
 pub use scene::{CompositionLibrary, LayerKind, Scene, SceneLayer};
 
 use anyhow::Result;
-use core::{FrameBuffer, RectangleObject, RenderContext, RgbColor, SceneObjectData, TextObject};
-use domain::Composition;
-use effects::Effect;
-use effects::WaveEffect;
-use encoder::Encoder;
 use image::{ImageBuffer, Rgba};
+use nade_core::{FrameBuffer, RectangleObject, RenderContext, RgbColor, SceneObjectData, TextObject};
+use nade_domain::Composition;
+use nade_effects::Effect;
+use nade_effects::WaveEffect;
+use nade_encoder::Encoder;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -169,10 +169,10 @@ pub fn render_objects<'a>(
 			draw_rectangle(&mut img, rect, width, height);
 		} else if let Some(text) = obj.as_text() {
 			let paint = compositor::Paint {
-				matrix: core::Affine::translate(width as f32 / 2.0, height as f32 / 2.0)
+				matrix: nade_core::Affine::translate(width as f32 / 2.0, height as f32 / 2.0)
 					.then_apply(text.transform.local_matrix()),
 				opacity: text.transform.opacity,
-				blend: core::BlendMode::Normal,
+				blend: nade_core::BlendMode::Normal,
 			};
 			draw_text(&mut img, text, &paint);
 		}
@@ -337,7 +337,7 @@ pub(crate) fn draw_text(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, text: &TextObj
 	let bake = matrix.max_scale().max(1e-6);
 	let render_size = (text.font_size * bake).max(1.0);
 	// 焼き込み済みのレイアウト座標 → キャンバス
-	let post = matrix.then_apply(core::Affine::scale(1.0 / bake, 1.0 / bake));
+	let post = matrix.then_apply(nade_core::Affine::scale(1.0 / bake, 1.0 / bake));
 
 	let fill_a = (text.fill_color[3] * paint.opacity).clamp(0.0, 1.0);
 	if fill_a <= 0.0 {
@@ -523,7 +523,7 @@ impl<E: Encoder> Renderer<E> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core::TextObject;
+	use nade_core::TextObject;
 
 	fn rubik_path() -> String {
 		format!(

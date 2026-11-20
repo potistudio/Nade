@@ -1,7 +1,7 @@
 //! Time scale (zoom) changes.
 
 use crate::interaction::TimelineInteraction;
-use constants::timeline::*;
+use nade_constants::timeline::*;
 
 impl TimelineInteraction {
 	/// Set the timeline zoom scale

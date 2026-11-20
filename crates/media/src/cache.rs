@@ -1,6 +1,6 @@
 //! Per-thread cache of decoded stills and running video decoders.
 
-use core::MediaInfo;
+use nade_core::MediaInfo;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

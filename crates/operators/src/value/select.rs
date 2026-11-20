@@ -1,6 +1,6 @@
 use crate::common::{resolve_value_param, set_value_param, value_param_descriptor};
 use crate::hash::value::hash_select_inputs;
-use core::{
+use nade_core::{
 	EvalAccess, EvalContext, EvalError, NodeState, Operator, Output, OutputType, ParamDescriptor, ParamValue,
 	ResolvedOp, Value, ValueKind, ValueParam, ValueParamUi,
 };

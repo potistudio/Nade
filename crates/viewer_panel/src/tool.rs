@@ -1,6 +1,6 @@
 //! Viewer tools (After Effects style tool palette).
 
-use constants::icons::Icon;
+use nade_constants::icons::Icon;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Tool {

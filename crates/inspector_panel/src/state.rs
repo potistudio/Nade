@@ -1,8 +1,8 @@
 //! Panel-local UI state: section disclosure, folded effects, links and drafts.
 
-use core::InstanceId;
 use iced::Animation;
 use iced::time::{Duration, Instant};
+use nade_core::InstanceId;
 use std::collections::HashSet;
 
 use crate::Section;
@@ -26,7 +26,7 @@ impl Default for InspectorUi {
 	fn default() -> Self {
 		let disclosure = || {
 			Animation::new(true)
-				.duration(Duration::from_millis(constants::style::MOTION_FAST_MS + 40))
+				.duration(Duration::from_millis(nade_constants::style::MOTION_FAST_MS + 40))
 				.easing(iced::animation::Easing::EaseOutCubic)
 		};
 		Self {

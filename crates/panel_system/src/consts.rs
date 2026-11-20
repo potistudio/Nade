@@ -1,9 +1,9 @@
 //! パネルシステムの定数と色設定
 //!
-//! Colors and sizes follow `constants::style` (Graphite).
+//! Colors and sizes follow `nade_constants::style` (Graphite).
 
-use constants::style;
 use iced::Color;
+use nade_constants::style;
 
 /// Equal padding on all sides and spacing between panel header controls.
 pub const HEADER_PADDING: f32 = style::SPACE_1;

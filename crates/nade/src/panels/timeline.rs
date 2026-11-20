@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use crate::message::AppPanelMessage;
 use crate::panel_content::PanelContent;
 use iced::Element;
-use panel_system::PanelSystemMessage;
-use timeline_panel::{TimelineInteraction, TimelineModel, TimelineWidget};
+use nade_panel_system::PanelSystemMessage;
+use nade_timeline_panel::{TimelineInteraction, TimelineModel, TimelineWidget};
 
 pub struct TimelineProps<'a> {
 	pub state: &'a TimelineInteraction,

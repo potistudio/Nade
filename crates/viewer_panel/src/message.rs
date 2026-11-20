@@ -1,6 +1,6 @@
 //! Viewer panel messages.
 
-use core::InstanceId;
+use nade_core::InstanceId;
 
 use crate::settings::Resolution;
 

@@ -8,7 +8,7 @@ mod interaction;
 mod message;
 mod widget;
 
-pub use core::{TimelineClip, TimelineModel, TimelineTrack, TrackVisibilityDisplay};
 pub use interaction::TimelineInteraction;
 pub use message::{TimelineCanvasEvent, TimelineMessage, TimelineUpdate};
+pub use nade_core::{TimelineClip, TimelineModel, TimelineTrack, TrackVisibilityDisplay};
 pub use widget::TimelineWidget;

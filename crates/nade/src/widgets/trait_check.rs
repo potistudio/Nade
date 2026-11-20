@@ -35,7 +35,7 @@ where
 		_tree: &widget::Tree,
 		_renderer: &mut Renderer,
 		_theme: &Theme,
-		_style: &renderer::Style,
+		_style: &nade_renderer::Style,
 		_layout: layout::Layout<'_>,
 		_cursor: iced::advanced::mouse::Cursor,
 		_viewport: &Rectangle,

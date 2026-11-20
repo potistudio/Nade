@@ -5,17 +5,17 @@ mod header;
 mod transport;
 mod viewport;
 
-use core::{CompositionSummary, InstanceId, PreviewModel};
 use iced::widget::column;
 use iced::{Element, Size};
+use nade_core::{CompositionSummary, InstanceId, PreviewModel};
 
 use crate::message::PreviewMessage;
 use crate::settings::ViewerSettings;
 use crate::tool::Tool;
 use crate::widgets::viewer_overlay::LayerBox;
 
-pub(super) const BAR_HEIGHT: f32 = constants::style::ROW_HEIGHT;
-pub(super) const TRANSPORT_HEIGHT: f32 = constants::style::ROW_HEIGHT;
+pub(super) const BAR_HEIGHT: f32 = nade_constants::style::ROW_HEIGHT;
+pub(super) const TRANSPORT_HEIGHT: f32 = nade_constants::style::ROW_HEIGHT;
 
 pub struct ViewerProps<'a> {
 	pub preview: &'a PreviewModel,

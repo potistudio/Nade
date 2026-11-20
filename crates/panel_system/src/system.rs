@@ -112,7 +112,7 @@ struct TabBarGeometry {
 
 impl TabBarGeometry {
 	fn new(area_bounds: Rectangle, tab_count: usize, can_join: bool) -> Self {
-		use constants::style::CONTROL_CONTENT_HEIGHT;
+		use nade_constants::style::CONTROL_CONTENT_HEIGHT;
 
 		let inset = PANEL_OUTLINE_WIDTH + HEADER_PADDING;
 		let inner_width = (area_bounds.width - inset * 2.0).max(0.0);
@@ -1080,7 +1080,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		let base = container(main_content)
 			.width(Length::Fill)
 			.height(Length::Fill)
-			.style(constants::widgets::window);
+			.style(nade_constants::widgets::window);
 
 		// Keep the tree shape fixed — `mouse_area(stack![base, …])` — whatever the drag or menu
 		// state: a root that swaps widget types rebuilds every widget state below it (scroll
@@ -1186,18 +1186,18 @@ impl<C: AreaKind> PanelSystem<C> {
 	where
 		M: Clone + std::fmt::Debug + 'static,
 	{
-		use constants::style::{
+		use nade_constants::style::{
 			BORDER_SUBTLE_COLOR, FONT_TINY, FONT_UI, ICON_SIZE, SPACE_2, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR,
 		};
 
-		const ROW_HEIGHT: f32 = constants::style::ROW_HEIGHT;
+		const ROW_HEIGHT: f32 = nade_constants::style::ROW_HEIGHT;
 		let area_id = area.id;
 
 		let columns = row(C::menu_columns()
 			.into_iter()
 			.map(|(category, kinds)| {
 				let header = container(
-					constants::widgets::ui_label(category.to_uppercase(), FONT_TINY)
+					nade_constants::widgets::ui_label(category.to_uppercase(), FONT_TINY)
 						.color(TEXT_MUTED_COLOR.scale_alpha(anim)),
 				)
 				.padding(iced::Padding {
@@ -1221,8 +1221,8 @@ impl<C: AreaKind> PanelSystem<C> {
 								EditorMenuMode::AddTab => PanelSystemMessage::AddTab(area_id, kind.clone()),
 							};
 							let check: Element<'_, PanelSystemMessage<C, M>> = if selected {
-								constants::icons::icon(
-									constants::icons::Icon::Check,
+								nade_constants::icons::icon(
+									nade_constants::icons::Icon::Check,
 									10.0,
 									TEXT_PRIMARY_COLOR.scale_alpha(anim),
 								)
@@ -1237,7 +1237,7 @@ impl<C: AreaKind> PanelSystem<C> {
 									TEXT_PRIMARY_COLOR.scale_alpha(0.85 * anim),
 									anim
 								),
-								constants::widgets::ui_label(kind.label(), FONT_UI),
+								nade_constants::widgets::ui_label(kind.label(), FONT_UI),
 								Space::new().width(Length::Fill),
 								check,
 							]
@@ -1245,11 +1245,11 @@ impl<C: AreaKind> PanelSystem<C> {
 							.align_y(iced::Alignment::Center)
 							.width(Length::Fill);
 
-							button(constants::widgets::button_body(row_content))
+							button(nade_constants::widgets::button_body(row_content))
 								.padding([0.0, 6.0])
 								.width(Length::Fill)
 								.height(ROW_HEIGHT)
-								.style(constants::widgets::button_menu_item_faded(selected, anim))
+								.style(nade_constants::widgets::button_menu_item_faded(selected, anim))
 								.on_press(message)
 								.into()
 						})
@@ -1286,7 +1286,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		container(columns)
 			.height(Length::Shrink)
 			.padding(EDITOR_MENU_PADDING)
-			.style(move |theme| constants::widgets::editor_menu_panel_faded(theme, anim))
+			.style(move |theme| nade_constants::widgets::editor_menu_panel_faded(theme, anim))
 			.into()
 	}
 
@@ -1397,7 +1397,7 @@ impl<C: AreaKind> PanelSystem<C> {
 		F: Fn(usize, &C) -> Element<'a, PanelSystemMessage<C, M>> + Copy,
 		M: Clone + std::fmt::Debug + 'static,
 	{
-		use constants::style::{CONTROL_CONTENT_HEIGHT, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR};
+		use nade_constants::style::{CONTROL_CONTENT_HEIGHT, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR};
 
 		let area_id = area.id;
 		let can_join = self.area_has_sibling(area_id);
@@ -1422,29 +1422,31 @@ impl<C: AreaKind> PanelSystem<C> {
 			.editor_menu
 			.as_ref()
 			.is_some_and(|menu| menu.area_id == area_id && menu.mode == EditorMenuMode::AddTab && menu.to > 0.0);
-		let add_tab_button = constants::widgets::tip(
-			button(constants::widgets::button_body_center(constants::icons::icon(
-				constants::icons::Icon::Plus,
-				12.0,
-				if add_tab_open {
-					TEXT_PRIMARY_COLOR
-				} else {
-					TEXT_MUTED_COLOR
-				},
-			)))
+		let add_tab_button = nade_constants::widgets::tip(
+			button(nade_constants::widgets::button_body_center(
+				nade_constants::icons::icon(
+					nade_constants::icons::Icon::Plus,
+					12.0,
+					if add_tab_open {
+						TEXT_PRIMARY_COLOR
+					} else {
+						TEXT_MUTED_COLOR
+					},
+				),
+			))
 			.padding(0)
 			.width(CONTROL_CONTENT_HEIGHT)
 			.height(CONTROL_CONTENT_HEIGHT)
-			.style(constants::widgets::button_toggle(add_tab_open))
+			.style(nade_constants::widgets::button_toggle(add_tab_open))
 			.on_press(PanelSystemMessage::ToggleAddTabMenu(area_id)),
 			"New Tab",
 			iced::widget::tooltip::Position::Bottom,
 		);
 
 		let join_button: Element<'_, PanelSystemMessage<C, M>> = if can_join {
-			constants::widgets::tip(
-				button(constants::widgets::button_body_center(
-					svg(constants::icons::Icon::Close.handle())
+			nade_constants::widgets::tip(
+				button(nade_constants::widgets::button_body_center(
+					svg(nade_constants::icons::Icon::Close.handle())
 						.width(12)
 						.height(12)
 						.style(|_theme, status| svg::Style {
@@ -1457,7 +1459,7 @@ impl<C: AreaKind> PanelSystem<C> {
 				.padding(0)
 				.width(CONTROL_CONTENT_HEIGHT)
 				.height(CONTROL_CONTENT_HEIGHT)
-				.style(constants::widgets::button_ghost)
+				.style(nade_constants::widgets::button_ghost)
 				.on_press(PanelSystemMessage::JoinArea(area_id)),
 				"Close Panel",
 				iced::widget::tooltip::Position::Bottom,
@@ -1560,10 +1562,10 @@ impl<C: AreaKind> PanelSystem<C> {
 		let chrome = PanelChrome {
 			header_height: HEADER_HEIGHT,
 			outline_width: PANEL_OUTLINE_WIDTH,
-			outer_radius: constants::style::PANEL_RADIUS,
-			inner_radius: constants::style::PANEL_RADIUS - PANEL_OUTLINE_WIDTH,
-			exponent: constants::style::PANEL_SQUIRCLE_EXPONENT,
-			panel_color: constants::style::PANEL_COLOR,
+			outer_radius: nade_constants::style::PANEL_RADIUS,
+			inner_radius: nade_constants::style::PANEL_RADIUS - PANEL_OUTLINE_WIDTH,
+			exponent: nade_constants::style::PANEL_SQUIRCLE_EXPONENT,
+			panel_color: nade_constants::style::PANEL_COLOR,
 			header_color: colors::HEADER_BG,
 			outline_color: colors::PANEL_OUTLINE_COLOR,
 			separator_color: colors::HEADER_SEPARATOR,
@@ -1593,7 +1595,7 @@ impl<C: AreaKind> PanelSystem<C> {
 	where
 		M: Clone + std::fmt::Debug + 'static,
 	{
-		use constants::style::{
+		use nade_constants::style::{
 			CONTROL_CONTENT_HEIGHT, FONT_UI, ICON_SIZE, SPACE_2, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR,
 			TEXT_SECONDARY_COLOR,
 		};
@@ -1615,7 +1617,7 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		let mut label_row = row![
 			panel_icon_svg_colored(content.icon(), ICON_SIZE, color, 1.0),
-			constants::widgets::ui_label(content.label(), FONT_UI)
+			nade_constants::widgets::ui_label(content.label(), FONT_UI)
 				.color(color)
 				.wrapping(iced::widget::text::Wrapping::None),
 			Space::new().width(Length::Fill),
@@ -1639,8 +1641,8 @@ impl<C: AreaKind> PanelSystem<C> {
 				.filter(|menu| menu.area_id == area_id && menu.mode == EditorMenuMode::Replace);
 			let menu_open = menu.is_some_and(|menu| menu.to > 0.0);
 			let turn = menu.map_or(0.0, EditorMenuState::value);
-			label_row = label_row.push(constants::icons::icon_transformed(
-				constants::icons::Icon::ChevronDown,
+			label_row = label_row.push(nade_constants::icons::icon_transformed(
+				nade_constants::icons::Icon::ChevronDown,
 				TAB_CHEVRON_SIZE,
 				if menu_open {
 					TEXT_PRIMARY_COLOR
@@ -1655,8 +1657,8 @@ impl<C: AreaKind> PanelSystem<C> {
 
 		if show_close {
 			label_row = label_row.push(
-				button(constants::widgets::button_body_center(
-					svg(constants::icons::Icon::Close.handle())
+				button(nade_constants::widgets::button_body_center(
+					svg(nade_constants::icons::Icon::Close.handle())
 						.width(10)
 						.height(10)
 						.style(move |_theme, status| svg::Style {
@@ -1669,7 +1671,7 @@ impl<C: AreaKind> PanelSystem<C> {
 				.padding(0)
 				.width(ICON_SIZE)
 				.height(ICON_SIZE)
-				.style(constants::widgets::button_ghost)
+				.style(nade_constants::widgets::button_ghost)
 				.on_press(PanelSystemMessage::CloseTab(area_id, index)),
 			);
 		}
@@ -1693,7 +1695,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			.style(move |_| container::Style {
 				background: background.map(Into::into),
 				border: iced::Border {
-					radius: constants::style::BORDER_RADIUS.into(),
+					radius: nade_constants::style::BORDER_RADIUS.into(),
 					..Default::default()
 				},
 				..Default::default()
@@ -1712,7 +1714,7 @@ impl<C: AreaKind> PanelSystem<C> {
 	where
 		M: Clone + std::fmt::Debug + 'static,
 	{
-		use constants::style::{CONTROL_CONTENT_HEIGHT, FONT_UI, ICON_SIZE, SPACE_2, TEXT_PRIMARY_COLOR};
+		use nade_constants::style::{CONTROL_CONTENT_HEIGHT, FONT_UI, ICON_SIZE, SPACE_2, TEXT_PRIMARY_COLOR};
 
 		let DragState::TabDrag {
 			area_id,
@@ -1754,7 +1756,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			let ghost = container(
 				row![
 					panel_icon_svg_colored(content.icon(), ICON_SIZE, TEXT_PRIMARY_COLOR, 1.0),
-					constants::widgets::ui_label(content.label(), FONT_UI).color(TEXT_PRIMARY_COLOR),
+					nade_constants::widgets::ui_label(content.label(), FONT_UI).color(TEXT_PRIMARY_COLOR),
 				]
 				.spacing(HEADER_PADDING)
 				.align_y(iced::Alignment::Center),
@@ -1762,7 +1764,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			.padding([0.0, SPACE_2 * 2.0])
 			.height(CONTROL_CONTENT_HEIGHT)
 			.align_y(iced::Alignment::Center)
-			.style(constants::widgets::editor_menu_panel);
+			.style(nade_constants::widgets::editor_menu_panel);
 			// Offset so the ghost does not hide the insertion marker under the cursor.
 			layers.push(positioned(
 				Point::new(current_pos.x + 10.0, current_pos.y + 10.0),
@@ -1831,12 +1833,12 @@ impl<C: AreaKind> PanelSystem<C> {
 		// Plain icon + text: any chrome here makes the label read as a button.
 		container(
 			row![
-				constants::icons::icon(
-					constants::icons::Icon::Transform,
-					constants::style::ICON_SIZE,
-					constants::style::TEXT_PRIMARY_COLOR
+				nade_constants::icons::icon(
+					nade_constants::icons::Icon::Transform,
+					nade_constants::style::ICON_SIZE,
+					nade_constants::style::TEXT_PRIMARY_COLOR
 				),
-				constants::widgets::ui_label(label, constants::style::FONT_UI),
+				nade_constants::widgets::ui_label(label, nade_constants::style::FONT_UI),
 			]
 			.spacing(6)
 			.align_y(iced::Alignment::Center),
@@ -1850,7 +1852,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			border: iced::Border {
 				color: colors::SPLIT_PREVIEW_BORDER,
 				width: 1.5,
-				radius: constants::style::PANEL_INNER_RADIUS.into(),
+				radius: nade_constants::style::PANEL_INNER_RADIUS.into(),
 			},
 			..Default::default()
 		})
@@ -1880,7 +1882,7 @@ impl<C: AreaKind> PanelSystem<C> {
 				iced::Border {
 					color: colors::SPLIT_PREVIEW_BORDER,
 					width: 1.5,
-					radius: constants::style::PANEL_INNER_RADIUS.into(),
+					radius: nade_constants::style::PANEL_INNER_RADIUS.into(),
 				}
 			} else {
 				iced::Border::default()
@@ -2507,7 +2509,7 @@ fn panel_icon_svg_colored<'a, Message: 'a>(
 	color: Color,
 	opacity: f32,
 ) -> Element<'a, Message> {
-	constants::widgets::icon_slot(
+	nade_constants::widgets::icon_slot(
 		svg(handle)
 			.width(size)
 			.height(size)

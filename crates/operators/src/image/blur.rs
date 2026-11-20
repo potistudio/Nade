@@ -1,4 +1,4 @@
-use core::Image;
+use nade_core::Image;
 
 pub(crate) fn blur_1d(image: &Image, radius: f32) -> Image {
 	let width = image.width as usize;

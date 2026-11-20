@@ -1,5 +1,5 @@
 [package]
-name = "effects"
+name = "nade_effects"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,6 +10,6 @@ workspace = true
 
 [dependencies]
 log.workspace = true
-core = { path = "../core" }
-domain = { workspace = true }
+nade_core = { path = "../core" }
+nade_domain = { workspace = true }
 rayon = "1.12.0"

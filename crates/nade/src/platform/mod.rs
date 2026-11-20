@@ -1,4 +1,4 @@
-pub fn sync_scroll_phase(state: &mut timeline_panel::TimelineInteraction) {
+pub fn sync_scroll_phase(state: &mut nade_timeline_panel::TimelineInteraction) {
 	#[cfg(target_os = "macos")]
 	#[allow(unsafe_code)]
 	unsafe {

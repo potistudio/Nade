@@ -2,13 +2,13 @@
 
 use crate::interaction::TimelineLayout;
 use crate::widget::{TimelineWidget, rounded_rect};
-use constants::style::MONOSPACE_FONT;
-use constants::timeline::*;
 use iced::{
 	Color, Point, Rectangle, Size,
 	alignment::Vertical,
 	widget::canvas::{self, Path, Stroke, Text},
 };
+use nade_constants::style::MONOSPACE_FONT;
+use nade_constants::timeline::*;
 
 impl TimelineWidget<'_> {
 	pub(super) fn draw_timeline(&self, frame: &mut canvas::Frame, bounds: Size) {
@@ -34,9 +34,9 @@ impl TimelineWidget<'_> {
 	pub(super) fn draw_corner(&self, frame: &mut canvas::Frame, rect: Rectangle) {
 		frame.fill_rectangle(rect.position(), rect.size(), colors::RULER_BG);
 		frame.fill_text(Text {
-			content: core::timecode::format(self.current_time, self.fps),
+			content: nade_core::timecode::format(self.current_time, self.fps),
 			position: Point::new(rect.x + 10.0, rect.y + rect.height * 0.5),
-			color: constants::style::ACCENT_BRIGHT_COLOR,
+			color: nade_constants::style::ACCENT_BRIGHT_COLOR,
 			size: 14.0.into(),
 			font: MONOSPACE_FONT,
 			align_y: Vertical::Center,

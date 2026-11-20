@@ -1,8 +1,8 @@
 //! Solid section: size and fill.
 
-use constants::style::{AXIS_X_COLOR, AXIS_Y_COLOR, SPACE_1, SPACE_2};
 use iced::Element;
 use iced::widget::{column, row};
+use nade_constants::style::{AXIS_X_COLOR, AXIS_Y_COLOR, SPACE_1, SPACE_2};
 
 use crate::InspectorMessage;
 use crate::draggable_number::number_field;

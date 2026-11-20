@@ -1,9 +1,9 @@
 //! Rendering a whole composition to a movie file.
 
 use anyhow::{Result, bail};
-use core::FrameBuffer;
-use domain::{Composition, Instance};
-use encoder::{AudioClip, Encoder, ExportSettings, FfmpegEncoder};
+use nade_core::FrameBuffer;
+use nade_domain::{Composition, Instance};
+use nade_encoder::{AudioClip, Encoder, ExportSettings, FfmpegEncoder};
 use std::path::Path;
 
 use crate::{CompositionLibrary, Compositor, Scene};
@@ -47,7 +47,7 @@ fn collect_audio(
 	composition: &Composition,
 	is_track_rendered: &dyn Fn(usize) -> bool,
 	library: &(impl CompositionLibrary + ?Sized),
-	stack: &mut Vec<core::CompositionId>,
+	stack: &mut Vec<nade_core::CompositionId>,
 	out: &mut Vec<AudioClip>,
 ) {
 	for instance in composition
@@ -150,8 +150,8 @@ pub fn export_composition(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core::{AssetId, CompositionId, MediaInfo, NodeId};
-	use domain::{InstanceContent, MediaKind, MediaSource};
+	use nade_core::{AssetId, CompositionId, MediaInfo, NodeId};
+	use nade_domain::{InstanceContent, MediaKind, MediaSource};
 	use std::path::PathBuf;
 
 	fn composition_with_audio() -> Composition {
@@ -210,7 +210,7 @@ mod tests {
 
 	#[test]
 	fn nested_audio_follows_the_comp_layer() {
-		let mut project = domain::Project::default();
+		let mut project = nade_domain::Project::default();
 		let main = project.create_composition("Main", 64, 36, 10.0);
 		let inner = project.create_composition("Inner", 64, 36, 10.0);
 		add_audio_layers(project.composition_mut(&inner).unwrap());
@@ -236,7 +236,7 @@ mod tests {
 		let dir = std::env::temp_dir().join(format!("nade-export-test-{}", std::process::id()));
 		std::fs::create_dir_all(&dir).unwrap();
 		let tone = dir.join("tone.wav");
-		let made = std::process::Command::new(media::ffmpeg_path())
+		let made = std::process::Command::new(nade_media::ffmpeg_path())
 			.args([
 				"-v",
 				"error",
@@ -277,7 +277,7 @@ mod tests {
 		.expect("export succeeds");
 		assert_eq!(calls, 10);
 
-		let info = media::probe(&output).expect("output is readable");
+		let info = nade_media::probe(&output).expect("output is readable");
 		assert!(info.has_video && info.has_audio);
 		assert_eq!((info.width, info.height), (64, 36));
 		assert!((info.duration.unwrap() - 1.0).abs() < 0.15, "{:?}", info.duration);

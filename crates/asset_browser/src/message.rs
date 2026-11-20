@@ -1,4 +1,4 @@
-use core::AssetId;
+use nade_core::AssetId;
 
 /// Messages from the asset browser panel.
 #[derive(Debug, Clone)]

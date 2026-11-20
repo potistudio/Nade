@@ -1,5 +1,5 @@
 [package]
-name = "curve_editor_panel"
+name = "nade_curve_editor_panel"
 description = "Animation curve editor panel"
 authors.workspace = true
 version.workspace = true
@@ -11,7 +11,7 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-constants = { workspace = true }
-core = { workspace = true }
-domain = { workspace = true }
+nade_constants = { workspace = true }
+nade_core = { workspace = true }
+nade_domain = { workspace = true }
 iced = { workspace = true }

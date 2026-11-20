@@ -1,9 +1,9 @@
 //! The picture with its interactive overlay.
 
-use constants::style::{FONT_UI, TEXT_MUTED_COLOR};
-use constants::widgets::{self, ui_label};
 use iced::widget::{Canvas, container, shader, stack};
 use iced::{Element, Length, Size, Vector};
+use nade_constants::style::{FONT_UI, TEXT_MUTED_COLOR};
+use nade_constants::widgets::{self, ui_label};
 
 use crate::message::PreviewMessage;
 use crate::view::ViewerProps;

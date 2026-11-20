@@ -2,12 +2,12 @@
 
 use crate::widget::CurveEditorWidget;
 use crate::{CURVE_SAMPLES, HANDLE_RADIUS, KEY_RADIUS};
-use constants::style::ACCENT_COLOR;
-use core::{AnimationCurve, HandleSide, Interpolation};
 use iced::{
 	Color, Point,
 	widget::canvas::{self, LineCap, LineJoin, Path, Stroke},
 };
+use nade_constants::style::ACCENT_COLOR;
+use nade_core::{AnimationCurve, HandleSide, Interpolation};
 
 impl CurveEditorWidget<'_> {
 	pub(super) fn draw_curve(&self, frame: &mut canvas::Frame, curve: &AnimationCurve, color: Color, selected: bool) {

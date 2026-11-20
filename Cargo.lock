@@ -378,16 +378,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "asset_browser"
-version = "0.0.1"
-dependencies = [
- "constants",
- "core",
- "domain",
- "iced",
-]
-
-[[package]]
 name = "async-broadcast"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -562,17 +552,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "audio"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "cpal",
- "encoder",
- "log",
- "media",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -722,17 +701,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "browser_panel"
-version = "0.0.1"
-dependencies = [
- "constants",
- "core",
- "domain",
- "iced",
- "uuid",
-]
-
-[[package]]
 name = "built"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -828,13 +796,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "canvas_panel"
-version = "0.0.1"
-dependencies = [
- "iced",
-]
-
-[[package]]
 name = "cc"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -871,13 +832,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ced0551234e87afee12411d535648dd89d2e7f34c78b753395567aff3d447ff"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "cli"
-version = "0.0.1"
-dependencies = [
- "uuid",
 ]
 
 [[package]]
@@ -979,21 +933,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
 dependencies = [
  "crossbeam-utils",
-]
-
-[[package]]
-name = "constants"
-version = "0.0.1"
-dependencies = [
- "iced",
-]
-
-[[package]]
-name = "core"
-version = "0.0.1"
-dependencies = [
- "bytes",
- "serde",
 ]
 
 [[package]]
@@ -1218,16 +1157,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
-name = "curve_editor_panel"
-version = "0.0.1"
-dependencies = [
- "constants",
- "core",
- "domain",
- "iced",
-]
-
-[[package]]
 name = "dasp_sample"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1287,15 +1216,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "domain"
-version = "0.0.1"
-dependencies = [
- "core",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "downcast-rs"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1315,16 +1235,6 @@ checksum = "0656a7530b9e2841ee7a5f983965bdd9840c32f4012f759cfd44b912cced6b34"
 dependencies = [
  "bytemuck",
  "emath",
-]
-
-[[package]]
-name = "effects"
-version = "0.0.1"
-dependencies = [
- "core",
- "domain",
- "log",
- "rayon",
 ]
 
 [[package]]
@@ -1451,16 +1361,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52c8d4141cf0f60fb2f7aefaf352d3ffa5171ef0ab09731c64391801e95e48f1"
 dependencies = [
  "bytemuck",
-]
-
-[[package]]
-name = "encoder"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "core",
- "log",
- "media",
 ]
 
 [[package]]
@@ -1954,16 +1854,6 @@ checksum = "f5df2ba84018d80c213569363bdcd0c64e6933c67fe4c1d60ecf822971a3c35e"
 dependencies = [
  "color_quant",
  "weezl",
-]
-
-[[package]]
-name = "gizmos"
-version = "0.0.1"
-dependencies = [
- "constants",
- "env_logger",
- "iced",
- "log",
 ]
 
 [[package]]
@@ -2623,16 +2513,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "inspector_panel"
-version = "0.0.1"
-dependencies = [
- "constants",
- "core",
- "domain",
- "iced",
-]
-
-[[package]]
 name = "interpolate_name"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3064,16 +2944,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "media"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "core",
- "image",
- "log",
-]
-
-[[package]]
 name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3186,40 +3056,234 @@ name = "nade"
 version = "0.0.1"
 dependencies = [
  "anyhow",
- "asset_browser",
- "audio",
- "browser_panel",
  "bytes",
  "cc",
- "constants",
- "core",
  "crossbeam-channel",
- "curve_editor_panel",
- "domain",
  "env_logger",
  "iced",
  "iced_wgpu",
  "image",
- "inspector_panel",
  "log",
- "media",
  "muda",
- "panel_system",
+ "nade_asset_browser",
+ "nade_audio",
+ "nade_browser_panel",
+ "nade_constants",
+ "nade_core",
+ "nade_curve_editor_panel",
+ "nade_domain",
+ "nade_inspector_panel",
+ "nade_media",
+ "nade_panel_system",
+ "nade_renderer",
+ "nade_timeline_panel",
+ "nade_viewer_panel",
  "rayon",
- "renderer",
  "rfd",
  "serde",
- "timeline_panel",
  "tokio",
- "viewer_panel",
 ]
 
 [[package]]
-name = "nade-engine"
+name = "nade_asset_browser"
 version = "0.0.1"
 dependencies = [
- "constants",
+ "iced",
+ "nade_constants",
+ "nade_core",
+ "nade_domain",
+]
+
+[[package]]
+name = "nade_audio"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cpal",
  "log",
+ "nade_encoder",
+ "nade_media",
+]
+
+[[package]]
+name = "nade_browser_panel"
+version = "0.0.1"
+dependencies = [
+ "iced",
+ "nade_constants",
+ "nade_core",
+ "nade_domain",
+ "uuid",
+]
+
+[[package]]
+name = "nade_canvas_panel"
+version = "0.0.1"
+dependencies = [
+ "iced",
+]
+
+[[package]]
+name = "nade_cli"
+version = "0.0.1"
+dependencies = [
+ "uuid",
+]
+
+[[package]]
+name = "nade_constants"
+version = "0.0.1"
+dependencies = [
+ "iced",
+]
+
+[[package]]
+name = "nade_core"
+version = "0.0.1"
+dependencies = [
+ "bytes",
+ "serde",
+]
+
+[[package]]
+name = "nade_curve_editor_panel"
+version = "0.0.1"
+dependencies = [
+ "iced",
+ "nade_constants",
+ "nade_core",
+ "nade_domain",
+]
+
+[[package]]
+name = "nade_domain"
+version = "0.0.1"
+dependencies = [
+ "nade_core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "nade_effects"
+version = "0.0.1"
+dependencies = [
+ "log",
+ "nade_core",
+ "nade_domain",
+ "rayon",
+]
+
+[[package]]
+name = "nade_encoder"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "log",
+ "nade_core",
+ "nade_media",
+]
+
+[[package]]
+name = "nade_engine"
+version = "0.0.1"
+dependencies = [
+ "log",
+ "nade_constants",
+]
+
+[[package]]
+name = "nade_gizmos"
+version = "0.0.1"
+dependencies = [
+ "env_logger",
+ "iced",
+ "log",
+ "nade_constants",
+]
+
+[[package]]
+name = "nade_inspector_panel"
+version = "0.0.1"
+dependencies = [
+ "iced",
+ "nade_constants",
+ "nade_core",
+ "nade_domain",
+]
+
+[[package]]
+name = "nade_media"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "image",
+ "log",
+ "nade_core",
+]
+
+[[package]]
+name = "nade_operators"
+version = "0.0.1"
+dependencies = [
+ "nade_core",
+]
+
+[[package]]
+name = "nade_panel_system"
+version = "0.0.1"
+dependencies = [
+ "iced",
+ "nade_constants",
+]
+
+[[package]]
+name = "nade_playground_font"
+version = "0.0.1"
+dependencies = [
+ "eframe",
+ "egui",
+ "env_logger",
+ "log",
+ "swash",
+]
+
+[[package]]
+name = "nade_renderer"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "env_logger",
+ "image",
+ "log",
+ "nade_core",
+ "nade_domain",
+ "nade_effects",
+ "nade_encoder",
+ "nade_media",
+ "rayon",
+ "swash",
+]
+
+[[package]]
+name = "nade_timeline_panel"
+version = "0.0.1"
+dependencies = [
+ "iced",
+ "log",
+ "nade_constants",
+ "nade_core",
+]
+
+[[package]]
+name = "nade_viewer_panel"
+version = "0.0.1"
+dependencies = [
+ "bytemuck",
+ "iced",
+ "nade_constants",
+ "nade_core",
+ "wgpu 27.0.1",
 ]
 
 [[package]]
@@ -3865,13 +3929,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
-name = "operators"
-version = "0.0.1"
-dependencies = [
- "core",
-]
-
-[[package]]
 name = "orbclient"
 version = "0.3.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3907,14 +3964,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36820e9051aca1014ddc75770aab4d68bc1e9e632f0f5627c4086bc216fb583b"
 dependencies = [
  "ttf-parser",
-]
-
-[[package]]
-name = "panel_system"
-version = "0.0.1"
-dependencies = [
- "constants",
- "iced",
 ]
 
 [[package]]
@@ -4080,17 +4129,6 @@ name = "plain"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
-
-[[package]]
-name = "playground_font"
-version = "0.0.1"
-dependencies = [
- "eframe",
- "egui",
- "env_logger",
- "log",
- "swash",
-]
 
 [[package]]
 name = "png"
@@ -4512,23 +4550,6 @@ name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
-
-[[package]]
-name = "renderer"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "core",
- "domain",
- "effects",
- "encoder",
- "env_logger",
- "image",
- "log",
- "media",
- "rayon",
- "swash",
-]
 
 [[package]]
 name = "resvg"
@@ -5151,16 +5172,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "timeline_panel"
-version = "0.0.1"
-dependencies = [
- "constants",
- "core",
- "iced",
- "log",
-]
-
-[[package]]
 name = "tiny-skia"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5502,17 +5513,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "viewer_panel"
-version = "0.0.1"
-dependencies = [
- "bytemuck",
- "constants",
- "core",
- "iced",
- "wgpu 27.0.1",
-]
 
 [[package]]
 name = "walkdir"

@@ -1,5 +1,5 @@
 [package]
-name = "audio"
+name = "nade_audio"
 description = "Audio preview playback of composition sound"
 version.workspace = true
 edition.workspace = true
@@ -13,6 +13,6 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 cpal = "0.18.2"
-encoder = { path = "../encoder" }
+nade_encoder = { path = "../encoder" }
 log = { workspace = true }
-media = { workspace = true }
+nade_media = { workspace = true }

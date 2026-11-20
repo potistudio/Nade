@@ -2,11 +2,11 @@
 
 use crate::widget::{TimelineWidget, rounded_rect};
 use crate::{TimelineModel, interaction::TimelineInteraction};
-use constants::timeline::*;
 use iced::{
 	Point, Rectangle,
 	widget::canvas::{self, Path, Stroke},
 };
+use nade_constants::timeline::*;
 
 impl TimelineWidget<'_> {
 	pub(super) fn draw_range_slider(

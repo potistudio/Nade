@@ -1,19 +1,19 @@
 //! App shell layout constants. Colors and widget styles live in
-//! `constants::style` / `constants::widgets`.
+//! `nade_constants::style` / `nade_constants::widgets`.
 
 /// Height of the transparent title strip that hosts the traffic lights.
 /// Other platforms keep their native title bar.
 /// Title strip with the menu bar (also hosts the traffic lights on macOS).
 pub const TITLE_BAR_HEIGHT: f32 = 28.0;
 /// Height of the unified toolbar under the title strip, including equal padding on all sides.
-pub const SHELL_TOOLBAR_HEIGHT: f32 = constants::style::ROW_HEIGHT + SHELL_GUTTER * 2.0;
+pub const SHELL_TOOLBAR_HEIGHT: f32 = nade_constants::style::ROW_HEIGHT + SHELL_GUTTER * 2.0;
 /// Height of the status bar at the bottom of the window.
-pub const STATUS_BAR_HEIGHT: f32 = constants::style::ROW_HEIGHT;
+pub const STATUS_BAR_HEIGHT: f32 = nade_constants::style::ROW_HEIGHT;
 /// Gutter between the window edge and the panel grid.
 pub const SHELL_GUTTER: f32 = 6.0;
 
 /// Segment size of the tool palette (icon-only).
-pub const TOOL_SEGMENT: [f32; 2] = [32.0, constants::style::ROW_HEIGHT];
+pub const TOOL_SEGMENT: [f32; 2] = [32.0, nade_constants::style::ROW_HEIGHT];
 
 /// How long a toast stays fully visible.
 pub const TOAST_HOLD_SECS: f32 = 1.8;

@@ -1,6 +1,6 @@
 //! Undo / redo history of project snapshots.
 
-use domain::{Project, ProjectSnapshot};
+use nade_domain::{Project, ProjectSnapshot};
 
 /// Maximum number of undo steps kept.
 const LIMIT: usize = 200;
@@ -78,7 +78,7 @@ impl History {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core::NodeId;
+	use nade_core::NodeId;
 
 	#[test]
 	fn undo_and_redo_walk_the_steps() {

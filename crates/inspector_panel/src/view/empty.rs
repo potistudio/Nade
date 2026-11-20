@@ -1,10 +1,10 @@
 //! Placeholder shown when nothing is selected.
 
-use constants::icons::{Icon, icon};
-use constants::style::{FONT_TITLE, FONT_UI, SPACE_3, SPACE_5, TEXT_MUTED_COLOR, TEXT_SECONDARY_COLOR};
-use constants::widgets::ui_label;
 use iced::widget::{column, container};
 use iced::{Alignment, Element, Length};
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::{FONT_TITLE, FONT_UI, SPACE_3, SPACE_5, TEXT_MUTED_COLOR, TEXT_SECONDARY_COLOR};
+use nade_constants::widgets::ui_label;
 
 use crate::InspectorMessage;
 

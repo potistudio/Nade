@@ -1,12 +1,12 @@
 use crate::{ObjectId, ProjectPaneMessage, ProjectPaneState};
-use constants::icons::{Icon, icon};
-use constants::style::*;
-use constants::tree::{Disclosure, TreeRow};
-use constants::widgets::{self, button_body_center, ui_label};
-use core::CompositionId;
-use domain::{Composition, Instance, Project};
 use iced::widget::{Space, button, column, container, mouse_area, row, scrollable, tooltip};
 use iced::{Alignment, Element, Length};
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::*;
+use nade_constants::tree::{Disclosure, TreeRow};
+use nade_constants::widgets::{self, button_body_center, ui_label};
+use nade_core::CompositionId;
+use nade_domain::{Composition, Instance, Project};
 
 #[derive(Debug)]
 pub struct ProjectPaneWidget<'a> {
@@ -69,7 +69,7 @@ fn tool_button<'a>(glyph: Icon, label: &'a str, message: ProjectPaneMessage) -> 
 		button(button_body_center(icon(glyph, 13.0, TEXT_SECONDARY_COLOR)))
 			.padding(0)
 			.width(24)
-			.height(constants::style::ROW_HEIGHT)
+			.height(nade_constants::style::ROW_HEIGHT)
 			.style(widgets::button_ghost)
 			.on_press(message),
 		label,
@@ -134,15 +134,15 @@ fn view_instance<'a>(
 	};
 
 	let glyph = match instance.content() {
-		domain::InstanceContent::Text { .. } => Icon::LayerText,
-		domain::InstanceContent::Empty => Icon::LayerNull,
-		domain::InstanceContent::Solid { .. } => Icon::LayerSolid,
-		domain::InstanceContent::Media(source) => match source.kind {
-			domain::MediaKind::Image => Icon::Image,
-			domain::MediaKind::Video => Icon::Video,
-			domain::MediaKind::Audio => Icon::Audio,
+		nade_domain::InstanceContent::Text { .. } => Icon::LayerText,
+		nade_domain::InstanceContent::Empty => Icon::LayerNull,
+		nade_domain::InstanceContent::Solid { .. } => Icon::LayerSolid,
+		nade_domain::InstanceContent::Media(source) => match source.kind {
+			nade_domain::MediaKind::Image => Icon::Image,
+			nade_domain::MediaKind::Video => Icon::Video,
+			nade_domain::MediaKind::Audio => Icon::Audio,
 		},
-		domain::InstanceContent::Composition(_) => Icon::Comp,
+		nade_domain::InstanceContent::Composition(_) => Icon::Comp,
 	};
 
 	TreeRow {

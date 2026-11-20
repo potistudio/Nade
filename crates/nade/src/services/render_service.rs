@@ -1,7 +1,7 @@
 use crate::message::Message;
-use core::FrameData;
 use iced::futures::stream::BoxStream;
 use iced::futures::{SinkExt, StreamExt};
+use nade_core::FrameData;
 use std::sync::{Arc, Mutex};
 use std::thread;
 

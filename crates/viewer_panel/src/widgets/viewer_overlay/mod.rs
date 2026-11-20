@@ -9,8 +9,8 @@ mod program;
 
 use crate::tool::Tool;
 use crate::widgets::viewport::Viewport;
-use core::{Affine, InstanceId};
 use iced::{Point, Size, Vector, keyboard};
+use nade_core::{Affine, InstanceId};
 
 pub use layer_box::LayerBox;
 
@@ -90,7 +90,7 @@ impl ViewerOverlay {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core::Transform;
+	use nade_core::Transform;
 
 	fn layer(rotation: f32) -> LayerBox {
 		let transform = Transform {

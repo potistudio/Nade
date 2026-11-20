@@ -1,4 +1,4 @@
-use core::{CompositionId, InstanceId};
+use nade_core::{CompositionId, InstanceId};
 
 /// Tree identity for the object browser (composition outline).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

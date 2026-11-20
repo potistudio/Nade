@@ -1,9 +1,9 @@
 //! Fill rows: swatch, hex field, opacity and color wells.
 
-use constants::style::{FONT_UI, LABEL_COLORS, MONOSPACE_FONT, SPACE_2};
-use constants::widgets;
 use iced::widget::{Space, button, container, row, text_input};
 use iced::{Alignment, Border, Color, Element, Length};
+use nade_constants::style::{FONT_UI, LABEL_COLORS, MONOSPACE_FONT, SPACE_2};
+use nade_constants::widgets;
 
 use crate::InspectorMessage;
 use crate::draggable_number::number_field;

@@ -1,11 +1,11 @@
 //! Layer section: parent, blend mode and nested composition.
 
-use constants::icons::{Icon, icon};
-use constants::style::{FONT_UI, SPACE_1, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
-use constants::widgets::{self, button_body_center, ui_label};
-use core::BlendMode;
 use iced::widget::{button, column, pick_list, tooltip};
 use iced::{Element, Length};
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::{FONT_UI, SPACE_1, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
+use nade_constants::widgets::{self, button_body_center, ui_label};
+use nade_core::BlendMode;
 
 use crate::InspectorMessage;
 use crate::target::{LayerTarget, ParentChoice};

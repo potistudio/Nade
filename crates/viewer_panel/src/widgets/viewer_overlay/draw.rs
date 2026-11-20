@@ -4,9 +4,9 @@ use crate::tool::Tool;
 use crate::widgets::viewer_overlay::layer_box::LayerBox;
 use crate::widgets::viewer_overlay::{HANDLE_SIZE, HANDLES, ViewerOverlay};
 use crate::widgets::viewport::Viewport;
-use constants::style::{ACCENT_BRIGHT_COLOR, ACCENT_COLOR};
 use iced::widget::canvas::{Frame, LineDash, Path, Stroke};
 use iced::{Color, Point, Rectangle, Size};
+use nade_constants::style::{ACCENT_BRIGHT_COLOR, ACCENT_COLOR};
 
 impl ViewerOverlay {
 	pub(super) fn draw_guides(&self, frame: &mut Frame, rect: Rectangle) {

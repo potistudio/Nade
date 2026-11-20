@@ -1,5 +1,5 @@
 [package]
-name = "timeline_panel"
+name = "nade_timeline_panel"
 description = "Timeline panel"
 authors.workspace = true
 version.workspace = true
@@ -11,7 +11,7 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-core = { workspace = true }
-constants = { workspace = true }
+nade_core = { workspace = true }
+nade_constants = { workspace = true }
 iced = { workspace = true }
 log = { workspace = true }

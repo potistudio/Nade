@@ -5,12 +5,12 @@
 ## 1. Current (Iced 0.14)
 
 - `custom_slider`
-- `gizmos`
+- `nade_gizmos`
 
 ## 2. Current (egui/eframe)
 
 - `node_playground_egui`
-- `playground_font`
+- `nade_playground_font`
 - `timeline` (`timeline_demo_egui`)
 
 ## 3. Legacy (Iced 0.13)
@@ -25,6 +25,6 @@
 
 ## Run
 
-- 例: `cargo run -p gizmos`
+- 例: `cargo run -p nade_gizmos`
 - 例: `cargo run -p node_playground_egui`
 - 例: `cargo run -p timeline_demo_iced`

@@ -1,13 +1,13 @@
 //! Viewer header: composition title, guides and zoom controls.
 
-use constants::icons::{Icon, icon};
-use constants::style::{
+use iced::widget::{Space, button, container, row, tooltip};
+use iced::{Alignment, Element, Length, Size, Vector};
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::{
 	FONT_TINY, FONT_UI, ICON_SIZE, SPACE_1, SPACE_2, SPACE_4, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR,
 	TEXT_SECONDARY_COLOR,
 };
-use constants::widgets::{self, button_body_center, mono_label, ui_label};
-use iced::widget::{Space, button, container, row, tooltip};
-use iced::{Alignment, Element, Length, Size, Vector};
+use nade_constants::widgets::{self, button_body_center, mono_label, ui_label};
 
 use crate::message::PreviewMessage;
 use crate::view::{BAR_HEIGHT, ViewerProps};
@@ -83,7 +83,7 @@ pub(super) fn header<'a>(props: &ViewerProps<'a>) -> Element<'a, PreviewMessage>
 
 fn toggle<'a>(glyph: Icon, active: bool, label: &'a str, message: PreviewMessage) -> Element<'a, PreviewMessage> {
 	let color = if active {
-		constants::style::ACCENT_BRIGHT_COLOR
+		nade_constants::style::ACCENT_BRIGHT_COLOR
 	} else {
 		TEXT_SECONDARY_COLOR
 	};

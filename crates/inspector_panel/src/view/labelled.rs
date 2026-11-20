@@ -1,9 +1,9 @@
 //! A label column followed by a control, aligned with the transform rows.
 
-use constants::style::{FONT_UI, SPACE_2, TEXT_SECONDARY_COLOR};
-use constants::widgets::ui_label;
 use iced::widget::{Space, row};
 use iced::{Alignment, Element};
+use nade_constants::style::{FONT_UI, SPACE_2, TEXT_SECONDARY_COLOR};
+use nade_constants::widgets::ui_label;
 
 use crate::InspectorMessage;
 use crate::view::{LABEL_WIDTH, ROW_HEIGHT};

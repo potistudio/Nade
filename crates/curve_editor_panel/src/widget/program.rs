@@ -3,12 +3,12 @@
 use crate::helpers::property_color;
 use crate::message::{CurveCanvasEvent, CurveEditorMessage};
 use crate::widget::CurveEditorWidget;
-use constants::style::WELL_COLOR;
-use domain::TransformProperty;
 use iced::{
 	Event, Point, Rectangle, Theme, keyboard, mouse,
 	widget::canvas::{self, Geometry},
 };
+use nade_constants::style::WELL_COLOR;
+use nade_domain::TransformProperty;
 
 impl canvas::Program<CurveEditorMessage> for CurveEditorWidget<'_> {
 	type State = ();

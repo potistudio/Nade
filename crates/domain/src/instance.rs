@@ -1,4 +1,4 @@
-use core::{AnimationCurve, AssetId, BlendMode, CompositionId, MediaInfo, NodeId, Transform, id::InstanceId};
+use nade_core::{AnimationCurve, AssetId, BlendMode, CompositionId, MediaInfo, NodeId, Transform, id::InstanceId};
 use std::path::PathBuf;
 
 use crate::effect::{EffectKind, EvaluatedEffect, LayerEffect};
@@ -662,7 +662,7 @@ impl Instance {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core::NodeId;
+	use nade_core::NodeId;
 
 	#[test]
 	fn text_default_has_visible_string() {
@@ -685,7 +685,7 @@ mod tests {
 		let curve = instance.animation.curve_mut(TransformProperty::PositionX);
 		let first = curve.add_key(0.0, 0.0);
 		curve.add_key(2.0, 100.0);
-		curve.set_interpolation(first, core::Interpolation::Linear);
+		curve.set_interpolation(first, nade_core::Interpolation::Linear);
 
 		let transform = instance.transform_at(1.0);
 		assert!((transform.position[0] - 50.0).abs() < 0.001);

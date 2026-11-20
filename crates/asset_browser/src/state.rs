@@ -1,4 +1,4 @@
-use core::AssetId;
+use nade_core::AssetId;
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Default)]

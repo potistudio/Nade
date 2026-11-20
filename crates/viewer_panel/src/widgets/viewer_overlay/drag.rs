@@ -5,9 +5,9 @@ use crate::tool::Tool;
 use crate::widgets::viewer_overlay::layer_box::LayerBox;
 use crate::widgets::viewer_overlay::{CLICK_ZOOM_FACTOR, Drag, OverlayState, ViewerOverlay};
 use crate::widgets::viewport::Viewport;
-use core::InstanceId;
 use iced::widget::canvas;
 use iced::{Point, Vector};
+use nade_core::InstanceId;
 
 impl ViewerOverlay {
 	/// Convert a comp-space delta into the layer's parent space.

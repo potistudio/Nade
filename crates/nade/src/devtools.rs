@@ -18,7 +18,7 @@ use iced::window::Screenshot;
 
 use crate::message::{AppPanelMessage, Message, ShellMessage};
 use crate::workspace::Workspace;
-use viewer_panel::Tool;
+use nade_viewer_panel::Tool;
 
 #[derive(Debug)]
 pub struct Capture {
@@ -74,7 +74,7 @@ impl Capture {
 
 /// Messages that stage the UI described by `NADE_SCREENSHOT_SCENE`.
 pub fn scene_messages(select_layer: impl Fn(&str) -> Option<AppPanelMessage>) -> Vec<Message> {
-	use panel_system::PanelSystemMessage;
+	use nade_panel_system::PanelSystemMessage;
 
 	let Ok(scene) = std::env::var("NADE_SCREENSHOT_SCENE") else {
 		return Vec::new();
@@ -103,7 +103,7 @@ pub fn scene_messages(select_layer: impl Fn(&str) -> Option<AppPanelMessage>) ->
 				"time" => value
 					.parse()
 					.ok()
-					.map(|time| Message::Timeline(timeline_panel::TimelineMessage::PlayheadChanged(time)))
+					.map(|time| Message::Timeline(nade_timeline_panel::TimelineMessage::PlayheadChanged(time)))
 					.into_iter()
 					.collect(),
 				"loop" => vec![Message::Transport(crate::message::TransportMessage::ToggleLoop)],
@@ -147,11 +147,11 @@ pub fn scene_messages(select_layer: impl Fn(&str) -> Option<AppPanelMessage>) ->
 				"play" => vec![Message::Transport(crate::message::TransportMessage::TogglePlay)],
 				"import" => {
 					let path = PathBuf::from(value);
-					let info = media::probe(&path).map_err(|error| format!("{error:#}"));
+					let info = nade_media::probe(&path).map_err(|error| format!("{error:#}"));
 					vec![Message::MediaImported(vec![(path, info)])]
 				}
 				"add" => vec![Message::PanelSystem(PanelSystemMessage::AppMessage(
-					AppPanelMessage::Assets(asset_browser::AssetBrowserMessage::AddToTimeline),
+					AppPanelMessage::Assets(nade_asset_browser::AssetBrowserMessage::AddToTimeline),
 				))],
 				"solid" => vec![Message::Shell(ShellMessage::NewSolid)],
 				"export" => vec![Message::ExportTo(Some(PathBuf::from(value)))],

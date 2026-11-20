@@ -3,16 +3,16 @@
 use crate::TOOLBAR_HEIGHT;
 use crate::message::CurveEditorMessage;
 use crate::widget::CurveEditorWidget;
-use constants::icons::{Icon, icon};
-use constants::style::{
-	ACCENT_BRIGHT_COLOR, FONT_UI, SPACE_1, SPACE_4, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR,
-};
-use constants::widgets::{self, button_body_center, ui_label};
-use core::Interpolation;
 use iced::{
 	Alignment, Color, Element, Length,
 	widget::{Space, button, row, tooltip},
 };
+use nade_constants::icons::{Icon, icon};
+use nade_constants::style::{
+	ACCENT_BRIGHT_COLOR, FONT_UI, SPACE_1, SPACE_4, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR,
+};
+use nade_constants::widgets::{self, button_body_center, ui_label};
+use nade_core::Interpolation;
 
 impl<'a> CurveEditorWidget<'a> {
 	/// Selected property name, key actions and interpolation buttons.

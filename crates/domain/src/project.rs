@@ -1,4 +1,4 @@
-use core::{AssetId, BitDepth, CompositionId, NodeId, SampleRate};
+use nade_core::{AssetId, BitDepth, CompositionId, NodeId, SampleRate};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -8,7 +8,7 @@ use crate::{
 	instance::{Instance, InstanceContent},
 	node::Node,
 };
-use core::id::InstanceId;
+use nade_core::id::InstanceId;
 
 /// Project is the top-level container that holds all compositions, assets, and nodes in a project.
 #[derive(Debug)]
@@ -455,7 +455,7 @@ mod tests {
 		let mut project = Project::default();
 		let folder = project.create_folder("Assets", None);
 		let clip = project.import_media("/tmp/clip.mp4", Some(folder)).unwrap();
-		project.asset_mut(clip).unwrap().media_info = Some(core::MediaInfo::still(4, 4));
+		project.asset_mut(clip).unwrap().media_info = Some(nade_core::MediaInfo::still(4, 4));
 		let comp = project.create_composition("Main", 1280, 720, 24.0);
 		let node = project.create_node();
 		{
