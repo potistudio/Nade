@@ -533,8 +533,15 @@ impl NadeApp {
 			message,
 			Message::Tick | Message::RenderCompleted(_) | Message::Edit(EditCommand::Undo | EditCommand::Redo)
 		);
+		#[cfg(target_os = "macos")]
+		let sync_menu = !matches!(message, Message::Tick | Message::RenderCompleted(_));
 		let task = self.update_inner(message);
 		self.sync_audio();
+		// システムメニューバーは起動完了後（最初の更新）に設置し、以降は有効状態だけ追従
+		#[cfg(target_os = "macos")]
+		if sync_menu || !shell::native_menu::is_installed() {
+			shell::native_menu::sync(|kind| self.menu_entries(kind));
+		}
 		// ドラッグ中の連続した変更は、ボタンを離した時点で 1 ステップにまとめる
 		if records_history && !self.pointer_down {
 			self.history.checkpoint(&self.project);
@@ -1216,6 +1223,13 @@ impl NadeApp {
 			MenuMessage::Run(message) => {
 				self.menu = None;
 				return self.update_inner(*message);
+			}
+			#[cfg(target_os = "macos")]
+			MenuMessage::Native(id) => {
+				self.menu = None;
+				if let Some(action) = shell::native_menu::action(&id, |kind| self.menu_entries(kind)) {
+					return self.update_inner(action);
+				}
 			}
 		}
 		Task::none()
@@ -3151,8 +3165,12 @@ impl NadeApp {
 			Subscription::none()
 		};
 		let close = iced::window::close_requests().map(Message::CloseRequested);
+		#[cfg(target_os = "macos")]
+		let native_menu = Subscription::run(shell::native_menu::events);
+		#[cfg(not(target_os = "macos"))]
+		let native_menu = Subscription::none();
 
-		Subscription::batch([render_subscription, events, tick, close])
+		Subscription::batch([render_subscription, events, tick, close, native_menu])
 	}
 }
 

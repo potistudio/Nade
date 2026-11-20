@@ -28,6 +28,9 @@ pub enum MenuMessage {
 	Close,
 	/// 項目を選んだ: メニューを閉じてから実行する
 	Run(Box<Message>),
+	/// macOS のシステムメニューバーで項目が選ばれた（項目 ID）
+	#[cfg(target_os = "macos")]
+	Native(String),
 }
 
 /// プレビュー（ビューア）パネルメッセージ

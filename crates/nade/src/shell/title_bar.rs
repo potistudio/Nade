@@ -1,5 +1,5 @@
-//! Transparent title strip (macOS). Hosts the traffic lights and the
-//! document title; dragging it moves the window.
+//! Title strip: hosts the traffic lights (macOS), the document title and,
+//! off macOS, the menu bar; dragging it moves the window.
 
 use constants::style::{FONT_UI, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR};
 use constants::widgets::ui_label;
@@ -33,7 +33,10 @@ pub fn view<'a>(
 	)
 	.on_press(Message::Shell(ShellMessage::DragWindow))
 	.on_double_click(Message::Shell(ShellMessage::ToggleMaximize));
-	// メニュータイトルはドラッグ領域の上に重ねる
+	// macOS はシステムメニューバーを使う。他の OS ではメニュータイトルをドラッグ領域の上に重ねる
+	if cfg!(target_os = "macos") {
+		return strip.into();
+	}
 	stack![strip, menu::bar(open_menu, TITLE_BAR_HEIGHT)]
 		.width(Length::Fill)
 		.height(TITLE_BAR_HEIGHT)
