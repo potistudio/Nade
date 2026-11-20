@@ -6,6 +6,6 @@ mod message;
 mod state;
 mod widget;
 
-pub use message::{ObjectId, ProjectPaneMessage};
+pub use message::{ObjectId, ProjectPaneMessage, ProjectPaneUpdate};
 pub use state::ProjectPaneState;
 pub use widget::ProjectPaneWidget;
