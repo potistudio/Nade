@@ -93,6 +93,8 @@ pub enum ShellMessage {
 	DragWindow,
 	/// タイトルストリップのダブルクリックで最大化を切り替え
 	ToggleMaximize,
+	/// フォーカス中のパネルの選択項目を名前変更する（Enter）
+	Rename,
 }
 
 /// アプリケーションメッセージ

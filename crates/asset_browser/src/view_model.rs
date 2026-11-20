@@ -23,6 +23,8 @@ pub struct AssetRow<'a> {
 	/// Children are currently listed under this row.
 	pub expanded: bool,
 	pub selected: bool,
+	/// Draft text while this row's name is being edited in place.
+	pub rename: Option<&'a str>,
 }
 
 /// Everything the asset browser needs to render one frame.
@@ -89,7 +91,7 @@ impl AssetBrowserState {
 impl AssetBrowserState {
 	/// Appends `asset` and, when open, its visible descendants in sort order.
 	fn push_rows<'a>(
-		&self,
+		&'a self,
 		asset: &'a Asset,
 		index: &HashMap<AssetId, &'a Asset>,
 		only: Option<&HashSet<AssetId>>,
@@ -114,6 +116,11 @@ impl AssetBrowserState {
 			has_children,
 			expanded,
 			selected: self.selected_id == Some(id),
+			rename: self
+				.rename
+				.as_ref()
+				.filter(|draft| draft.id == id)
+				.map(|draft| draft.text.as_str()),
 		});
 
 		if !expanded {
@@ -248,6 +255,26 @@ mod tests {
 		state.sort = state.sort.toggled(crate::SortKey::Name);
 		let view = state.view_model(&project);
 		assert_eq!(labels(&view), ["Footage", "clip10.mov", "clip2.mov", "b.wav", "a.png"]);
+	}
+
+	/// Only the row being renamed carries the draft text.
+	#[test]
+	fn rename_draft_lands_on_its_row() {
+		let mut project = project();
+		let clip = project.create_asset("clip.mov", AssetType::Video);
+		project.create_asset("score.wav", AssetType::Audio);
+		let state = AssetBrowserState {
+			rename: Some(crate::RenameDraft {
+				id: clip,
+				text: "intro".into(),
+			}),
+			..Default::default()
+		};
+
+		let view = state.view_model(&project);
+
+		let drafts: Vec<_> = view.rows.iter().map(|row| row.rename).collect();
+		assert_eq!(drafts, [Some("intro"), None]);
 	}
 
 	/// Only a selected media asset that is on screen can go to the timeline.

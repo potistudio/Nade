@@ -158,6 +158,7 @@ fn shortcut(key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Messa
 			_ => Tool::from_key(c).map(|tool| Message::Shell(ShellMessage::SelectTool(tool))),
 		},
 		keyboard::Key::Named(Named::Delete | Named::Backspace) => Some(Message::Edit(EditCommand::Delete)),
+		keyboard::Key::Named(Named::Enter) if !modifiers.shift() => Some(Message::Shell(ShellMessage::Rename)),
 		keyboard::Key::Character(c) => Tool::from_key(c).map(|tool| Message::Shell(ShellMessage::SelectTool(tool))),
 		_ => None,
 	}
@@ -551,6 +552,15 @@ impl NadeApp {
 		#[cfg(target_os = "macos")]
 		let sync_menu = !matches!(message, Message::Tick | Message::RenderCompleted(_));
 		let task = self.update_inner(message);
+		// 名前の編集中に別パネルへ移ったら、Finder と同じく入力中の名前で確定する
+		let task = if self.asset_browser.rename.is_some()
+			&& !matches!(self.panel_system.focused_content(), Some(PanelContent::Assets))
+		{
+			let commit = self.asset_browser.commit_rename(&self.project);
+			Task::batch([task, self.run_asset_requests(commit)])
+		} else {
+			task
+		};
 		self.sync_audio();
 		// システムメニューバーは起動完了後（最初の更新）に設置し、以降は有効状態だけ追従
 		#[cfg(target_os = "macos")]
@@ -593,6 +603,9 @@ impl NadeApp {
 					self.panel_system
 						.update(PanelSystemMessage::<_, AppPanelMessage>::CancelDrag);
 					Task::none()
+				} else if self.asset_browser.rename.is_some() {
+					// 編集欄は Esc で自分のフォーカスを外して処理済みにするため、未処理かどうかは問わない
+					self.apply_assets_message(AssetBrowserMessage::CancelRename)
 				} else if unhandled
 					&& self.menu.is_none()
 					&& self.export.is_none()
@@ -874,6 +887,13 @@ impl NadeApp {
 			}
 			ShellMessage::DragWindow => iced::window::latest().and_then(iced::window::drag),
 			ShellMessage::ToggleMaximize => iced::window::latest().and_then(iced::window::toggle_maximize),
+			ShellMessage::Rename => {
+				if matches!(self.panel_system.focused_content(), Some(PanelContent::Assets)) {
+					self.apply_assets_message(AssetBrowserMessage::StartRename)
+				} else {
+					Task::none()
+				}
+			}
 		}
 	}
 
@@ -1333,6 +1353,15 @@ impl NadeApp {
 				Entry::when(selected, "Duplicate", "⌘D", edit(EditCommand::Duplicate)),
 				Entry::when(has_comp, "Split Layer", "⇧⌘D", edit(EditCommand::Split)),
 				Entry::when(selected, "Delete", "⌫", edit(EditCommand::Delete)),
+				Entry::Separator,
+				// 一覧を組み直すので、アセットブラウザにフォーカスがある時だけ調べる
+				Entry::when(
+					matches!(self.panel_system.focused_content(), Some(PanelContent::Assets))
+						&& self.asset_browser.renamable_id(&self.project).is_some(),
+					"Rename",
+					"↩",
+					shell(ShellMessage::Rename),
+				),
 			],
 			MenuKind::Composition => vec![
 				Entry::item("New Composition", "", shell(ShellMessage::NewComposition)),
@@ -2730,18 +2759,37 @@ impl NadeApp {
 	}
 
 	fn apply_assets_message(&mut self, msg: AssetBrowserMessage) -> Task<Message> {
-		match self.asset_browser.apply(&self.project, msg) {
-			Some(AssetBrowserRequest::ImportMedia) => Self::pick_media_file(),
-			Some(AssetBrowserRequest::NewFolder) => {
-				self.create_asset_folder();
-				Task::none()
-			}
-			Some(AssetBrowserRequest::AddToTimeline) => {
-				self.add_selected_asset_to_timeline();
-				Task::none()
-			}
-			None => Task::none(),
-		}
+		let requests = self.asset_browser.apply(&self.project, msg);
+		self.run_asset_requests(requests)
+	}
+
+	/// Performs the app-level work the asset browser asked for, in order.
+	fn run_asset_requests(&mut self, requests: impl IntoIterator<Item = AssetBrowserRequest>) -> Task<Message> {
+		let tasks: Vec<Task<Message>> = requests
+			.into_iter()
+			.map(|request| match request {
+				AssetBrowserRequest::ImportMedia => Self::pick_media_file(),
+				AssetBrowserRequest::NewFolder => {
+					self.create_asset_folder();
+					Task::none()
+				}
+				AssetBrowserRequest::AddToTimeline => {
+					self.add_selected_asset_to_timeline();
+					Task::none()
+				}
+				AssetBrowserRequest::FocusRename => {
+					let id = nade_asset_browser::rename_input_id();
+					iced::widget::operation::focus(id.clone()).chain(iced::widget::operation::select_all(id))
+				}
+				AssetBrowserRequest::Rename { id, name } => {
+					if let Some(asset) = self.project.asset_mut(id) {
+						asset.name = name;
+					}
+					Task::none()
+				}
+			})
+			.collect();
+		Task::batch(tasks)
 	}
 
 	fn pick_media_file() -> Task<Message> {

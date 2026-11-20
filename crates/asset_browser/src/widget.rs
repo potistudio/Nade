@@ -1,4 +1,5 @@
 use crate::{AssetBrowserMessage, AssetBrowserView, AssetRow, SortDirection, SortKey, SortOrder};
+use iced::widget::text::LineHeight;
 use iced::widget::{button, column, container, mouse_area, row, scrollable, text_input, tooltip};
 use iced::{Alignment, Color, Element, Length};
 use nade_constants::icons::{Icon, icon, icon_transformed};
@@ -71,6 +72,11 @@ impl<'a> AssetBrowserWidget<'a> {
 			.style(widgets::panel_surface)
 			.into()
 	}
+}
+
+/// Widget ID of the in-place rename field, for focusing it once it appears.
+pub fn rename_input_id() -> iced::widget::Id {
+	iced::widget::Id::new("asset-browser-rename")
 }
 
 // -------- Internal -----------------------------------------------------------
@@ -164,12 +170,28 @@ fn view_row<'a>(row: AssetRow<'a>) -> Element<'a, AssetBrowserMessage> {
 		icon: glyph,
 		icon_color: color,
 		label: row.label,
+		editor: row.rename.map(|draft| rename_field(row.label, draft)),
 		meta: kind_meta(row.kind).map(Cow::Borrowed),
 		selected: row.selected,
 		on_select: AssetBrowserMessage::Select(row.id),
 		on_open: AssetBrowserMessage::OpenItem(row.id),
 	}
 	.view()
+}
+
+/// In-place name field: Enter commits, Esc (handled by the shell) cancels.
+fn rename_field<'a>(placeholder: &'a str, draft: &'a str) -> Element<'a, AssetBrowserMessage> {
+	text_input(placeholder, draft)
+		.id(rename_input_id())
+		.on_input(AssetBrowserMessage::RenameInput)
+		.on_submit(AssetBrowserMessage::CommitRename)
+		.size(FONT_LABEL)
+		// 16px の行送り + 上下 2px で、行の中身の高さ 20px に揃える
+		.line_height(LineHeight::Absolute(16.0.into()))
+		.padding([2, 4])
+		.width(Length::Fill)
+		.style(widgets::text_input)
+		.into()
 }
 
 /// Finder 風の種類別アイコンと色
