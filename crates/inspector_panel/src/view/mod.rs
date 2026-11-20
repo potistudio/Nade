@@ -23,13 +23,10 @@ use crate::view::layer::layer_view;
 pub(crate) use labelled::labelled;
 
 pub(crate) const LABEL_WIDTH: f32 = 56.0;
-
 /// Effect parameter names are longer than transform labels.
 pub(crate) const EFFECT_LABEL_WIDTH: f32 = 92.0;
-
 /// Width of the `[‹][◆][›]` key cluster.
 pub(crate) const KEY_CLUSTER_WIDTH: f32 = 42.0;
-
 pub(crate) const ROW_HEIGHT: f32 = constants::style::ROW_HEIGHT;
 
 pub fn view<'a>(target: InspectorTarget<'a>, ui: &'a InspectorUi, now: Instant) -> Element<'a, InspectorMessage> {

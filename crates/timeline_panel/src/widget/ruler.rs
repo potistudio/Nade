@@ -11,7 +11,6 @@ use iced::{
 
 /// Minimum spacing between labelled ruler ticks (px).
 pub(super) const MIN_LABEL_SPACING: f32 = 76.0;
-
 /// Subdivisions between labelled ticks.
 pub(super) const RULER_SUBDIVISIONS: u32 = 5;
 
