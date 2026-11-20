@@ -25,6 +25,9 @@ debug = false
 [profile.dev.package.renderer]
 opt-level = 3
 
+[profile.dev.package.media]
+opt-level = 3
+
 [workspace.lints.clippy]
 all = "warn"
 
@@ -40,6 +43,7 @@ encoder = { path = "crates/encoder" }
 iced = { version = "0.14.0", features = ["advanced", "canvas", "svg"] }
 inspector_panel = { path = "crates/inspector_panel" }
 log = "0.4.35"
+media = { path = "crates/media" }
 nade-engine = { path = "crates/engine" }
 nade-timeline = { path = "crates/timeline_panel" }
 operators = { path = "crates/operators" }

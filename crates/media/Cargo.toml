@@ -1,0 +1,17 @@
+[package]
+name = "media"
+description = "Media probing and decoding (images and FFmpeg-backed video)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+core = { workspace = true }
+image = "0.25.10"
+log = { workspace = true }
