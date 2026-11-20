@@ -1,6 +1,6 @@
 //! Track label column with visibility and solo switches.
 
-use crate::widget::{TimelineWidget, rounded_rect};
+use crate::widget::{TimelineWidget, squircle_rect};
 use crate::{
 	TimelineModel,
 	icons::{draw_eye_icon, draw_solo_icon},
@@ -65,7 +65,7 @@ impl TimelineWidget<'_> {
 					width: 4.0,
 					height: TRACK_HEIGHT - 12.0,
 				};
-				frame.fill(&rounded_rect(strip, 2.0), label);
+				frame.fill(&squircle_rect(strip, 2.0), label);
 
 				self.draw_visibility_btn(frame, track_visible_btn_rect(rect.x, y), model.visibility_display(i));
 				self.draw_solo_btn(frame, track_solo_btn_rect(rect.x, y), track.solo, track.visible);
@@ -110,7 +110,7 @@ impl TimelineWidget<'_> {
 			// 並べ替え中の挿入位置
 			if let Some(insert_idx) = insert_before_idx {
 				let gap_y = rect.y + (insert_idx as f32 * TRACK_HEIGHT) + state.scroll_offset.y;
-				let gap = rounded_rect(
+				let gap = squircle_rect(
 					Rectangle::new(
 						Point::new(rect.x + 2.0, gap_y + 2.0),
 						Size::new(rect.width - 4.0, TRACK_HEIGHT - 4.0),

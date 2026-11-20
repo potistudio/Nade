@@ -1,7 +1,7 @@
 //! Overall layout of the canvas, the corner timecode, the range-select rectangle and line helpers.
 
 use crate::interaction::TimelineLayout;
-use crate::widget::{TimelineWidget, rounded_rect};
+use crate::widget::{TimelineWidget, squircle_rect};
 use iced::{
 	Color, Point, Rectangle, Size,
 	alignment::Vertical,
@@ -68,7 +68,7 @@ impl TimelineWidget<'_> {
 			height: sel_rect.height,
 		};
 
-		let path = rounded_rect(local_rect, 3.0);
+		let path = squircle_rect(local_rect, 3.0);
 		frame.fill(&path, colors::SELECTION_FILL);
 		frame.stroke(
 			&path,

@@ -2,7 +2,7 @@
 
 use crate::widget::CurveEditorWidget;
 use iced::{
-	Point, Size,
+	Point, Rectangle, Size,
 	widget::canvas::{self, Path, Stroke},
 };
 use nade_constants::style::ACCENT_COLOR;
@@ -14,7 +14,7 @@ impl CurveEditorWidget<'_> {
 			&Path::line(Point::new(x, 0.0), Point::new(x, height)),
 			Stroke::default().with_color(ACCENT_COLOR).with_width(1.5),
 		);
-		let head = Path::rounded_rectangle(Point::new(x - 5.0, 0.0), Size::new(10.0, 12.0), 3.0.into());
+		let head = nade_constants::squircle::path(Rectangle::new(Point::new(x - 5.0, 0.0), Size::new(10.0, 12.0)), 3.0);
 		frame.fill(&head, ACCENT_COLOR);
 	}
 }

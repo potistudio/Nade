@@ -1,6 +1,6 @@
 //! Layer bars, keyframe diamonds and resize handles.
 
-use crate::widget::{DropPreview, KEYFRAME_RADIUS, TimelineWidget, rounded_rect};
+use crate::widget::{DropPreview, KEYFRAME_RADIUS, TimelineWidget, squircle_rect};
 use crate::{TimelineClip, TimelineModel, interaction::TimelineInteraction};
 use iced::{
 	Color, Point, Rectangle, Size,
@@ -105,7 +105,7 @@ impl TimelineWidget<'_> {
 
 		let x_start = state.time_to_x(preview.start, rect.x);
 		let x_end = state.time_to_x(preview.start + preview.duration, rect.x);
-		let ghost = rounded_rect(
+		let ghost = squircle_rect(
 			Rectangle {
 				x: x_start,
 				y: track_y + TRACK_PADDING,
@@ -152,7 +152,7 @@ impl TimelineWidget<'_> {
 		let dim = if track_rendered { 1.0 } else { 0.4 };
 		let dim = if is_duplicate { dim * 0.5 } else { dim };
 
-		let body = rounded_rect(clip_rect, CLIP_CORNER_RADIUS);
+		let body = squircle_rect(clip_rect, CLIP_CORNER_RADIUS);
 		frame.fill(
 			&body,
 			Color {
@@ -236,7 +236,7 @@ impl TimelineWidget<'_> {
 	pub(super) fn draw_resize_handles(&self, frame: &mut canvas::Frame, clip_rect: Rectangle) {
 		let height = (clip_rect.height - 8.0).max(4.0);
 		for x in [clip_rect.x + 4.0, clip_rect.x + clip_rect.width - 6.0] {
-			let handle = rounded_rect(
+			let handle = squircle_rect(
 				Rectangle::new(Point::new(x, clip_rect.y + 4.0), Size::new(2.0, height)),
 				1.0,
 			);

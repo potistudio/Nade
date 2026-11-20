@@ -3,6 +3,7 @@
 mod app;
 mod engine;
 pub mod icons;
+pub mod squircle;
 pub mod style;
 pub mod timeline;
 pub mod tree;

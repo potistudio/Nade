@@ -1,6 +1,6 @@
 //! Range slider for the visible time span.
 
-use crate::widget::{TimelineWidget, rounded_rect};
+use crate::widget::{TimelineWidget, squircle_rect};
 use crate::{TimelineModel, interaction::TimelineInteraction};
 use iced::{
 	Point, Rectangle,
@@ -25,7 +25,10 @@ impl TimelineWidget<'_> {
 			width: (rect.width - padding * 2.0).max(0.0),
 			height: rect.height - padding * 2.0,
 		};
-		frame.fill(&rounded_rect(track_rect, track_rect.height), colors::RANGE_SLIDER_TRACK);
+		frame.fill(
+			&squircle_rect(track_rect, track_rect.height),
+			colors::RANGE_SLIDER_TRACK,
+		);
 
 		let total_duration = state.total_timeline_duration(model);
 		if total_duration <= 0.0 || track_rect.width <= 0.0 {
@@ -37,7 +40,7 @@ impl TimelineWidget<'_> {
 		let handle_l = track_rect.x + norm_start * track_rect.width;
 		let handle_r = (track_rect.x + norm_end * track_rect.width).max(handle_l + 4.0);
 
-		let handle = rounded_rect(
+		let handle = squircle_rect(
 			Rectangle {
 				x: handle_l,
 				width: handle_r - handle_l,

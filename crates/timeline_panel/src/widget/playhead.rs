@@ -1,7 +1,7 @@
 //! Playhead line and head.
 
 use crate::interaction::TimelineInteraction;
-use crate::widget::{TimelineWidget, rounded_rect};
+use crate::widget::{TimelineWidget, squircle_rect};
 use iced::{
 	Color, Point, Rectangle,
 	widget::canvas::{self, LineCap, Path, Stroke},
@@ -42,7 +42,7 @@ impl TimelineWidget<'_> {
 			width: 11.0,
 			height: ruler_rect.height - 6.0,
 		};
-		let head_path = rounded_rect(head, 4.0);
+		let head_path = squircle_rect(head, 4.0);
 		frame.fill(&head_path, colors::PLAYHEAD);
 		frame.stroke(
 			&head_path,
