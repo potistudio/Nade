@@ -47,6 +47,7 @@ use crate::workspace::Workspace;
 fn on_window_event(event: iced::Event, status: iced::event::Status, _id: iced::window::Id) -> Option<Message> {
 	match event {
 		iced::Event::Window(iced::window::Event::Resized(size)) => Some(Message::WindowResized(size)),
+		iced::Event::Window(iced::window::Event::FileDropped(path)) => Some(Message::FileDropped(path)),
 		// 押下（キャプチャ済みを含む）でポインタ下のパネルへフォーカス
 		iced::Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => {
 			Some(Message::PanelSystem(PanelSystemMessage::FocusPointer))
@@ -650,6 +651,28 @@ impl NadeApp {
 					self.import_media_path(path, info);
 				}
 				Task::none()
+			}
+
+			Message::FileDropped(path) => {
+				if path
+					.extension()
+					.is_some_and(|extension| extension.eq_ignore_ascii_case("nade"))
+				{
+					self.open_project(path);
+					return Task::none();
+				}
+				if domain::AssetType::from_path(&path).is_none() {
+					self.show_toast(Icon::Close, "Unsupported file type");
+					return Task::none();
+				}
+				// ffprobe はブロッキングなので UI スレッドの外で回す
+				Task::perform(
+					async move {
+						let info = media::probe(&path).map_err(|error| format!("{error:#}"));
+						vec![(path, info)]
+					},
+					Message::MediaImported,
+				)
 			}
 
 			Message::CloseRequested(_id) => {

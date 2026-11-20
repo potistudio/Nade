@@ -173,6 +173,8 @@ pub enum Message {
 	ExportTo(Option<PathBuf>),
 	/// ファイルダイアログで選ばれ、プローブ済みのメディア（キャンセル時は空）
 	MediaImported(Vec<(PathBuf, Result<MediaInfo, String>)>),
+	/// ウィンドウへファイルがドロップされた（.nade は開き、他は読み込む）
+	FileDropped(PathBuf),
 	/// デバッグ用スクリーンショットの取得結果
 	#[cfg(debug_assertions)]
 	DevScreenshot(iced::window::Screenshot),
