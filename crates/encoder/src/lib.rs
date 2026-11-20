@@ -3,7 +3,7 @@ pub mod ffmpeg_encoder;
 use anyhow::Result;
 use core::FrameBuffer;
 
-pub use ffmpeg_encoder::{AudioClip, ExportSettings, FfmpegEncoder};
+pub use ffmpeg_encoder::{AudioClip, ExportSettings, FfmpegEncoder, preview_audio_args};
 
 pub trait Encoder {
 	fn prepare(&mut self) -> Result<()>;

@@ -56,16 +56,7 @@ impl ExportSettings {
 			.iter()
 			.filter(|clip| clip.duration > 0.0 && clip.start < self.duration)
 			.collect();
-		for clip in &audio {
-			args.extend([
-				"-ss".to_string(),
-				format!("{:.6}", clip.source_offset.max(0.0)),
-				"-t".to_string(),
-				format!("{:.6}", clip.duration),
-				"-i".to_string(),
-				clip.path.to_string_lossy().into_owned(),
-			]);
-		}
+		args.extend(audio_inputs(&audio));
 
 		let mut filters = Vec::new();
 		// yuv420p は偶数サイズが必要
@@ -73,19 +64,7 @@ impl ExportSettings {
 			filters.push("[0:v]pad=ceil(iw/2)*2:ceil(ih/2)*2[vout]".to_string());
 		}
 		if !audio.is_empty() {
-			let mut mix_inputs = String::new();
-			for (index, clip) in audio.iter().enumerate() {
-				let delay = (clip.start.max(0.0) * 1000.0).round() as u64;
-				filters.push(format!(
-					"[{input}:a]aresample=48000,adelay=delays={delay}:all=1[a{index}]",
-					input = index + 1
-				));
-				mix_inputs.push_str(&format!("[a{index}]"));
-			}
-			filters.push(format!(
-				"{mix_inputs}amix=inputs={}:normalize=0:dropout_transition=0[aout]",
-				audio.len()
-			));
+			filters.push(audio_mix_graph(&audio, 1, ""));
 		}
 		if !filters.is_empty() {
 			args.extend(["-filter_complex".to_string(), filters.join(";")]);
@@ -120,6 +99,84 @@ impl ExportSettings {
 		args.push(self.path.to_string_lossy().into_owned());
 		args
 	}
+}
+
+/// `-ss/-t/-i` arguments reading each clip's span of its file.
+fn audio_inputs(clips: &[&AudioClip]) -> Vec<String> {
+	clips
+		.iter()
+		.flat_map(|clip| {
+			[
+				"-ss".to_string(),
+				format!("{:.6}", clip.source_offset.max(0.0)),
+				"-t".to_string(),
+				format!("{:.6}", clip.duration),
+				"-i".to_string(),
+				clip.path.to_string_lossy().into_owned(),
+			]
+		})
+		.collect()
+}
+
+/// Filter graph placing each clip at its start time and mixing them into
+/// `[aout]`. `first_input` is the ffmpeg input index of the first clip;
+/// `post` is appended after the mix (e.g. `,apad`).
+fn audio_mix_graph(clips: &[&AudioClip], first_input: usize, post: &str) -> String {
+	let mut filters = Vec::new();
+	let mut mix_inputs = String::new();
+	for (index, clip) in clips.iter().enumerate() {
+		let delay = (clip.start.max(0.0) * 1000.0).round() as u64;
+		filters.push(format!(
+			"[{input}:a]aresample=48000,adelay=delays={delay}:all=1[a{index}]",
+			input = index + first_input
+		));
+		mix_inputs.push_str(&format!("[a{index}]"));
+	}
+	filters.push(format!(
+		"{mix_inputs}amix=inputs={}:normalize=0:dropout_transition=0{post}[aout]",
+		clips.len()
+	));
+	filters.join(";")
+}
+
+/// `ffmpeg` arguments that mix `clips` from timeline time `from` to `until`
+/// into raw interleaved little-endian `f32` samples on stdout, padded with
+/// silence so the stream always lasts the full span. `None` when nothing is
+/// audible in that span.
+pub fn preview_audio_args(clips: &[AudioClip], from: f32, until: f32, rate: u32, channels: u16) -> Option<Vec<String>> {
+	let span = until - from;
+	if span <= 0.0 {
+		return None;
+	}
+	// 再生開始位置より前の部分を切り落とし、開始位置を 0 秒とする
+	let shifted: Vec<AudioClip> = clips
+		.iter()
+		.filter(|clip| clip.duration > 0.0 && clip.start + clip.duration > from && clip.start < until)
+		.map(|clip| {
+			let skipped = (from - clip.start).max(0.0);
+			AudioClip {
+				path: clip.path.clone(),
+				source_offset: clip.source_offset + skipped,
+				start: (clip.start - from).max(0.0),
+				duration: clip.duration - skipped,
+			}
+		})
+		.collect();
+	if shifted.is_empty() {
+		return None;
+	}
+	let refs: Vec<&AudioClip> = shifted.iter().collect();
+	let mut args: Vec<String> = ["-v", "error", "-nostdin"].map(String::from).to_vec();
+	args.extend(audio_inputs(&refs));
+	args.extend(["-filter_complex".to_string(), audio_mix_graph(&refs, 0, ",apad")]);
+	args.extend(["-map", "[aout]", "-t"].map(String::from));
+	args.push(format!("{span:.6}"));
+	args.extend(["-f", "f32le", "-ac"].map(String::from));
+	args.push(channels.to_string());
+	args.push("-ar".to_string());
+	args.push(rate.to_string());
+	args.push("-".to_string());
+	Some(args)
 }
 
 /// Encodes frames to H.264 (plus AAC sound) through an `ffmpeg` process.
@@ -259,6 +316,31 @@ mod tests {
 			"clips past the end are dropped: {graph}"
 		);
 		assert!(args.windows(2).any(|pair| pair == ["-ss", "0.500000"]));
+	}
+
+	#[test]
+	fn preview_audio_starts_mid_clip() {
+		let clip = AudioClip {
+			path: PathBuf::from("a.wav"),
+			source_offset: 1.0,
+			start: 2.0,
+			duration: 4.0,
+		};
+		let later = AudioClip {
+			start: 8.0,
+			..clip.clone()
+		};
+		let args = preview_audio_args(&[clip.clone(), later], 3.0, 10.0, 44100, 2).expect("audible");
+		assert!(args.windows(2).any(|pair| pair == ["-ss", "2.000000"]), "{args:?}");
+		assert!(args.windows(2).any(|pair| pair == ["-t", "3.000000"]));
+		let graph = &args[args.iter().position(|arg| arg == "-filter_complex").unwrap() + 1];
+		assert!(graph.contains("[0:a]aresample=48000,adelay=delays=0:all=1[a0]"));
+		assert!(graph.contains("[1:a]aresample=48000,adelay=delays=5000:all=1[a1]"));
+		assert!(graph.ends_with(",apad[aout]"));
+		assert!(args.windows(2).any(|pair| pair == ["-t", "7.000000"]));
+		assert!(args.windows(2).any(|pair| pair == ["-ar", "44100"]));
+
+		assert!(preview_audio_args(&[clip], 6.5, 10.0, 48000, 2).is_none());
 	}
 
 	#[test]
