@@ -50,6 +50,8 @@ impl PropertyGroup {
 pub enum Section {
 	Transform,
 	Text,
+	Solid,
+	Footage,
 }
 
 /// Messages for the inspector panel
@@ -82,6 +84,13 @@ pub enum InspectorMessage {
 	SetFillRgb([f32; 3]),
 	HexEdited(String),
 	HexSubmitted,
+	/// Solid layer size in composition pixels.
+	SetSolidSize {
+		width: f32,
+		height: f32,
+	},
+	/// Scale the layer so its picture fits the composition frame.
+	FitToComposition,
 }
 
 #[cfg(test)]

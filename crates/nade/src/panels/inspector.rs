@@ -7,7 +7,7 @@ use constants::style::{
 	SPACE_2, SPACE_3, SPACE_4, SPACE_5, TEXT_MUTED_COLOR, TEXT_PRIMARY_COLOR, TEXT_SECONDARY_COLOR,
 };
 use constants::widgets::{self, button_body_center, mono_label, ui_label};
-use domain::{Instance, InstanceContent, TransformProperty};
+use domain::{Instance, InstanceContent, MediaKind, MediaSource, TransformProperty};
 use iced::time::{Duration, Instant};
 use iced::widget::{Space, button, column, container, row, scrollable, slider, text_input, tooltip};
 use iced::{Alignment, Animation, Border, Color, Element, Length};
@@ -27,6 +27,8 @@ const ROW_HEIGHT: f32 = constants::style::ROW_HEIGHT;
 pub struct InspectorUi {
 	transform_open: Animation<bool>,
 	text_open: Animation<bool>,
+	solid_open: Animation<bool>,
+	footage_open: Animation<bool>,
 	pub scale_linked: bool,
 	pub hex_draft: Option<String>,
 }
@@ -41,6 +43,8 @@ impl Default for InspectorUi {
 		Self {
 			transform_open: disclosure(),
 			text_open: disclosure(),
+			solid_open: disclosure(),
+			footage_open: disclosure(),
 			scale_linked: true,
 			hex_draft: None,
 		}
@@ -52,6 +56,8 @@ impl InspectorUi {
 		match section {
 			Section::Transform => &self.transform_open,
 			Section::Text => &self.text_open,
+			Section::Solid => &self.solid_open,
+			Section::Footage => &self.footage_open,
 		}
 	}
 
@@ -59,6 +65,8 @@ impl InspectorUi {
 		let animation = match section {
 			Section::Transform => &mut self.transform_open,
 			Section::Text => &mut self.text_open,
+			Section::Solid => &mut self.solid_open,
+			Section::Footage => &mut self.footage_open,
 		};
 		let open = animation.value();
 		animation.go_mut(!open, now);
@@ -69,7 +77,14 @@ impl InspectorUi {
 	}
 
 	pub fn is_animating(&self, now: Instant) -> bool {
-		self.transform_open.is_animating(now) || self.text_open.is_animating(now)
+		[
+			&self.transform_open,
+			&self.text_open,
+			&self.solid_open,
+			&self.footage_open,
+		]
+		.iter()
+		.any(|animation| animation.is_animating(now))
 	}
 }
 
@@ -77,6 +92,7 @@ pub struct LayerTarget<'a> {
 	pub instance: &'a Instance,
 	pub time: f32,
 	pub label: Color,
+	pub fps: f32,
 }
 
 pub enum InspectorTarget<'a> {
@@ -180,9 +196,8 @@ fn composition_view<'a>(summary: CompositionSummary<'a>, layers: usize) -> Eleme
 
 fn layer_view<'a>(layer: LayerTarget<'a>, ui: &'a InspectorUi, now: Instant) -> Element<'a, InspectorMessage> {
 	let instance = layer.instance;
-	let is_text = matches!(instance.content(), InstanceContent::Text { .. });
 
-	let mut sections = column![layer_header(&layer, is_text)].spacing(SPACE_4 + 2.0);
+	let mut sections = column![layer_header(&layer)].spacing(SPACE_4 + 2.0);
 
 	let transform_rows = PropertyGroup::ALL
 		.into_iter()
@@ -210,6 +225,35 @@ fn layer_view<'a>(layer: LayerTarget<'a>, ui: &'a InspectorUi, now: Instant) -> 
 		));
 	}
 
+	if let Some((size, color)) = instance.content().as_solid() {
+		sections = sections.push(section(
+			Section::Solid,
+			Icon::LayerSolid,
+			"Solid",
+			None,
+			ui,
+			now,
+			solid_rows(size, color, ui),
+		));
+	}
+
+	if let Some(source) = instance.content().as_media() {
+		let fit = (source.kind != MediaKind::Audio).then(fit_button);
+		sections = sections.push(section(
+			Section::Footage,
+			match source.kind {
+				MediaKind::Image => Icon::Image,
+				MediaKind::Video => Icon::Video,
+				MediaKind::Audio => Icon::Audio,
+			},
+			"Footage",
+			fit,
+			ui,
+			now,
+			footage_rows(source, instance, layer.fps),
+		));
+	}
+
 	scrollable(sections.padding([SPACE_4 + 2.0, SPACE_4 + 2.0]))
 		.style(widgets::scrollable)
 		.into()
@@ -229,12 +273,18 @@ fn badge<'a>(glyph: Icon, color: Color) -> Element<'a, InspectorMessage> {
 		.into()
 }
 
-fn layer_header<'a>(layer: &LayerTarget<'a>, is_text: bool) -> Element<'a, InspectorMessage> {
+fn layer_header<'a>(layer: &LayerTarget<'a>) -> Element<'a, InspectorMessage> {
 	let instance = layer.instance;
-	let (glyph, kind) = if is_text {
-		(Icon::LayerText, "Text Layer")
-	} else {
-		(Icon::LayerNull, "Null Object")
+	let kind = instance.content().kind_label();
+	let glyph = match instance.content() {
+		InstanceContent::Empty => Icon::LayerNull,
+		InstanceContent::Text { .. } => Icon::LayerText,
+		InstanceContent::Solid { .. } => Icon::LayerSolid,
+		InstanceContent::Media(source) => match source.kind {
+			MediaKind::Image => Icon::Image,
+			MediaKind::Video => Icon::Video,
+			MediaKind::Audio => Icon::Audio,
+		},
 	};
 
 	let span = format!("{kind}  ·  {:.2}s", instance.duration());
@@ -307,6 +357,19 @@ fn section<'a>(
 		.width(Length::Fill)
 		.style(widgets::card)
 		.into()
+}
+
+fn fit_button<'a>() -> Element<'a, InspectorMessage> {
+	widgets::tip(
+		button(button_body_center(icon(Icon::Fit, 12.0, TEXT_SECONDARY_COLOR)))
+			.padding(0)
+			.width(24)
+			.height(ROW_HEIGHT)
+			.style(widgets::button_ghost)
+			.on_press(InspectorMessage::FitToComposition),
+		"Fit to Composition",
+		tooltip::Position::Left,
+	)
 }
 
 fn reset_button<'a>() -> Element<'a, InspectorMessage> {
@@ -519,6 +582,18 @@ fn to_hex(color: [f32; 4]) -> String {
 	)
 }
 
+fn labelled<'a>(label: &'a str, content: Element<'a, InspectorMessage>) -> Element<'a, InspectorMessage> {
+	row![
+		Space::new().width(42),
+		ui_label(label, FONT_UI).color(TEXT_SECONDARY_COLOR).width(LABEL_WIDTH),
+		content,
+	]
+	.spacing(SPACE_2)
+	.align_y(Alignment::Center)
+	.height(ROW_HEIGHT)
+	.into()
+}
+
 fn text_rows<'a>(
 	text: &'a str,
 	font_size: f32,
@@ -526,18 +601,6 @@ fn text_rows<'a>(
 	fill: [f32; 4],
 	ui: &'a InspectorUi,
 ) -> Element<'a, InspectorMessage> {
-	let labelled = |label: &'a str, content: Element<'a, InspectorMessage>| -> Element<'a, InspectorMessage> {
-		row![
-			Space::new().width(42),
-			ui_label(label, FONT_UI).color(TEXT_SECONDARY_COLOR).width(LABEL_WIDTH),
-			content,
-		]
-		.spacing(SPACE_2)
-		.align_y(Alignment::Center)
-		.height(ROW_HEIGHT)
-		.into()
-	};
-
 	let content = text_input("Text", text)
 		.on_input(InspectorMessage::SetText)
 		.size(FONT_UI)
@@ -558,6 +621,78 @@ fn text_rows<'a>(
 	]
 	.spacing(SPACE_2);
 
+	let mut rows =
+		column![labelled("Content", content.into()), labelled("Font", metrics.into())].spacing(SPACE_1 + 1.0);
+	for fill_row in fill_rows(fill, ui) {
+		rows = rows.push(fill_row);
+	}
+	rows.into()
+}
+
+fn solid_rows<'a>(size: [f32; 2], color: [f32; 4], ui: &'a InspectorUi) -> Element<'a, InspectorMessage> {
+	let [width, height] = size;
+	let dimensions = row![
+		number_field(width, move |width| InspectorMessage::SetSolidSize {
+			width: width.max(1.0),
+			height,
+		})
+		.prefix("W", AXIS_X_COLOR)
+		.suffix(" px")
+		.step(1.0)
+		.precision(0),
+		number_field(height, move |height| InspectorMessage::SetSolidSize {
+			width,
+			height: height.max(1.0),
+		})
+		.prefix("H", AXIS_Y_COLOR)
+		.suffix(" px")
+		.step(1.0)
+		.precision(0),
+	]
+	.spacing(SPACE_2);
+
+	let mut rows = column![labelled("Size", dimensions.into())].spacing(SPACE_1 + 1.0);
+	for fill_row in fill_rows(color, ui) {
+		rows = rows.push(fill_row);
+	}
+	rows.into()
+}
+
+fn footage_rows<'a>(source: &'a MediaSource, instance: &Instance, fps: f32) -> Element<'a, InspectorMessage> {
+	let fact = |label: &'a str, value: String| -> Element<'a, InspectorMessage> {
+		labelled(label, mono_label(value, FONT_UI).color(TEXT_PRIMARY_COLOR).into())
+	};
+	let file = source
+		.path
+		.file_name()
+		.map(|name| name.to_string_lossy().into_owned())
+		.unwrap_or_default();
+
+	let mut rows = column![labelled(
+		"File",
+		ui_label(file, FONT_UI)
+			.color(TEXT_PRIMARY_COLOR)
+			.wrapping(iced::widget::text::Wrapping::None)
+			.into()
+	)]
+	.spacing(SPACE_1 + 1.0);
+	if source.kind != MediaKind::Audio {
+		rows = rows.push(fact("Size", format!("{} × {}", source.info.width, source.info.height)));
+	}
+	if let Some(rate) = source.info.fps.filter(|_| source.kind == MediaKind::Video) {
+		rows = rows.push(fact("Rate", format!("{rate:.2} fps")));
+	}
+	if let Some(duration) = source.info.duration.filter(|_| source.kind != MediaKind::Image) {
+		rows = rows.push(fact("Length", core::timecode::format(duration, fps)));
+		rows = rows.push(fact("In", core::timecode::format(instance.source_offset, fps)));
+	}
+	if source.has_audio() {
+		rows = rows.push(fact("Audio", "Yes".to_string()));
+	}
+	rows.into()
+}
+
+fn fill_rows<'a>(fill: [f32; 4], ui: &'a InspectorUi) -> Vec<Element<'a, InspectorMessage>> {
 	let color = Color::from_rgba(fill[0], fill[1], fill[2], 1.0);
 	let hex = ui.hex_draft.clone().unwrap_or_else(|| to_hex(fill));
 	let fill_row = row![
@@ -612,14 +747,10 @@ fn text_rows<'a>(
 	.wrap()
 	.vertical_spacing(SPACE_2);
 
-	column![
-		labelled("Content", content.into()),
-		labelled("Font", metrics.into()),
+	vec![
 		labelled("Fill", fill_row.into()),
-		row![Space::new().width(42.0 + LABEL_WIDTH + SPACE_2 * 2.0), wells],
+		row![Space::new().width(42.0 + LABEL_WIDTH + SPACE_2 * 2.0), wells].into(),
 	]
-	.spacing(SPACE_1 + 1.0)
-	.into()
 }
 
 #[cfg(test)]
