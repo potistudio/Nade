@@ -257,6 +257,10 @@ pub(super) struct NadeApp {
 	/// アニメーションカーブエディター
 	curve_editor: CurveEditorState,
 
+	/// 開いているコンポジション。選択とは独立したアプリ全体の状態で、
+	/// タイムライン・ビューア・書き出しなどコンポへの操作はすべてここを対象にする。
+	active_composition: Option<CompositionId>,
+
 	/// オブジェクトブラウザ
 	project_pane: ProjectPaneState,
 
@@ -355,6 +359,7 @@ impl NadeApp {
 			current_model: Model::default(),
 			timeline: TimelinePanelState::default(),
 			curve_editor: CurveEditorState::default(),
+			active_composition: None,
 			project_pane,
 			asset_browser,
 			panel_system,
@@ -391,8 +396,7 @@ impl NadeApp {
 			capture: crate::devtools::Capture::from_env(),
 		};
 
-		app.rebuild_timeline_for_composition(main_comp);
-		app.sync_preview_size_from_composition(main_comp);
+		app.open_composition(main_comp);
 
 		// 初期フレームを描画
 		app.apply_core_msg(Msg::SetTime(0.0));
@@ -542,7 +546,7 @@ impl NadeApp {
 	/// レンダリング要求をワーカーへ送る。キューが満杯なら `false` を返し、
 	/// 現在のフレームが描き終わった時点で描き直す。
 	fn spawn_render(&mut self, time: f32, _width: u32, _height: u32) -> bool {
-		let Some(comp) = self.target_composition().and_then(|id| self.project.composition(&id)) else {
+		let Some(comp) = self.active_composition.and_then(|id| self.project.composition(&id)) else {
 			return true;
 		};
 		let model = &self.timeline.model;
@@ -885,7 +889,7 @@ impl NadeApp {
 			}
 			ShellMessage::NewComposition => {
 				self.create_composition();
-				if let Some(name) = self.target_composition_name() {
+				if let Some(name) = self.active_composition_name() {
 					self.show_toast(Icon::Comp, format!("Created “{name}”"));
 				}
 				Task::none()
@@ -940,8 +944,8 @@ impl NadeApp {
 					self.show_toast(Icon::Export, "An export is already running");
 					return Task::none();
 				}
-				let Some(name) = self.target_composition_name() else {
-					self.show_toast(Icon::Close, "Select a composition to export");
+				let Some(name) = self.active_composition_name() else {
+					self.show_toast(Icon::Close, "Open a composition to export");
 					return Task::none();
 				};
 				Task::perform(
@@ -1050,7 +1054,7 @@ impl NadeApp {
 
 	/// The layer I / O and F9 act on: the first selected layer of the shown comp.
 	fn focused_layer(&self) -> Option<&nade_domain::Instance> {
-		let composition = self.target_composition()?;
+		let composition = self.active_composition?;
 		let (_, instance) = self
 			.selected_instances()
 			.into_iter()
@@ -1061,7 +1065,7 @@ impl NadeApp {
 	/// J / K stops: comp and work area bounds, layer in / out points of shown
 	/// tracks and every keyframe.
 	fn edit_points(&self) -> Vec<f32> {
-		let Some(comp) = self.target_composition().and_then(|id| self.project.composition(&id)) else {
+		let Some(comp) = self.active_composition.and_then(|id| self.project.composition(&id)) else {
 			return Vec::new();
 		};
 		let model = &self.timeline.model;
@@ -1111,6 +1115,7 @@ impl NadeApp {
 		self.project = project;
 		self.history.reset(&self.project);
 		self.clipboard.clear();
+		self.active_composition = None;
 		self.project_pane = ProjectPaneState::default();
 		self.asset_browser = AssetBrowserState::default();
 		for folder in self.project.root_assets() {
@@ -1132,7 +1137,7 @@ impl NadeApp {
 
 	fn start_export(&mut self, path: PathBuf) {
 		let Some(composition) = self
-			.target_composition()
+			.active_composition
 			.and_then(|id| self.project.composition(&id))
 			.cloned()
 		else {
@@ -1239,7 +1244,7 @@ impl NadeApp {
 				return;
 			}
 		}
-		let Some(comp) = self.target_composition().and_then(|id| self.project.composition(&id)) else {
+		let Some(comp) = self.active_composition.and_then(|id| self.project.composition(&id)) else {
 			return;
 		};
 		let model = &self.timeline.model;
@@ -1257,27 +1262,27 @@ impl NadeApp {
 	}
 
 	fn composition_fps(&self) -> f32 {
-		self.target_composition()
+		self.active_composition
 			.and_then(|id| self.project.composition(&id))
 			.map_or(30.0, |comp| comp.fps())
 	}
 
 	/// Work area of the shown composition (whole timeline without one).
 	fn work_area(&self) -> [f32; 2] {
-		self.target_composition()
+		self.active_composition
 			.and_then(|id| self.project.composition(&id))
 			.map_or([0.0, self.composition_duration()], |comp| comp.work_area())
 	}
 
 	fn composition_duration(&self) -> f32 {
-		self.target_composition()
+		self.active_composition
 			.and_then(|id| self.project.composition(&id))
 			.map_or(10.0, |comp| comp.duration())
 			.max(0.1)
 	}
 
-	fn target_composition_name(&self) -> Option<String> {
-		self.target_composition()
+	fn active_composition_name(&self) -> Option<String> {
+		self.active_composition
 			.and_then(|id| self.project.composition(&id))
 			.map(|comp| comp.name().to_string())
 	}
@@ -1339,10 +1344,7 @@ impl NadeApp {
 			| EditCommand::TrimOutPoint => self.retime_selection(command),
 			EditCommand::EasyEase => self.easy_ease_selection(),
 			EditCommand::ClearWorkArea => {
-				if let Some(comp) = self
-					.target_composition()
-					.and_then(|id| self.project.composition_mut(&id))
-				{
+				if let Some(comp) = self.active_composition.and_then(|id| self.project.composition_mut(&id)) {
 					comp.clear_work_area();
 				}
 			}
@@ -1402,7 +1404,7 @@ impl NadeApp {
 		let shell = Message::Shell;
 		let transport = Message::Transport;
 		let preview = |message| Message::PanelSystem(PanelSystemMessage::AppMessage(AppPanelMessage::Preview(message)));
-		let composition = self.target_composition().and_then(|id| self.project.composition(&id));
+		let composition = self.active_composition.and_then(|id| self.project.composition(&id));
 		let has_comp = composition.is_some();
 		let layer = self.focused_layer();
 		let selected = layer.is_some();
@@ -1560,10 +1562,7 @@ impl NadeApp {
 	fn set_work_area_edge(&mut self, command: EditCommand) {
 		let time = self.current_model.preview.time;
 		let fps = self.composition_fps();
-		let Some(comp) = self
-			.target_composition()
-			.and_then(|id| self.project.composition_mut(&id))
-		else {
+		let Some(comp) = self.active_composition.and_then(|id| self.project.composition_mut(&id)) else {
 			return;
 		};
 		if command == EditCommand::WorkAreaStart {
@@ -1585,7 +1584,7 @@ impl NadeApp {
 
 	/// [ / ] / Alt+[ / Alt+]
 	fn retime_selection(&mut self, command: EditCommand) {
-		let Some(composition) = self.target_composition() else {
+		let Some(composition) = self.active_composition else {
 			return;
 		};
 		let layers: Vec<InstanceId> = self
@@ -1626,7 +1625,7 @@ impl NadeApp {
 	/// F9: the curve editor's selected key, else keys under the playhead of
 	/// the selected layers, else all their keys.
 	fn easy_ease_selection(&mut self) {
-		let Some(composition) = self.target_composition() else {
+		let Some(composition) = self.active_composition else {
 			return;
 		};
 		let layers: Vec<InstanceId> = self
@@ -1673,7 +1672,7 @@ impl NadeApp {
 
 	/// 選択レイヤーをプリコンポーズし、置き換わったコンポレイヤーを選択する
 	fn precompose_selection(&mut self) {
-		let Some(composition) = self.target_composition() else {
+		let Some(composition) = self.active_composition else {
 			return;
 		};
 		let layers: Vec<InstanceId> = self
@@ -1712,24 +1711,37 @@ impl NadeApp {
 
 	/// Undo / Redo 後に UI 側の派生状態を作り直す
 	fn after_history_change(&mut self) {
-		let Some(composition) = self.target_composition() else {
-			return;
+		// 開いていたコンポが消えたら（新規作成やプリコンポーズの取り消し）残っているコンポを開く
+		let composition = match self.active_composition {
+			Some(id) if self.project.composition(&id).is_some() => id,
+			_ => match self.project.compositions().into_iter().min() {
+				Some(id) => id,
+				None => {
+					self.active_composition = None;
+					self.project_pane.selected_id = None;
+					self.timeline.state.clear_selection();
+					self.timeline.model.tracks.clear();
+					self.request_preview_refresh();
+					return;
+				}
+			},
 		};
-		if self.project.composition(&composition).is_none() {
-			return;
-		}
-		// 消えたレイヤーを選択したままにしない
-		if let Some(ObjectId::Instance { instance, .. }) = self.project_pane.selected_id
-			&& self
+		// 消えたものを選択したままにしない
+		let exists = |id: ObjectId| match id {
+			ObjectId::Composition(id) => self.project.composition(&id).is_some(),
+			ObjectId::Instance { composition, instance } => self
 				.project
 				.composition(&composition)
 				.and_then(|comp| comp.get(instance))
-				.is_none()
+				.is_some(),
+		};
+		if let Some(id) = self.project_pane.selected_id
+			&& !exists(id)
 		{
 			self.project_pane.selected_id = Some(ObjectId::Composition(composition));
 		}
 		let selected = self.project_pane.selected_id;
-		self.rebuild_timeline_for_composition(composition);
+		self.open_composition(composition);
 		if let Some(id) = selected {
 			self.sync_timeline_selection_from_object(id);
 		}
@@ -1766,7 +1778,7 @@ impl NadeApp {
 
 	/// 編集後にタイムラインを作り直し、`instance` を選択する
 	fn finish_layer_edit(&mut self, composition: CompositionId, select: Option<InstanceId>) {
-		self.rebuild_timeline_for_composition(composition);
+		self.open_composition(composition);
 		self.project_pane.expanded_ids.insert(composition);
 		match select {
 			Some(instance) => self.select_object(ObjectId::Instance { composition, instance }),
@@ -1776,7 +1788,7 @@ impl NadeApp {
 	}
 
 	fn split_at_playhead(&mut self) {
-		let Some(composition) = self.target_composition() else {
+		let Some(composition) = self.active_composition else {
 			return;
 		};
 		let time = self.current_model.preview.time;
@@ -1869,7 +1881,7 @@ impl NadeApp {
 
 	/// クリップボードのレイヤーを再生ヘッド位置へ貼り付ける
 	fn paste_clipboard(&mut self) {
-		let Some(composition) = self.target_composition() else {
+		let Some(composition) = self.active_composition else {
 			return;
 		};
 		let Some(base) = self.clipboard.iter().map(Instance::start_time).reduce(f32::min) else {
@@ -1985,19 +1997,25 @@ impl NadeApp {
 	fn apply_selection_consequences(&mut self, id: ObjectId) {
 		match id {
 			ObjectId::Composition(composition_id) => {
-				self.rebuild_timeline_for_composition(composition_id);
-				self.sync_preview_size_from_composition(composition_id);
+				self.open_composition(composition_id);
 				self.request_preview_refresh();
 			}
 			ObjectId::Instance { composition, instance } => {
-				if !self.timeline_has_instance(composition, instance) {
-					self.rebuild_timeline_for_composition(composition);
+				if self.active_composition != Some(composition) || !self.timeline_has_instance(composition, instance) {
+					self.open_composition(composition);
 				}
-				self.sync_preview_size_from_composition(composition);
 				self.sync_timeline_selection_from_object(id);
 				self.focus_animated_channel(composition, instance);
 			}
 		}
+	}
+
+	/// `composition` をアプリ全体で開いているコンポにし、タイムラインとビューアを合わせる。
+	/// 選択には触れない。
+	fn open_composition(&mut self, composition: CompositionId) {
+		self.active_composition = Some(composition);
+		self.rebuild_timeline_for_composition(composition);
+		self.sync_preview_size_from_composition(composition);
 	}
 
 	/// カーブエディタの表示チャンネルが空なら、アニメーションのある最初のチャンネルへ切り替える
@@ -2034,8 +2052,8 @@ impl NadeApp {
 
 	/// テキストレイヤーを追加（位置指定はコンポ中心基準）
 	fn add_text_layer_at(&mut self, position: Option<[f32; 2]>) {
-		let Some(composition_id) = self.target_composition() else {
-			log::debug!("Add object ignored: no composition selected");
+		let Some(composition_id) = self.active_composition else {
+			log::debug!("Add object ignored: no composition open");
 			return;
 		};
 
@@ -2318,13 +2336,6 @@ impl NadeApp {
 		})
 	}
 
-	fn target_composition(&self) -> Option<CompositionId> {
-		match self.project_pane.selected_id? {
-			ObjectId::Composition(id) => Some(id),
-			ObjectId::Instance { composition, .. } => Some(composition),
-		}
-	}
-
 	fn selected_transform_animation(&self) -> Option<&TransformAnimation> {
 		let ObjectId::Instance { composition, instance } = self.project_pane.selected_id? else {
 			return None;
@@ -2378,12 +2389,12 @@ impl NadeApp {
 			Some(ViewerRequest::RefreshPreview) => self.request_preview_refresh(),
 			Some(ViewerRequest::Transport(transport)) => self.apply_transport(transport),
 			Some(ViewerRequest::SelectLayer(Some(instance))) => {
-				if let Some(composition) = self.target_composition() {
+				if let Some(composition) = self.active_composition {
 					self.select_object(ObjectId::Instance { composition, instance });
 				}
 			}
 			Some(ViewerRequest::SelectLayer(None)) => {
-				if let Some(composition) = self.target_composition() {
+				if let Some(composition) = self.active_composition {
 					self.project_pane.selected_id = Some(ObjectId::Composition(composition));
 					self.timeline.state.clear_selection();
 				}
@@ -2528,7 +2539,7 @@ impl NadeApp {
 	/// 現在時刻で表示中のレイヤーのビューア上の境界（背面 → 前面）
 	fn viewer_layers(&self) -> Vec<LayerBox> {
 		let time = self.current_model.preview.time;
-		let Some(comp) = self.target_composition().and_then(|id| self.project.composition(&id)) else {
+		let Some(comp) = self.active_composition.and_then(|id| self.project.composition(&id)) else {
 			return Vec::new();
 		};
 
@@ -2567,7 +2578,7 @@ impl NadeApp {
 	}
 
 	fn viewer_props(&self) -> nade_viewer_panel::ViewerProps<'_> {
-		let composition = self.target_composition().and_then(|id| self.project.composition(&id));
+		let composition = self.active_composition.and_then(|id| self.project.composition(&id));
 		let selected = match self.project_pane.selected_id {
 			Some(ObjectId::Instance { instance, .. }) => Some(instance),
 			_ => None,
@@ -2710,7 +2721,7 @@ impl NadeApp {
 	/// Add the shown composition as the top layer of `outer`, then open `outer`
 	/// with the new layer selected.
 	fn nest_shown_composition(&mut self, outer: CompositionId) {
-		let Some(inner) = self.target_composition() else {
+		let Some(inner) = self.active_composition else {
 			return;
 		};
 		if !self.project.can_nest(outer, inner) {
@@ -2747,10 +2758,7 @@ impl NadeApp {
 	}
 
 	fn apply_composition_setting(&mut self, msg: InspectorMessage) {
-		let Some(comp) = self
-			.target_composition()
-			.and_then(|id| self.project.composition_mut(&id))
-		else {
+		let Some(comp) = self.active_composition.and_then(|id| self.project.composition_mut(&id)) else {
 			return;
 		};
 		match msg {
@@ -2811,8 +2819,15 @@ impl NadeApp {
 					nested,
 				})
 			}
-			Some(ObjectId::Composition(id)) => match self.project.composition(&id) {
-				Some(comp) => InspectorTarget::Composition {
+			None => InspectorTarget::Empty,
+			Some(ObjectId::Composition(_)) => {
+				let Some(id) = self.active_composition else {
+					return InspectorTarget::Empty;
+				};
+				let Some(comp) = self.project.composition(&id) else {
+					return InspectorTarget::Empty;
+				};
+				InspectorTarget::Composition {
 					summary: nade_core::CompositionSummary {
 						name: comp.name(),
 						width: comp.width(),
@@ -2836,10 +2851,8 @@ impl NadeApp {
 						targets.sort_by_key(|choice| choice.id.value());
 						targets
 					},
-				},
-				None => InspectorTarget::Empty,
-			},
-			None => InspectorTarget::Empty,
+				}
+			}
 		}
 	}
 
@@ -2978,7 +2991,7 @@ impl NadeApp {
 	fn asset_drop(&self, drag: &AssetDrag) -> Option<AssetDrop> {
 		let slot = self.timeline.state.drop_slot(&self.timeline.model)?;
 		let (_, duration) = self.asset_clip(drag.asset)?;
-		let composition = self.target_composition().and_then(|id| self.project.composition(&id))?;
+		let composition = self.active_composition.and_then(|id| self.project.composition(&id))?;
 		let fps = self.composition_fps().max(1.0);
 		let start = (slot.time * fps).round() / fps;
 		// 最後のトラックより下は、そのまま新しいトラックになる
@@ -3058,8 +3071,8 @@ impl NadeApp {
 			self.show_toast(Icon::Close, format!("“{name}” has no media file"));
 			return;
 		};
-		let Some(composition_id) = self.target_composition() else {
-			self.show_toast(Icon::Close, "Select a composition first");
+		let Some(composition_id) = self.active_composition else {
+			self.show_toast(Icon::Close, "Open a composition first");
 			return;
 		};
 
@@ -3110,8 +3123,8 @@ impl NadeApp {
 
 	/// コンポジションと同じ大きさの平面レイヤーを追加する
 	fn add_solid_layer(&mut self) {
-		let Some(composition_id) = self.target_composition() else {
-			self.show_toast(Icon::Close, "Select a composition first");
+		let Some(composition_id) = self.active_composition else {
+			self.show_toast(Icon::Close, "Open a composition first");
 			return;
 		};
 		let existing: Vec<String> = self
@@ -3143,7 +3156,7 @@ impl NadeApp {
 	pub(super) fn view(&self) -> Element<'_, Message> {
 		let panel_view = self.panel_system.view(|_, content| self.view_panel_content(content));
 
-		let composition = self.target_composition().and_then(|id| self.project.composition(&id));
+		let composition = self.active_composition.and_then(|id| self.project.composition(&id));
 
 		let mut chrome = column![];
 		if TITLE_BAR_HEIGHT > 0.0 {
