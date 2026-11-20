@@ -1,6 +1,6 @@
 //! Render-ready description of one composition frame.
 
-use core::{MediaInfo, SceneObjectId, TextObject, Transform};
+use core::{Affine, BlendMode, MediaInfo, SceneObjectId, TextObject};
 use domain::{Composition, Instance, InstanceContent, MediaKind};
 use std::path::PathBuf;
 
@@ -21,12 +21,17 @@ pub enum LayerKind {
 		info: MediaInfo,
 		source_time: f32,
 	},
+	/// Another composition rendered offscreen and drawn like footage.
+	Nested { scene: Box<Scene> },
 }
 
 /// One drawable layer, already evaluated at the frame time.
 #[derive(Debug, Clone)]
 pub struct SceneLayer {
-	pub transform: Transform,
+	/// Layer space (origin at the layer center, layer pixels) → output pixels.
+	pub matrix: Affine,
+	pub opacity: f32,
+	pub blend: BlendMode,
 	pub kind: LayerKind,
 }
 
@@ -56,29 +61,31 @@ impl Scene {
 			1.0
 		};
 		let scaled = |value: u32| ((value as f32 * factor).round() as u32).max(1);
+		let (width, height) = (scaled(composition.width()), scaled(composition.height()));
+		// コンポ空間（中心原点）→ 出力画素。解像度を落とすときは全体を縮める
+		let output =
+			Affine::translate(width as f32 / 2.0, height as f32 / 2.0).then_apply(Affine::scale(factor, factor));
 		let layers = composition
 			.objects_in_draw_order()
 			.filter(|instance| instance.is_active_at(time) && is_track_rendered(instance.track_index()))
-			.filter_map(|instance| scene_layer(instance, time, factor))
+			.filter_map(|instance| {
+				let matrix = output.then_apply(composition.world_matrix(instance.id(), time));
+				scene_layer(instance, time, matrix)
+			})
 			.collect();
 		Self {
-			width: scaled(composition.width()),
-			height: scaled(composition.height()),
+			width,
+			height,
 			background: composition.background(),
 			layers,
 		}
 	}
 }
 
-fn scene_layer(instance: &Instance, time: f32, factor: f32) -> Option<SceneLayer> {
-	let mut transform = instance.transform_at(time);
+fn scene_layer(instance: &Instance, time: f32, matrix: Affine) -> Option<SceneLayer> {
+	let transform = instance.transform_at(time);
 	if transform.opacity <= 0.0 {
 		return None;
-	}
-	// 解像度を落とすときはレイヤー座標とスケールも同じ倍率で縮める
-	for axis in 0..2 {
-		transform.position[axis] *= factor;
-		transform.scale[axis] *= factor;
 	}
 
 	let kind = match instance.content() {
@@ -123,5 +130,10 @@ fn scene_layer(instance: &Instance, time: f32, factor: f32) -> Option<SceneLayer
 			},
 		},
 	};
-	Some(SceneLayer { transform, kind })
+	Some(SceneLayer {
+		matrix,
+		opacity: transform.opacity,
+		blend: instance.blend_mode,
+		kind,
+	})
 }

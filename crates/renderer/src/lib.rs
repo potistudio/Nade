@@ -168,7 +168,13 @@ pub fn render_objects<'a>(
 		if let Some(rect) = obj.as_rectangle() {
 			draw_rectangle(&mut img, rect, width, height);
 		} else if let Some(text) = obj.as_text() {
-			draw_text(&mut img, text, width, height);
+			let paint = compositor::Paint {
+				matrix: core::Affine::translate(width as f32 / 2.0, height as f32 / 2.0)
+					.then_apply(text.transform.local_matrix()),
+				opacity: text.transform.opacity,
+				blend: core::BlendMode::Normal,
+			};
+			draw_text(&mut img, text, &paint);
 		}
 	}
 	img
@@ -305,12 +311,10 @@ pub fn measure_text(font_path: &str, text: &str, font_size: f32, spacing: f32) -
 	Some([max_width, line_height * lines as f32 - metrics.leading])
 }
 
-pub(crate) fn draw_text(
-	img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
-	text: &TextObject,
-	canvas_width: u32,
-	canvas_height: u32,
-) {
+/// Rasterize a text block; `paint.matrix` maps the block (centered on its
+/// origin) to canvas pixels.
+pub(crate) fn draw_text(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, text: &TextObject, paint: &compositor::Paint) {
+	let (canvas_width, canvas_height) = img.dimensions();
 	if text.text.is_empty() || text.font_size <= 0.0 {
 		return;
 	}
@@ -324,30 +328,27 @@ pub(crate) fn draw_text(
 		return;
 	};
 
-	let transform = text.transform;
-	let center_x = canvas_width as f32 / 2.0 + transform.position[0];
-	let center_y = canvas_height as f32 / 2.0 + transform.position[1];
-	let scale_x = transform.scale[0];
-	let scale_y = transform.scale[1];
+	let matrix = paint.matrix;
+	if matrix.determinant().abs() < 1e-12 {
+		return;
+	}
 	// scale>1 のままグリフ画素を拡大して round すると隙間（縞模様）が空く。
-	// 大きい軸のスケールをフォントサイズに焼き込み、残差スケールは |post|<=1 にする。
-	let bake = scale_x.abs().max(scale_y.abs()).max(1e-6);
+	// 大きい軸のスケールをフォントサイズに焼き込み、残差の線形変換は |post|<=1 にする。
+	let bake = matrix.max_scale().max(1e-6);
 	let render_size = (text.font_size * bake).max(1.0);
-	let post_sx = scale_x / bake;
-	let post_sy = scale_y / bake;
-	let rotation_z = transform.rotation[2].to_radians();
-	let (sin_r, cos_r) = rotation_z.sin_cos();
+	// 焼き込み済みのレイアウト座標 → キャンバス
+	let post = matrix.then_apply(core::Affine::scale(1.0 / bake, 1.0 / bake));
 
-	let fill_a = (text.fill_color[3] * transform.opacity).clamp(0.0, 1.0);
+	let fill_a = (text.fill_color[3] * paint.opacity).clamp(0.0, 1.0);
 	if fill_a <= 0.0 {
 		return;
 	}
-	let fill_rgb = [
-		(text.fill_color[0].clamp(0.0, 1.0) * 255.0) as u32,
-		(text.fill_color[1].clamp(0.0, 1.0) * 255.0) as u32,
-		(text.fill_color[2].clamp(0.0, 1.0) * 255.0) as u32,
+	let fill = [
+		text.fill_color[0].clamp(0.0, 1.0) * fill_a,
+		text.fill_color[1].clamp(0.0, 1.0) * fill_a,
+		text.fill_color[2].clamp(0.0, 1.0) * fill_a,
+		fill_a,
 	];
-	let fill_alpha = (fill_a * 255.0) as u32;
 
 	let metrics = font.metrics(&[]).scale(render_size);
 	let glyph_metrics = font.glyph_metrics(&[]).scale(render_size);
@@ -401,17 +402,19 @@ pub(crate) fn draw_text(
 	// 変形すると、縮小時は同じ画素へ何度も書き込むだけの無駄な計算になり（非等倍
 	// スケールでは軸比に比例して悪化する）、拡大時は round で隙間が空く。
 	// zeno は out.x = p.x*xx + p.y*yx, out.y = p.x*xy + p.y*yy で、y は上向き。
-	// 画面の y は下向きなので、回転の符号を反転して渡す。
+	// 画面の y は下向きなので、y を反転した基底で線形部分を渡す。
 	let outline_transform = ZenoTransform {
-		xx: post_sx * cos_r,
-		xy: -post_sx * sin_r,
-		yx: post_sy * sin_r,
-		yy: post_sy * cos_r,
+		xx: post.a,
+		xy: -post.b,
+		yx: -post.c,
+		yy: post.d,
 		x: 0.0,
 		y: 0.0,
 	};
-	let needs_transform =
-		(post_sx - 1.0).abs() > f32::EPSILON || (post_sy - 1.0).abs() > f32::EPSILON || rotation_z != 0.0;
+	let needs_transform = (post.a - 1.0).abs() > f32::EPSILON
+		|| post.b.abs() > f32::EPSILON
+		|| post.c.abs() > f32::EPSILON
+		|| (post.d - 1.0).abs() > f32::EPSILON;
 
 	let mut context = ScaleContext::new();
 	let mut scaler = context.builder(font).size(render_size).hint(true).build();
@@ -444,8 +447,9 @@ pub(crate) fn draw_text(
 		// 画面サイズなので、あとは整数オフセットでブリットするだけ。
 		let pen_x = origin_x + glyph.x;
 		let pen_y = origin_y + glyph.baseline_y;
-		let dest_x = (pen_x * post_sx * cos_r - pen_y * post_sy * sin_r + center_x).round() as i32 + placement.left;
-		let dest_y = (pen_x * post_sx * sin_r + pen_y * post_sy * cos_r + center_y).round() as i32 - placement.top;
+		let [screen_x, screen_y] = post.apply([pen_x, pen_y]);
+		let dest_x = screen_x.round() as i32 + placement.left;
+		let dest_y = screen_y.round() as i32 - placement.top;
 
 		let gx_start = (-dest_x).clamp(0, placement.width as i32) as u32;
 		let gy_start = (-dest_y).clamp(0, placement.height as i32) as u32;
@@ -460,19 +464,18 @@ pub(crate) fn draw_text(
 			let mask_row = (gy * placement.width) as usize;
 			let dest_row = (dest_y + gy as i32) as usize * stride;
 			for gx in gx_start..gx_end {
-				let alpha = mask.data[mask_row + gx as usize] as u32;
+				let alpha = mask.data[mask_row + gx as usize];
 				if alpha == 0 {
 					continue;
 				}
 
-				let coverage = alpha * fill_alpha / 255;
-				let inverse = 255 - coverage;
+				let coverage = f32::from(alpha) / 255.0;
 				let offset = dest_row + (dest_x + gx as i32) as usize * 4;
-				for channel in 0..3 {
-					let bg = pixels[offset + channel] as u32;
-					pixels[offset + channel] = ((fill_rgb[channel] * coverage + bg * inverse) / 255) as u8;
-				}
-				pixels[offset + 3] = 255;
+				compositor::composite(
+					&mut pixels[offset..offset + 4],
+					fill.map(|channel| channel * coverage),
+					paint.blend,
+				);
 			}
 		}
 	}

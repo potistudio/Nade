@@ -1,11 +1,11 @@
 //! Draws [`Scene`]s: solids, footage and text over the composition background.
 
-use core::Transform;
+use core::{Affine, BlendMode};
 use image::{ImageBuffer, Rgba, RgbaImage};
 use media::{MediaCache, Picture};
 use rayon::prelude::*;
 
-use crate::scene::{LayerKind, Scene};
+use crate::scene::{LayerKind, Scene, SceneLayer};
 
 /// Stateful frame renderer. Keeps decoded footage between frames, so use one
 /// per thread and feed it consecutive frames where possible.
@@ -19,110 +19,143 @@ impl Compositor {
 		Self::default()
 	}
 
-	/// Render `scene` to an opaque RGBA image.
+	/// Render `scene` to an opaque RGBA image (flattened over black).
 	pub fn render(&mut self, scene: &Scene) -> RgbaImage {
+		let mut image = self.render_premultiplied(scene);
+		// 乗算済みなので、黒の上に置くには α を 255 にするだけでよい
+		let pixels: &mut [u8] = &mut image;
+		pixels.par_chunks_mut(4).for_each(|pixel| pixel[3] = 255);
+		self.media.finish_render();
+		image
+	}
+
+	/// Render `scene` keeping its alpha (premultiplied RGBA).
+	fn render_premultiplied(&mut self, scene: &Scene) -> RgbaImage {
 		let background = scene.background;
 		let to_byte = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
-		// 背景は黒の上に合成した不透明色として塗る
 		let alpha = background[3].clamp(0.0, 1.0);
 		let fill = Rgba([
 			to_byte(background[0] * alpha),
 			to_byte(background[1] * alpha),
 			to_byte(background[2] * alpha),
-			255,
+			to_byte(alpha),
 		]);
 		let mut image = crate::filled_buffer(scene.width, scene.height, fill);
-
 		for layer in &scene.layers {
-			let transform = layer.transform;
-			match &layer.kind {
-				LayerKind::Text(text) => crate::draw_text(&mut image, text, scene.width, scene.height),
-				LayerKind::Solid { size, color } => draw_solid(&mut image, &transform, *size, *color),
-				LayerKind::Still { path, size } => {
-					if let Some(picture) = self.media.still(path, screen_scale(&transform)) {
-						draw_picture(&mut image, &picture, *size, &transform);
-					}
-				}
-				LayerKind::Video {
-					path,
-					key,
-					info,
-					source_time,
-				} => {
-					let scale = screen_scale(&transform);
-					if let Some(picture) = self.media.video_frame(path, *key, info, *source_time, scale) {
-						let size = [info.width as f32, info.height as f32];
-						draw_picture(&mut image, &picture, size, &transform);
-					}
+			self.draw_layer(&mut image, layer);
+		}
+		image
+	}
+
+	fn draw_layer(&mut self, image: &mut RgbaImage, layer: &SceneLayer) {
+		let paint = Paint {
+			matrix: layer.matrix,
+			opacity: layer.opacity,
+			blend: layer.blend,
+		};
+		match &layer.kind {
+			LayerKind::Text(text) => crate::draw_text(image, text, &paint),
+			LayerKind::Solid { size, color } => draw_solid(image, &paint, *size, *color),
+			LayerKind::Still { path, size } => {
+				if let Some(picture) = self.media.still(path, layer.matrix.max_scale()) {
+					draw_picture(image, &picture, *size, &paint);
 				}
 			}
+			LayerKind::Video {
+				path,
+				key,
+				info,
+				source_time,
+			} => {
+				let scale = layer.matrix.max_scale();
+				if let Some(picture) = self.media.video_frame(path, *key, info, *source_time, scale) {
+					let size = [info.width as f32, info.height as f32];
+					draw_picture(image, &picture, size, &paint);
+				}
+			}
+			LayerKind::Nested { scene } => {
+				let picture = self.render_premultiplied(scene);
+				let size = [scene.width as f32, scene.height as f32];
+				draw_picture(image, &picture, size, &paint);
+			}
 		}
-
-		self.media.finish_render();
-		image
 	}
 }
 
-/// Largest on-screen magnification of the layer (for mip selection).
-fn screen_scale(transform: &Transform) -> f32 {
-	transform.scale[0].abs().max(transform.scale[1].abs())
+/// How a layer lands on the canvas.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Paint {
+	/// Layer space (origin at the layer center) → canvas pixels.
+	pub matrix: Affine,
+	pub opacity: f32,
+	pub blend: BlendMode,
 }
 
-/// Screen → layer mapping of a 2D layer centered at its position.
+/// Blend a premultiplied source color (0..1) onto a premultiplied canvas pixel.
+#[inline]
+pub(crate) fn composite(pixel: &mut [u8], source: [f32; 4], blend: BlendMode) {
+	let sa = source[3].clamp(0.0, 1.0);
+	if sa <= 0.0 {
+		return;
+	}
+	let to_byte = |value: f32| (value * 255.0 + 0.5).clamp(0.0, 255.0) as u8;
+	let ba = f32::from(pixel[3]) / 255.0;
+	let keep = 1.0 - sa;
+	for channel in 0..3 {
+		let cs = source[channel];
+		let cb = f32::from(pixel[channel]) / 255.0;
+		let out = match blend {
+			BlendMode::Normal => cs + cb * keep,
+			mode => {
+				// W3C compositing: 乗算済みのまま非 Normal を混ぜる
+				let straight_b = if ba > 0.0 { (cb / ba).min(1.0) } else { 0.0 };
+				let straight_s = (cs / sa).min(1.0);
+				cs * (1.0 - ba) + cb * keep + sa * ba * mode.channel(straight_b, straight_s)
+			}
+		};
+		pixel[channel] = to_byte(out);
+	}
+	pixel[3] = to_byte(sa + ba * keep);
+}
+
+/// Canvas → layer mapping of a `size`d layer centered on its origin.
 #[derive(Clone, Copy)]
 struct LayerMapping {
-	center: [f32; 2],
-	cos: f32,
-	sin: f32,
-	inv_scale: [f32; 2],
+	forward: Affine,
+	inverse: Affine,
 	half: [f32; 2],
 }
 
 impl LayerMapping {
-	fn new(transform: &Transform, size: [f32; 2], canvas: (u32, u32)) -> Option<Self> {
-		let [sx, sy] = [transform.scale[0], transform.scale[1]];
-		if sx.abs() < 1e-6 || sy.abs() < 1e-6 || size[0] <= 0.0 || size[1] <= 0.0 {
+	fn new(matrix: Affine, size: [f32; 2]) -> Option<Self> {
+		if size[0] <= 0.0 || size[1] <= 0.0 {
 			return None;
 		}
-		let (sin, cos) = transform.rotation[2].to_radians().sin_cos();
 		Some(Self {
-			center: [
-				canvas.0 as f32 / 2.0 + transform.position[0],
-				canvas.1 as f32 / 2.0 + transform.position[1],
-			],
-			cos,
-			sin,
-			inv_scale: [1.0 / sx, 1.0 / sy],
+			forward: matrix,
+			inverse: matrix.inverse()?,
 			half: [size[0] / 2.0, size[1] / 2.0],
 		})
 	}
 
-	/// Layer-local point (origin at the top-left corner) under a screen point.
+	/// Layer-local point (origin at the top-left corner) under a canvas point.
 	#[inline]
 	fn to_local(self, x: f32, y: f32) -> (f32, f32) {
-		let dx = x - self.center[0];
-		let dy = y - self.center[1];
-		let lx = (dx * self.cos + dy * self.sin) * self.inv_scale[0];
-		let ly = (-dx * self.sin + dy * self.cos) * self.inv_scale[1];
+		let [lx, ly] = self.inverse.apply([x, y]);
 		(lx + self.half[0], ly + self.half[1])
 	}
 
-	/// Screen rows / columns the layer can touch, clipped to the canvas.
+	/// Canvas rows / columns the layer can touch, clipped to the canvas.
 	fn screen_bounds(&self, canvas: (u32, u32)) -> Option<(u32, u32, u32, u32)> {
-		let sx = 1.0 / self.inv_scale[0];
-		let sy = 1.0 / self.inv_scale[1];
-		let corners = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].map(|(cx, cy): (f32, f32)| {
-			let x = cx * self.half[0] * sx;
-			let y = cy * self.half[1] * sy;
-			(
-				x * self.cos - y * self.sin + self.center[0],
-				x * self.sin + y * self.cos + self.center[1],
-			)
-		});
-		let min_x = corners.iter().map(|c| c.0).fold(f32::INFINITY, f32::min) - 1.0;
-		let max_x = corners.iter().map(|c| c.0).fold(f32::NEG_INFINITY, f32::max) + 1.0;
-		let min_y = corners.iter().map(|c| c.1).fold(f32::INFINITY, f32::min) - 1.0;
-		let max_y = corners.iter().map(|c| c.1).fold(f32::NEG_INFINITY, f32::max) + 1.0;
+		let [hx, hy] = self.half;
+		let corners = [[-hx, -hy], [hx, -hy], [hx, hy], [-hx, hy]].map(|corner| self.forward.apply(corner));
+		let min_x = corners.iter().map(|c| c[0]).fold(f32::INFINITY, f32::min) - 1.0;
+		let max_x = corners.iter().map(|c| c[0]).fold(f32::NEG_INFINITY, f32::max) + 1.0;
+		let min_y = corners.iter().map(|c| c[1]).fold(f32::INFINITY, f32::min) - 1.0;
+		let max_y = corners.iter().map(|c| c[1]).fold(f32::NEG_INFINITY, f32::max) + 1.0;
+		if !(min_x.is_finite() && max_x.is_finite() && min_y.is_finite() && max_y.is_finite()) {
+			return None;
+		}
 		let x0 = min_x.floor().max(0.0) as u32;
 		let y0 = min_y.floor().max(0.0) as u32;
 		let x1 = (max_x.ceil().max(0.0) as u32).min(canvas.0);
@@ -132,13 +165,17 @@ impl LayerMapping {
 }
 
 /// Rasterize a layer: `shade(local_x, local_y)` returns the premultiplied
-/// color (0..1) of the layer at a point, which is blended over the canvas.
-fn raster(image: &mut RgbaImage, mapping: &LayerMapping, opacity: f32, shade: impl Fn(f32, f32) -> [f32; 4] + Sync) {
+/// color (0..1) of the layer at a point, which is blended onto the canvas.
+fn raster(image: &mut RgbaImage, mapping: &LayerMapping, paint: &Paint, shade: impl Fn(f32, f32) -> [f32; 4] + Sync) {
 	let canvas = image.dimensions();
 	let Some((x0, y0, x1, y1)) = mapping.screen_bounds(canvas) else {
 		return;
 	};
-	let opacity = opacity.clamp(0.0, 1.0);
+	let opacity = paint.opacity.clamp(0.0, 1.0);
+	if opacity <= 0.0 {
+		return;
+	}
+	let blend = paint.blend;
 	let stride = canvas.0 as usize * 4;
 	let pixels: &mut [u8] = image;
 	pixels
@@ -150,33 +187,26 @@ fn raster(image: &mut RgbaImage, mapping: &LayerMapping, opacity: f32, shade: im
 			let py = y as f32 + 0.5;
 			for x in x0..x1 {
 				let (lx, ly) = mapping.to_local(x as f32 + 0.5, py);
-				let [r, g, b, a] = shade(lx, ly);
-				let a = a * opacity;
-				if a <= 0.0 {
+				let color = shade(lx, ly);
+				if color[3] <= 0.0 {
 					continue;
 				}
 				let offset = x as usize * 4;
-				let inverse = 1.0 - a;
-				let blend = |src: f32, dst: u8| (src * opacity * 255.0 + f32::from(dst) * inverse).clamp(0.0, 255.0);
-				row[offset] = blend(r, row[offset]) as u8;
-				row[offset + 1] = blend(g, row[offset + 1]) as u8;
-				row[offset + 2] = blend(b, row[offset + 2]) as u8;
-				row[offset + 3] = 255;
+				composite(&mut row[offset..offset + 4], color.map(|c| c * opacity), blend);
 			}
 		});
 }
 
-/// Anti-aliased (possibly rotated) solid rectangle.
-pub(crate) fn draw_solid(image: &mut RgbaImage, transform: &Transform, size: [f32; 2], color: [f32; 4]) {
-	let canvas = image.dimensions();
-	let Some(mapping) = LayerMapping::new(transform, size, canvas) else {
+/// Anti-aliased (possibly rotated / skewed) solid rectangle.
+pub(crate) fn draw_solid(image: &mut RgbaImage, paint: &Paint, size: [f32; 2], color: [f32; 4]) {
+	let Some(mapping) = LayerMapping::new(paint.matrix, size) else {
 		return;
 	};
 	let alpha = color[3].clamp(0.0, 1.0);
 	let premultiplied = [color[0] * alpha, color[1] * alpha, color[2] * alpha, alpha];
 	// 端の被覆率をスクリーン画素単位で求めるため、ローカル距離にスケールを掛ける
-	let scale = [transform.scale[0].abs(), transform.scale[1].abs()];
-	raster(image, &mapping, transform.opacity, |lx, ly| {
+	let scale = paint.matrix.axis_scales();
+	raster(image, &mapping, paint, |lx, ly| {
 		let edge_x = (lx.min(size[0] - lx) * scale[0] + 0.5).clamp(0.0, 1.0);
 		let edge_y = (ly.min(size[1] - ly) * scale[1] + 0.5).clamp(0.0, 1.0);
 		let coverage = edge_x * edge_y;
@@ -186,12 +216,14 @@ pub(crate) fn draw_solid(image: &mut RgbaImage, transform: &Transform, size: [f3
 
 /// Draw a premultiplied picture stretched over `size` layer pixels with
 /// bilinear filtering (transparent outside, which also softens the edges).
-pub(crate) fn draw_picture(image: &mut RgbaImage, picture: &Picture, size: [f32; 2], transform: &Transform) {
-	let canvas = image.dimensions();
-	let Some(mapping) = LayerMapping::new(transform, size, canvas) else {
+pub(crate) fn draw_picture(image: &mut RgbaImage, picture: &Picture, size: [f32; 2], paint: &Paint) {
+	let Some(mapping) = LayerMapping::new(paint.matrix, size) else {
 		return;
 	};
 	let (width, height) = picture.dimensions();
+	if width == 0 || height == 0 {
+		return;
+	}
 	let to_texel = [width as f32 / size[0], height as f32 / size[1]];
 	let data: &[u8] = picture.as_raw();
 	let fetch = |x: i64, y: i64| -> [f32; 4] {
@@ -206,7 +238,7 @@ pub(crate) fn draw_picture(image: &mut RgbaImage, picture: &Picture, size: [f32;
 			f32::from(data[offset + 3]),
 		]
 	};
-	raster(image, &mapping, transform.opacity, |lx, ly| {
+	raster(image, &mapping, paint, |lx, ly| {
 		let u = lx * to_texel[0] - 0.5;
 		let v = ly * to_texel[1] - 0.5;
 		if u < -1.0 || v < -1.0 || u > width as f32 || v > height as f32 {
@@ -247,9 +279,23 @@ mod tests {
 		}
 	}
 
+	fn centered(transform: Transform) -> Affine {
+		Affine::translate(50.0, 50.0).then_apply(transform.local_matrix())
+	}
+
+	fn paint(transform: Transform) -> Paint {
+		Paint {
+			matrix: centered(transform),
+			opacity: transform.opacity,
+			blend: BlendMode::Normal,
+		}
+	}
+
 	fn solid(transform: Transform, color: [f32; 4]) -> SceneLayer {
 		SceneLayer {
-			transform,
+			matrix: centered(transform),
+			opacity: transform.opacity,
+			blend: BlendMode::Normal,
 			kind: LayerKind::Solid {
 				size: [40.0, 20.0],
 				color,
@@ -292,13 +338,56 @@ mod tests {
 	}
 
 	#[test]
+	fn anchor_point_offsets_the_layer() {
+		let transform = Transform {
+			anchor: [-20.0, -10.0, 0.0],
+			..Transform::default()
+		};
+		// 左上の角がコンポ中心に来る
+		let image = render_scene(&scene(vec![solid(transform, [1.0, 1.0, 1.0, 1.0])]));
+		assert_eq!(image.get_pixel(51, 51)[0], 255);
+		assert_eq!(image.get_pixel(88, 58)[0], 255);
+		assert_eq!(image.get_pixel(48, 51)[0], 0);
+		assert_eq!(image.get_pixel(51, 48)[0], 0);
+	}
+
+	#[test]
+	fn blend_modes_mix_with_the_backdrop() {
+		let mut grey = scene(Vec::new());
+		grey.background = [0.5, 0.5, 0.5, 1.0];
+		let mut layer = solid(Transform::default(), [0.5, 1.0, 0.0, 1.0]);
+		layer.blend = BlendMode::Multiply;
+		grey.layers.push(layer);
+		let pixel = render_scene(&grey).get_pixel(50, 50).0;
+		assert_eq!(pixel, [64, 128, 0, 255]);
+
+		grey.layers[0].blend = BlendMode::Screen;
+		let pixel = render_scene(&grey).get_pixel(50, 50).0;
+		assert_eq!(pixel, [192, 255, 128, 255]);
+	}
+
+	#[test]
+	fn composite_keeps_alpha_on_transparent_canvas() {
+		let mut pixel = [0u8; 4];
+		composite(&mut pixel, [0.5, 0.0, 0.0, 0.5], BlendMode::Screen);
+		assert_eq!(pixel, [128, 0, 0, 128]);
+		composite(&mut pixel, [0.0, 0.0, 0.5, 0.5], BlendMode::Normal);
+		assert_eq!(pixel, [64, 0, 128, 192]);
+	}
+
+	#[test]
 	fn pictures_draw_pixel_exact_at_identity() {
 		let mut picture = Picture::new(4, 2);
 		for (x, y, pixel) in picture.enumerate_pixels_mut() {
 			*pixel = Rgba([(x * 60) as u8, (y * 200) as u8, 7, 255]);
 		}
 		let mut canvas = RgbaImage::from_pixel(4, 2, Rgba([0, 0, 0, 255]));
-		draw_picture(&mut canvas, &picture, [4.0, 2.0], &Transform::default());
+		let paint = Paint {
+			matrix: Affine::translate(2.0, 1.0),
+			opacity: 1.0,
+			blend: BlendMode::Normal,
+		};
+		draw_picture(&mut canvas, &picture, [4.0, 2.0], &paint);
 		assert_eq!(canvas, picture);
 	}
 
@@ -310,7 +399,7 @@ mod tests {
 			..Transform::default()
 		};
 		let mut canvas = RgbaImage::from_pixel(100, 100, Rgba([0, 0, 0, 255]));
-		draw_picture(&mut canvas, &picture, [10.0, 10.0], &transform);
+		draw_picture(&mut canvas, &picture, [10.0, 10.0], &paint(transform));
 		assert_eq!(canvas.get_pixel(41, 41).0, [0, 255, 0, 255]);
 		assert_eq!(canvas.get_pixel(58, 58).0, [0, 255, 0, 255]);
 		assert_eq!(canvas.get_pixel(38, 50).0, [0, 0, 0, 255]);
@@ -330,12 +419,29 @@ mod tests {
 		let at_one = Scene::from_composition(&composition, 1.0, 0.5, |_| true);
 		assert_eq!((at_one.width, at_one.height), (100, 50));
 		assert_eq!(at_one.layers.len(), 1, "inactive and empty layers are skipped");
-		assert_eq!(at_one.layers[0].transform.position[0], 10.0);
-		assert_eq!(at_one.layers[0].transform.scale[0], 0.5);
+		// 半分の解像度: 中心 (50,25) + 20*0.5
+		assert_eq!(at_one.layers[0].matrix.apply([0.0, 0.0]), [60.0, 25.0]);
+		assert_eq!(at_one.layers[0].matrix.axis_scales(), [0.5, 0.5]);
 
 		let at_seven = Scene::from_composition(&composition, 7.0, 1.0, |_| true);
 		assert_eq!(at_seven.layers.len(), 1);
 		let hidden = Scene::from_composition(&composition, 1.0, 1.0, |track| track != 0);
 		assert!(hidden.layers.is_empty());
+	}
+
+	#[test]
+	fn children_follow_their_parent() {
+		let mut composition = Composition::new(core::CompositionId::new(0), "Test", 100, 100, 30.0);
+		let parent = composition.add_instance_named(NodeId::new(0), "Null").id();
+		let child = composition.add_instance_named(NodeId::new(1), "Child");
+		child.set_content(InstanceContent::solid(10.0, 10.0, [1.0, 1.0, 1.0, 1.0]));
+		child.transform.position = [10.0, 0.0, 0.0];
+		let child = child.id();
+		composition.set_parent(child, Some(parent), 0.0);
+		composition.get_mut(parent).unwrap().transform.rotation[2] = 90.0;
+
+		let scene = Scene::from_composition(&composition, 0.0, 1.0, |_| true);
+		let [x, y] = scene.layers[0].matrix.apply([0.0, 0.0]);
+		assert!((x - 50.0).abs() < 1e-3 && (y - 60.0).abs() < 1e-3, "({x}, {y})");
 	}
 }
