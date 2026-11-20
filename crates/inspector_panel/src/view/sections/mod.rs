@@ -63,9 +63,5 @@ pub(crate) fn section<'a>(
 		content = content.push(container(body).padding([SPACE_1, SPACE_2]));
 	}
 
-	container(content)
-		.padding([SPACE_2, SPACE_2])
-		.width(Length::Fill)
-		.style(widgets::card)
-		.into()
+	widgets::card(container(content).padding([SPACE_2, SPACE_2]).width(Length::Fill))
 }

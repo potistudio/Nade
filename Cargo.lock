@@ -2171,6 +2171,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "iced-squircle"
+version = "0.1.0"
+source = "git+https://github.com/potistudio/iced-squircle?tag=v0.1.0#ee42534deaf9b24d647aab852d85819f14e2dfb4"
+dependencies = [
+ "iced",
+]
+
+[[package]]
 name = "iced_core"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3138,6 +3146,7 @@ name = "nade_constants"
 version = "0.0.1"
 dependencies = [
  "iced",
+ "iced-squircle",
 ]
 
 [[package]]

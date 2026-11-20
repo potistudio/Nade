@@ -109,6 +109,8 @@ pub const CHIP_RADIUS: f32 = 4.0;
 pub const PANEL_RADIUS: f32 = 10.0;
 /// Header/body squircle radius inside panel outline padding.
 pub const PANEL_INNER_RADIUS: f32 = PANEL_RADIUS - BORDER_THICKNESS;
+/// Inspector section card radius (continuous corners).
+pub const CARD_RADIUS: f32 = 8.0;
 /// Superellipse exponent for panel squircles (`5.0` ≈ iOS continuous corners).
 pub const PANEL_SQUIRCLE_EXPONENT: f32 = 5.0;
 
