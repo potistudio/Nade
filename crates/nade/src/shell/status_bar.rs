@@ -13,6 +13,8 @@ use crate::viewer::CompositionSummary;
 
 pub struct StatusInfo<'a> {
 	pub playing: bool,
+	/// Progress of a running export (`0.0..=1.0`).
+	pub export: Option<f32>,
 	/// Breathing phase of the playback dot (`0.0..=1.0`).
 	pub pulse: f32,
 	pub render_fps: f32,
@@ -45,6 +47,45 @@ pub fn view<'a>(info: StatusInfo<'a>) -> Element<'a, Message> {
 			.push(widgets::vertical_separator(12.0))
 			.push(mono_label(format!("{:.1}", info.render_fps), FONT_TINY + 1.0).color(TEXT_SECONDARY_COLOR))
 			.push(ui_label("fps rendered", FONT_TINY + 1.0).color(TEXT_MUTED_COLOR));
+	}
+
+	if let Some(progress) = info.export {
+		let track = container(
+			container(
+				Space::new()
+					.width(Length::Fixed(120.0 * progress.clamp(0.0, 1.0)))
+					.height(4),
+			)
+			.style(|_| container::Style {
+				background: Some(constants::style::ACCENT_COLOR.into()),
+				border: Border {
+					radius: 2.0.into(),
+					..Default::default()
+				},
+				..Default::default()
+			}),
+		)
+		.width(120)
+		.height(4)
+		.style(|_| container::Style {
+			background: Some(Color::from_rgba(1.0, 1.0, 1.0, 0.1).into()),
+			border: Border {
+				radius: 2.0.into(),
+				..Default::default()
+			},
+			..Default::default()
+		});
+		left = left
+			.push(widgets::vertical_separator(12.0))
+			.push(ui_label("Exporting", FONT_TINY + 1.0).color(TEXT_SECONDARY_COLOR))
+			.push(track)
+			.push(mono_label(format!("{:.0}%", progress * 100.0), FONT_TINY + 1.0).color(TEXT_SECONDARY_COLOR))
+			.push(
+				iced::widget::button(ui_label("Cancel", FONT_TINY + 1.0).color(TEXT_SECONDARY_COLOR))
+					.padding([0, 6])
+					.style(widgets::button_ghost)
+					.on_press(Message::Shell(crate::message::ShellMessage::CancelExport)),
+			);
 	}
 
 	let right: Element<'a, Message> = match info.composition {

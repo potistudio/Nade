@@ -28,6 +28,7 @@ use crate::history::History;
 use crate::message::{AppPanelMessage, EditCommand, Message, PreviewMessage, ShellMessage, TransportMessage};
 use crate::panel_content::PanelContent;
 use crate::panels;
+use crate::services::export::ExportTask;
 use crate::services::render_service::{RenderConnection, build_render_stream};
 use crate::services::render_worker::{RenderJob, RenderWorker};
 use crate::shell::{self, toast::Toast};
@@ -79,6 +80,7 @@ fn shortcut(key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Messa
 			("v", false) => edit(EditCommand::Paste),
 			("y", false) => Some(Message::Shell(ShellMessage::NewSolid)),
 			("i", false) => Some(Message::Shell(ShellMessage::ImportMedia)),
+			("m", false) | ("e", false) => Some(Message::Shell(ShellMessage::Export)),
 			_ => None,
 		};
 	}
@@ -87,6 +89,7 @@ fn shortcut(key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Messa
 	}
 
 	match key.as_ref() {
+		keyboard::Key::Named(Named::Escape) => Some(Message::Shell(ShellMessage::CancelExport)),
 		keyboard::Key::Named(Named::Space) => Some(Message::Transport(TransportMessage::TogglePlay)),
 		keyboard::Key::Named(Named::Home) => Some(Message::Transport(TransportMessage::GoToStart)),
 		keyboard::Key::Named(Named::End) => Some(Message::Transport(TransportMessage::GoToEnd)),
@@ -198,6 +201,8 @@ pub(super) struct NadeApp {
 	clipboard: Vec<Instance>,
 	/// マウスボタン押下中（ドラッグ中は履歴を確定しない）
 	pointer_down: bool,
+	/// 実行中の書き出し
+	export: Option<ExportTask>,
 	/// デバッグ用スクリーンショット（`NADE_SCREENSHOT`）
 	#[cfg(debug_assertions)]
 	capture: Option<crate::devtools::Capture>,
@@ -252,6 +257,7 @@ impl NadeApp {
 			history: History::with_snapshot(project_for_history),
 			clipboard: Vec::new(),
 			pointer_down: false,
+			export: None,
 			#[cfg(debug_assertions)]
 			capture: crate::devtools::Capture::from_env(),
 		};
@@ -494,6 +500,7 @@ impl NadeApp {
 				} else {
 					self.last_play_tick = None;
 				}
+				self.poll_export();
 				if self.toast.as_ref().is_some_and(|toast| !toast.is_active(self.now)) {
 					self.toast = None;
 				}
@@ -548,6 +555,13 @@ impl NadeApp {
 				self.update(Message::CloseRequested(iced::window::Id::unique()))
 			}
 
+			Message::ExportTo(path) => {
+				if let Some(path) = path {
+					self.start_export(path);
+				}
+				Task::none()
+			}
+
 			Message::MediaImported(files) => {
 				for (path, info) in files {
 					self.import_media_path(path, info);
@@ -556,6 +570,9 @@ impl NadeApp {
 			}
 
 			Message::CloseRequested(_id) => {
+				if let Some(export) = self.export.take() {
+					export.cancel();
+				}
 				if let Some(tx) = self.render_shutdown_tx.take()
 					&& let Err(e) = tx.send(())
 				{
@@ -600,6 +617,35 @@ impl NadeApp {
 				Task::none()
 			}
 			ShellMessage::ImportMedia => Self::pick_media_file(),
+			ShellMessage::Export => {
+				if self.export.is_some() {
+					self.show_toast(Icon::Export, "An export is already running");
+					return Task::none();
+				}
+				let Some(name) = self.target_composition_name() else {
+					self.show_toast(Icon::Close, "Select a composition to export");
+					return Task::none();
+				};
+				Task::perform(
+					async move {
+						rfd::AsyncFileDialog::new()
+							.set_title("Export Composition")
+							.set_file_name(format!("{name}.mp4"))
+							.add_filter("MPEG-4 Movie", &["mp4"])
+							.add_filter("QuickTime Movie", &["mov"])
+							.save_file()
+							.await
+							.map(|handle| handle.path().to_path_buf())
+					},
+					Message::ExportTo,
+				)
+			}
+			ShellMessage::CancelExport => {
+				if let Some(export) = &self.export {
+					export.cancel();
+				}
+				Task::none()
+			}
 			ShellMessage::DragWindow => iced::window::latest().and_then(iced::window::drag),
 			ShellMessage::ToggleMaximize => iced::window::latest().and_then(iced::window::toggle_maximize),
 		}
@@ -661,6 +707,48 @@ impl NadeApp {
 			let fps = self.composition_fps();
 			let last_frame = core::timecode::frame_at(duration, fps).saturating_sub(1);
 			self.apply_core_msg(Msg::SetTime(core::timecode::time_of_frame(last_frame, fps)));
+		}
+	}
+
+	fn start_export(&mut self, path: PathBuf) {
+		let Some(composition) = self
+			.target_composition()
+			.and_then(|id| self.project.composition(&id))
+			.cloned()
+		else {
+			return;
+		};
+		let track_rendered = (0..self.timeline.model.tracks.len())
+			.map(|track| self.timeline.model.is_track_rendered(track))
+			.collect();
+		log::info!("Exporting “{}” to {}", composition.name(), path.display());
+		self.export = Some(ExportTask::start(composition, track_rendered, path));
+		self.show_toast(Icon::Export, "Export started  ·  Esc to cancel");
+	}
+
+	/// 書き出しの完了を確認して通知する
+	fn poll_export(&mut self) {
+		let Some(result) = self.export.as_ref().and_then(ExportTask::take_result) else {
+			return;
+		};
+		let Some(export) = self.export.take() else {
+			return;
+		};
+		let name = export
+			.path()
+			.file_name()
+			.map(|name| name.to_string_lossy().into_owned())
+			.unwrap_or_default();
+		match result {
+			Ok(()) => {
+				log::info!("Exported {}", export.path().display());
+				self.show_toast(Icon::Check, format!("Exported “{name}”"));
+			}
+			Err(_) if export.is_cancelled() => self.show_toast(Icon::Close, "Export cancelled"),
+			Err(error) => {
+				log::error!("Export failed: {error}");
+				self.show_toast(Icon::Close, "Export failed — see log");
+			}
 		}
 	}
 
@@ -2066,6 +2154,7 @@ impl NadeApp {
 			)
 			.push(shell::status_bar::view(shell::status_bar::StatusInfo {
 				playing: self.current_model.preview.is_playing,
+				export: self.export.as_ref().map(ExportTask::progress),
 				pulse,
 				render_fps: self.render_fps,
 				composition: composition.map(|comp| crate::viewer::CompositionSummary {
@@ -2125,7 +2214,7 @@ impl NadeApp {
 		let events = iced::event::listen_with(on_window_event);
 
 		// Only subscribe while something needs time-based updates; idle has no timer.
-		let needs_tick = self.current_model.preview.is_playing || self.is_ui_animating();
+		let needs_tick = self.current_model.preview.is_playing || self.is_ui_animating() || self.export.is_some();
 		#[cfg(debug_assertions)]
 		let needs_tick = needs_tick || self.capture.as_ref().is_some_and(|capture| capture.is_pending());
 		let tick = if needs_tick {

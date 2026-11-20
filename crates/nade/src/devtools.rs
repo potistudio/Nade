@@ -4,7 +4,7 @@
 //! (`NADE_SCREENSHOT_DELAY_MS`, default 2500) and quits — handy for PR
 //! screenshots. `NADE_SCREENSHOT_SCENE` stages the UI first, e.g.
 //! `select=Title;workspace=graph;tool=t;time=1.5;loop=1;play=1;menu=2`.
-//! Media can be staged too: `import=/path/clip.mp4;add=1;solid=1`, and edits
+//! Media can be staged too: `import=/path/clip.mp4;add=1;solid=1;export=/tmp/out.mp4`, and edits
 //! run with `edit=split` (`undo`, `redo`, `duplicate`, `copy`, `cut`, `paste`, `delete`).
 
 use std::path::PathBuf;
@@ -107,6 +107,7 @@ pub fn scene_messages(select_layer: impl Fn(&str) -> Option<AppPanelMessage>) ->
 				AppPanelMessage::Assets(asset_browser::AssetBrowserMessage::AddToTimeline),
 			))),
 			"solid" => Some(Message::Shell(ShellMessage::NewSolid)),
+			"export" => Some(Message::ExportTo(Some(PathBuf::from(value.trim())))),
 			"edit" => {
 				use crate::message::EditCommand;
 				let command = match value.trim() {

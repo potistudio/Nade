@@ -98,6 +98,9 @@ pub enum ShellMessage {
 	NewTextLayer,
 	NewSolid,
 	ImportMedia,
+	/// 現在のコンポジションを動画ファイルへ書き出す
+	Export,
+	CancelExport,
 	/// タイトルストリップのドラッグでウィンドウを移動
 	DragWindow,
 	/// タイトルストリップのダブルクリックで最大化を切り替え
@@ -127,6 +130,8 @@ pub enum Message {
 	CloseRequested(iced::window::Id),
 	/// タイムラインパネルメッセージ
 	Timeline(TimelineMessage),
+	/// 書き出し先が選ばれた（キャンセル時は None）
+	ExportTo(Option<PathBuf>),
 	/// ファイルダイアログで選ばれ、プローブ済みのメディア（キャンセル時は空）
 	MediaImported(Vec<(PathBuf, Result<MediaInfo, String>)>),
 	/// デバッグ用スクリーンショットの取得結果
