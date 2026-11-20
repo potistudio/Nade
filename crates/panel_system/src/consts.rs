@@ -30,7 +30,7 @@ pub const MIN_PANEL_SIZE: f32 = 100.0;
 pub const CORNER_SIZE: f32 = 12.0;
 pub const CORNER_DRAG_THRESHOLD: f32 = 24.0;
 /// 移動ドロップ時、中央この範囲（正規化座標の半幅）は全体移動
-pub const MOVE_CENTER_ZONE: f32 = 0.22;
+pub const MOVE_CENTER_ZONE: f32 = 0.30;
 
 pub mod colors {
 	use super::{Color, style};
