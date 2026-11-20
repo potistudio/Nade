@@ -125,11 +125,14 @@ impl Project {
 
 	/// Imports a media file into the project tree.
 	///
+	/// The asset is named after the file without its extension; the
+	/// extension stays a property of [`Asset::source_path`].
+	///
 	/// Returns `None` when the extension is not a supported media type.
 	pub fn import_media(&mut self, path: impl AsRef<Path>, parent: Option<AssetId>) -> Option<AssetId> {
 		let path = path.as_ref();
 		let kind = AssetType::from_path(path)?;
-		let name = path.file_name()?.to_string_lossy().into_owned();
+		let name = path.file_stem()?.to_string_lossy().into_owned();
 		let id = self.create_asset_in(parent, name, kind);
 		if let Some(asset) = self.asset_mut(id) {
 			asset.source_path = Some(path.to_path_buf());
@@ -352,14 +355,34 @@ impl Project {
 				.into_iter()
 				.map(|composition| (composition.id(), composition))
 				.collect(),
-			assets: file.assets,
+			assets: migrate_assets(file.format, file.assets),
 			nodes: (0..file.nodes).map(|index| Node::new(NodeId::new(index))).collect(),
 		})
 	}
 }
 
 /// Version of the `.nade` file layout.
-const PROJECT_FORMAT: u32 = 1;
+///
+/// 2: media asset names no longer include the file extension.
+const PROJECT_FORMAT: u32 = 2;
+
+/// Upgrades assets read from an older file layout.
+fn migrate_assets(format: u32, mut assets: Vec<Asset>) -> Vec<Asset> {
+	if format < 2 {
+		for asset in &mut assets {
+			// 取り込んだままの名前だけ拡張子を外す（ユーザーが付けた名前はそのまま）
+			let Some(path) = &asset.source_path else {
+				continue;
+			};
+			if path.file_name().is_some_and(|file| *file == *asset.name)
+				&& let Some(stem) = path.file_stem()
+			{
+				asset.name = stem.to_string_lossy().into_owned();
+			}
+		}
+	}
+	assets
+}
 
 #[derive(serde::Serialize)]
 struct ProjectFileRef<'a> {
@@ -487,6 +510,31 @@ mod tests {
 		assert!(Project::open(dir.join("missing.nade")).is_err());
 	}
 
+	/// Format 1 stored imported names with their extension; opening strips it
+	/// from untouched names only.
+	#[test]
+	fn opening_format_1_strips_extensions_from_imported_names() {
+		let dir = std::env::temp_dir().join(format!("nade-migrate-{}", std::process::id()));
+		std::fs::create_dir_all(&dir).unwrap();
+		let path = dir.join("Old.nade");
+
+		let mut project = Project::default();
+		let clip = project.import_media("/tmp/clip.mp4", None).unwrap();
+		let hero = project.import_media("/tmp/b-roll.mov", None).unwrap();
+		project.asset_mut(clip).unwrap().name = "clip.mp4".into();
+		project.asset_mut(hero).unwrap().name = "Hero.mov".into();
+		project.save_as(&path).unwrap();
+
+		let mut file: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+		file["format"] = 1.into();
+		std::fs::write(&path, serde_json::to_vec(&file).unwrap()).unwrap();
+
+		let opened = Project::open(&path).unwrap();
+		assert_eq!(opened.asset(clip).unwrap().name, "clip");
+		assert_eq!(opened.asset(hero).unwrap().name, "Hero.mov");
+		std::fs::remove_dir_all(&dir).unwrap();
+	}
+
 	#[test]
 	fn import_media_sets_source_path() {
 		let mut project = Project::default();
@@ -497,7 +545,7 @@ mod tests {
 
 		let asset = project.asset(id).unwrap();
 		assert_eq!(asset.kind(), AssetType::Image);
-		assert_eq!(asset.name, "demo.png");
+		assert_eq!(asset.name, "demo");
 		assert_eq!(
 			asset.source_path.as_deref(),
 			Some(std::path::Path::new("/tmp/demo.png"))
