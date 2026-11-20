@@ -136,6 +136,12 @@ fn view_instance<'a>(
 	let glyph = match instance.content() {
 		domain::InstanceContent::Text { .. } => Icon::LayerText,
 		domain::InstanceContent::Empty => Icon::LayerNull,
+		domain::InstanceContent::Solid { .. } => Icon::LayerSolid,
+		domain::InstanceContent::Media(source) => match source.kind {
+			domain::MediaKind::Image => Icon::Image,
+			domain::MediaKind::Video => Icon::Video,
+			domain::MediaKind::Audio => Icon::Audio,
+		},
 	};
 
 	TreeRow {
