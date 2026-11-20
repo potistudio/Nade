@@ -9,8 +9,8 @@ pub fn view<'a>(
 	project: &'a Project,
 	state: &'a AssetBrowserState,
 ) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
-	AssetBrowserWidget::new(project)
-		.view(state)
+	AssetBrowserWidget::new(state.view_model(project))
+		.view()
 		.map(AppPanelMessage::Assets)
 		.map(PanelSystemMessage::AppMessage)
 }
