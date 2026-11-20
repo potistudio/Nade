@@ -6,6 +6,7 @@ use media::{MediaCache, Picture};
 use rayon::prelude::*;
 
 use crate::scene::{LayerKind, Scene, SceneLayer};
+use effects::{EffectContext, Surface};
 
 /// Stateful frame renderer. Keeps decoded footage between frames, so use one
 /// per thread and feed it consecutive frames where possible.
@@ -53,6 +54,34 @@ impl Compositor {
 			opacity: layer.opacity,
 			blend: layer.blend,
 		};
+		if layer.effects.is_empty() {
+			self.draw_content(image, layer, &paint);
+			return;
+		}
+
+		// エフェクトはレイヤー単体の絵に掛け、結果を不透明度・描画モードで合成する
+		let (width, height) = image.dimensions();
+		let mut offscreen = crate::filled_buffer(width, height, Rgba([0, 0, 0, 0]));
+		let flat = Paint {
+			opacity: 1.0,
+			blend: BlendMode::Normal,
+			..paint
+		};
+		self.draw_content(&mut offscreen, layer, &flat);
+		let mut surface = Surface::from_rgba8(width as usize, height as usize, &offscreen);
+		let ctx = EffectContext {
+			scale: layer.effect_scale,
+			time: layer.time,
+			width: width as usize,
+			height: height as usize,
+		};
+		effects::apply_stack(&mut surface, &layer.effects, &ctx);
+		composite_surface(image, &surface, &paint);
+	}
+
+	/// Draw what the layer shows (before effects) with `paint`.
+	fn draw_content(&mut self, image: &mut RgbaImage, layer: &SceneLayer, paint: &Paint) {
+		let paint = *paint;
 		match &layer.kind {
 			LayerKind::Text(text) => crate::draw_text(image, text, &paint),
 			LayerKind::Solid { size, color } => draw_solid(image, &paint, *size, *color),
@@ -115,6 +144,35 @@ pub(crate) fn composite(pixel: &mut [u8], source: [f32; 4], blend: BlendMode) {
 		pixel[channel] = to_byte(out);
 	}
 	pixel[3] = to_byte(sa + ba * keep);
+}
+
+/// Blend a canvas-sized effect result onto the canvas.
+fn composite_surface(image: &mut RgbaImage, surface: &Surface, paint: &Paint) {
+	let opacity = paint.opacity.clamp(0.0, 1.0);
+	if opacity <= 0.0 {
+		return;
+	}
+	let blend = paint.blend;
+	let width = image.width() as usize;
+	let pixels: &mut [u8] = image;
+	pixels
+		.par_chunks_mut(width * 4)
+		.zip(surface.pixels.par_chunks(surface.width.max(1)))
+		.for_each(|(row, source)| {
+			for (pixel, color) in row.as_chunks_mut::<4>().0.iter_mut().zip(source) {
+				let alpha = color[3].clamp(0.0, 1.0);
+				if alpha <= 0.0 {
+					continue;
+				}
+				let premultiplied = [
+					color[0].clamp(0.0, alpha),
+					color[1].clamp(0.0, alpha),
+					color[2].clamp(0.0, alpha),
+					alpha,
+				];
+				composite(pixel.as_mut_slice(), premultiplied.map(|c| c * opacity), blend);
+			}
+		});
 }
 
 /// Canvas → layer mapping of a `size`d layer centered on its origin.
@@ -291,15 +349,15 @@ mod tests {
 	}
 
 	fn solid(transform: Transform, color: [f32; 4]) -> SceneLayer {
-		SceneLayer {
-			matrix: centered(transform),
-			opacity: transform.opacity,
-			blend: BlendMode::Normal,
-			kind: LayerKind::Solid {
+		SceneLayer::new(
+			centered(transform),
+			transform.opacity,
+			BlendMode::Normal,
+			LayerKind::Solid {
 				size: [40.0, 20.0],
 				color,
 			},
-		}
+		)
 	}
 
 	#[test]
@@ -363,6 +421,33 @@ mod tests {
 		grey.layers[0].blend = BlendMode::Screen;
 		let pixel = render_scene(&grey).get_pixel(50, 50).0;
 		assert_eq!(pixel, [192, 255, 128, 255]);
+	}
+
+	#[test]
+	fn effects_run_on_the_layer_before_opacity() {
+		let mut layer = solid(Transform::default(), [1.0, 0.0, 0.0, 1.0]);
+		layer.effects = vec![domain::LayerEffect::new(0, domain::EffectKind::Invert).evaluate(0.0)];
+		layer.opacity = 0.5;
+		let image = render_scene(&scene(vec![layer]));
+		// 赤 → シアン、半透明で黒背景に乗る
+		assert_eq!(image.get_pixel(50, 50).0, [0, 128, 128, 255]);
+		assert_eq!(
+			image.get_pixel(5, 5).0,
+			[0, 0, 0, 255],
+			"outside the layer stays untouched"
+		);
+	}
+
+	#[test]
+	fn blurred_layers_spread_past_their_bounds() {
+		let mut layer = solid(Transform::default(), [1.0, 1.0, 1.0, 1.0]);
+		let mut blur = domain::LayerEffect::new(0, domain::EffectKind::GaussianBlur);
+		blur.set_value_at(0, 0.0, 8.0);
+		layer.effects = vec![blur.evaluate(0.0)];
+		let image = render_scene(&scene(vec![layer]));
+		// 40x20 の矩形の縁 (x=30) の外側にも滲む
+		assert!(image.get_pixel(27, 50)[0] > 0);
+		assert!(image.get_pixel(50, 50)[0] > 200);
 	}
 
 	#[test]

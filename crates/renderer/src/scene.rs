@@ -1,7 +1,7 @@
 //! Render-ready description of one composition frame.
 
 use core::{Affine, BlendMode, CompositionId, MediaInfo, SceneObjectId, TextObject};
-use domain::{Composition, Instance, InstanceContent, MediaKind, Project};
+use domain::{Composition, EvaluatedEffect, Instance, InstanceContent, MediaKind, Project};
 use std::path::PathBuf;
 
 /// Where nested compositions are looked up.
@@ -67,6 +67,27 @@ pub struct SceneLayer {
 	pub opacity: f32,
 	pub blend: BlendMode,
 	pub kind: LayerKind,
+	/// Enabled effects evaluated at the frame time, applied in order.
+	pub effects: Vec<EvaluatedEffect>,
+	/// Output pixels per composition pixel, for sizing effect parameters.
+	pub effect_scale: f32,
+	/// Composition time of the frame (animated effects such as noise).
+	pub time: f32,
+}
+
+impl SceneLayer {
+	/// A plain layer without effects.
+	pub fn new(matrix: Affine, opacity: f32, blend: BlendMode, kind: LayerKind) -> Self {
+		Self {
+			matrix,
+			opacity,
+			blend,
+			kind,
+			effects: Vec::new(),
+			effect_scale: 1.0,
+			time: 0.0,
+		}
+	}
 }
 
 /// Everything needed to draw one frame, back to front.
@@ -124,7 +145,7 @@ fn build(
 				Some(id) => nested_layer(id, instance, time, matrix, library, stack)?,
 				None => layer_kind(composition.id(), instance, time)?,
 			};
-			scene_layer(instance, time, matrix, kind)
+			scene_layer(instance, time, factor, matrix, kind)
 		})
 		.collect();
 	stack.pop();
@@ -159,16 +180,16 @@ fn nested_layer(
 	})
 }
 
-fn scene_layer(instance: &Instance, time: f32, matrix: Affine, kind: LayerKind) -> Option<SceneLayer> {
+fn scene_layer(instance: &Instance, time: f32, factor: f32, matrix: Affine, kind: LayerKind) -> Option<SceneLayer> {
 	let opacity = instance.property_at(domain::TransformProperty::Opacity, time);
 	if opacity <= 0.0 {
 		return None;
 	}
 	Some(SceneLayer {
-		matrix,
-		opacity,
-		blend: instance.blend_mode,
-		kind,
+		effects: instance.effects_at(time),
+		effect_scale: factor,
+		time,
+		..SceneLayer::new(matrix, opacity, instance.blend_mode, kind)
 	})
 }
 
