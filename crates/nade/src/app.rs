@@ -9,7 +9,7 @@ use iced::time::{Duration, Instant};
 use iced::widget::{column, container, stack};
 use iced::{Animation, Element, Length, Size, Subscription, Task};
 use nade_asset_browser::{AssetBrowserMessage, AssetBrowserRequest, AssetBrowserState};
-use nade_browser_panel::{ObjectId, ProjectPaneMessage, ProjectPaneState};
+use nade_browser_panel::{ObjectId, ProjectPaneMessage, ProjectPaneState, ProjectPaneUpdate};
 use nade_constants::icons::Icon;
 use nade_curve_editor_panel::{CurveEditorMessage, CurveEditorState};
 use nade_inspector_panel::{EffectEdit, InspectorMessage, PropertyGroup};
@@ -1820,58 +1820,22 @@ impl NadeApp {
 	}
 
 	fn apply_project_message(&mut self, msg: ProjectPaneMessage) {
-		match msg {
-			ProjectPaneMessage::ToggleExpand(id) => {
-				self.toggle_expand(id);
-			}
-			ProjectPaneMessage::Select(id) => {
-				self.select_object(id);
-			}
-			ProjectPaneMessage::ClearSelection => {
-				self.project_pane.selected_id = None;
-				self.timeline.state.clear_selection();
-			}
-			ProjectPaneMessage::OpenItem(id) => {
-				self.open_item(id);
-			}
-			ProjectPaneMessage::NewComposition => {
-				self.create_composition();
-			}
-			ProjectPaneMessage::AddObject => {
-				self.add_object_under_selection();
-			}
-		}
-	}
-
-	fn toggle_expand(&mut self, id: CompositionId) {
-		if self.project_pane.expanded_ids.contains(&id) {
-			self.project_pane.expanded_ids.remove(&id);
-		} else {
-			self.project_pane.expanded_ids.insert(id);
-		}
-	}
-
-	fn open_item(&mut self, id: ObjectId) {
-		// コンポレイヤーのダブルクリックは中身のコンポを開く（AE と同じ）
-		if let ObjectId::Instance { composition, instance } = id
-			&& let Some(nested) = self
-				.project
-				.composition(&composition)
-				.and_then(|comp| comp.get(instance))
-				.and_then(|layer| layer.content().as_composition())
-			&& self.project.composition(&nested).is_some()
-		{
-			self.open_item(ObjectId::Composition(nested));
-			return;
-		}
-		self.select_object(id);
-		if let ObjectId::Composition(composition_id) = id {
-			self.project_pane.expanded_ids.insert(composition_id);
+		match self.project_pane.apply(&self.project, msg) {
+			Some(ProjectPaneUpdate::SelectionChanged(id)) => self.apply_selection_consequences(id),
+			Some(ProjectPaneUpdate::SelectionCleared) => self.timeline.state.clear_selection(),
+			Some(ProjectPaneUpdate::NewComposition) => self.create_composition(),
+			Some(ProjectPaneUpdate::AddObject) => self.add_object_under_selection(),
+			None => {}
 		}
 	}
 
 	fn select_object(&mut self, id: ObjectId) {
 		self.project_pane.selected_id.replace(id);
+		self.apply_selection_consequences(id);
+	}
+
+	/// 選択をタイムライン・プレビュー・カーブエディタへ波及させる
+	fn apply_selection_consequences(&mut self, id: ObjectId) {
 		match id {
 			ObjectId::Composition(composition_id) => {
 				self.rebuild_timeline_for_composition(composition_id);
@@ -2820,7 +2784,8 @@ impl NadeApp {
 	/// Show the composition the selected comp layer plays (AE: double-click).
 	fn open_nested_composition(&mut self) {
 		if let Some(id @ ObjectId::Instance { .. }) = self.project_pane.selected_id {
-			self.open_item(id);
+			let target = self.project_pane.open(&self.project, id);
+			self.apply_selection_consequences(target);
 		}
 	}
 
