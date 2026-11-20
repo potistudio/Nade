@@ -48,15 +48,11 @@ pub fn glow(surface: &mut Surface, ctx: &EffectContext, threshold: f32, radius: 
 	}
 	let knee = (1.0 - threshold).max(1e-3);
 	let mut highlights = surface.generate(|x, y| {
+		// 最も明るいチャンネルで閾値を判定し、元の色のまま光らせる
 		let (color, alpha) = unpremultiply(surface.get(x, y));
-		let bright = color.map(|c| ((c - threshold) / knee).max(0.0));
-		let strength = bright[0].max(bright[1]).max(bright[2]).min(1.0);
-		[
-			bright[0] * alpha,
-			bright[1] * alpha,
-			bright[2] * alpha,
-			strength * alpha,
-		]
+		let peak = color[0].max(color[1]).max(color[2]);
+		let strength = ((peak - threshold) / knee).clamp(0.0, 1.0) * alpha;
+		[color[0] * strength, color[1] * strength, color[2] * strength, strength]
 	});
 	let sigma = sigma_for(radius * ctx.scale);
 	gaussian(&mut highlights, sigma, sigma);
