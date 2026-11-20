@@ -26,9 +26,10 @@ const QUIT_ID: &str = "app.quit";
 const ABOUT_ID: &str = "app.about";
 const ABOUT_NAME: &str = "Nade";
 const ABOUT_COPYRIGHT: &str = "Copyright © 2026 POTI. All rights reserved.";
-/// The panel draws a plain credits string in Helvetica; the rest of the panel
-/// is set in the system font, so the credits have to ask for it explicitly.
-const ABOUT_CREDITS_FONT_SIZE: f64 = 11.0;
+/// The panel draws a plain credits string in Helvetica 12; the rest of the
+/// panel is set in the system font at 10, so the credits have to ask for it
+/// explicitly.
+const ABOUT_CREDITS_FONT_SIZE: f64 = 10.0;
 const ABOUT_ICON: &[u8] = include_bytes!("../../../../assets/icons/x1024.png");
 
 struct NativeMenu {
@@ -196,8 +197,8 @@ fn show_about_panel() {
 	unsafe { NSApplication::sharedApplication(mtm).orderFrontStandardAboutPanelWithOptions(&options) };
 }
 
-/// The credits keep the system font; the panel would draw a plain string in
-/// Helvetica.
+/// The credits keep the system font and size; the panel would draw a plain
+/// string in Helvetica 12.
 fn about_credits_attributed() -> Retained<NSAttributedString> {
 	let font = NSFont::systemFontOfSize(ABOUT_CREDITS_FONT_SIZE);
 	let attributes = NSDictionary::<NSString, AnyObject>::from_retained_objects(
