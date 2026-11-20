@@ -98,6 +98,33 @@ impl<'a> AssetBrowserWidget<'a> {
 	}
 }
 
+/// The dragged row that follows the pointer while an asset is dragged out:
+/// the selected-row pill with the asset's glyph and name. Not interactive,
+/// so it can float over other panels without taking their input.
+pub fn drag_ghost<'a, Message: 'a>(label: &'a str, kind: AssetType) -> Element<'a, Message> {
+	let (glyph, _) = kind_glyph(kind);
+	container(
+		row![
+			icon(glyph, 14.0, TEXT_PRIMARY_COLOR_INVERTED),
+			ui_label(label, FONT_LABEL).color(TEXT_PRIMARY_COLOR_INVERTED),
+		]
+		.spacing(SPACE_3)
+		.align_y(Alignment::Center),
+	)
+	.height(ROW_HEIGHT)
+	.align_y(Alignment::Center)
+	.padding([0.0, SPACE_4])
+	.style(|theme| {
+		let pill = widgets::list_row(true)(theme);
+		container::Style {
+			background: pill.background.map(|background| background.scale_alpha(0.85)),
+			shadow: widgets::float_shadow(1.0),
+			..pill
+		}
+	})
+	.into()
+}
+
 /// Widget ID of the in-place rename field, for focusing it once it appears.
 pub fn rename_input_id() -> iced::widget::Id {
 	iced::widget::Id::new("asset-browser-rename")
