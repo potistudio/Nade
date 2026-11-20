@@ -29,6 +29,10 @@ pub struct Composition {
 	/// Background color (linear RGBA, 0..1)
 	background: [f32; 4],
 
+	/// Work area `[start, end]` in seconds (None = whole composition).
+	#[serde(default)]
+	work_area: Option<[f32; 2]>,
+
 	/// Vector of instances in the composition
 	instances: Vec<Instance>,
 }
@@ -46,6 +50,7 @@ impl Composition {
 			start_time: 0.0,
 			end_time: 10.0, // デフォルトの終了時間は10秒
 			background: [0.0, 0.0, 0.0, 1.0],
+			work_area: None,
 			instances: Vec::new(),
 		}
 	}
@@ -94,6 +99,46 @@ impl Composition {
 
 	pub fn set_background(&mut self, color: [f32; 4]) {
 		self.background = color.map(|channel| channel.clamp(0.0, 1.0));
+	}
+
+	/// Range previews loop over and exports render (After Effects' work
+	/// area), clamped to the composition.
+	pub fn work_area(&self) -> [f32; 2] {
+		let duration = self.duration();
+		let frame = 1.0 / self.fps.max(1.0);
+		match self.work_area {
+			Some([start, end]) => {
+				let start = start.clamp(0.0, (duration - frame).max(0.0));
+				[start, end.clamp(start + frame, duration.max(start + frame))]
+			}
+			None => [0.0, duration],
+		}
+	}
+
+	/// Whether the work area is narrower than the composition.
+	pub fn has_work_area(&self) -> bool {
+		let [start, end] = self.work_area();
+		start > 1e-4 || end < self.duration() - 1e-4
+	}
+
+	/// B: work area begins at `time` (the end moves out if needed).
+	pub fn set_work_area_start(&mut self, time: f32) {
+		let [_, end] = self.work_area();
+		let start = time.clamp(0.0, self.duration());
+		let end = if end > start { end } else { self.duration() };
+		self.work_area = Some([start, end]);
+	}
+
+	/// N: work area ends at `time` (the start moves in if needed).
+	pub fn set_work_area_end(&mut self, time: f32) {
+		let [start, _] = self.work_area();
+		let end = time.clamp(0.0, self.duration());
+		let start = if start < end { start } else { 0.0 };
+		self.work_area = Some([start, end]);
+	}
+
+	pub fn clear_work_area(&mut self) {
+		self.work_area = None;
 	}
 
 	/// End of the last layer in seconds.
@@ -439,6 +484,23 @@ mod tests {
 		composition.set_parent(child, Some(parent), 0.0);
 		composition.remove(parent);
 		assert_eq!(composition.get(child).unwrap().parent, None);
+	}
+
+	#[test]
+	fn work_area_stays_inside_the_composition() {
+		let mut composition = Composition::new(CompositionId::new(0), "Test", 100, 100, 10.0);
+		assert_eq!(composition.work_area(), [0.0, 10.0]);
+		assert!(!composition.has_work_area());
+		composition.set_work_area_start(2.0);
+		composition.set_work_area_end(6.0);
+		assert_eq!(composition.work_area(), [2.0, 6.0]);
+		// 終点より後ろに始点を置くと終点はコンポ終端へ
+		composition.set_work_area_start(7.0);
+		assert_eq!(composition.work_area(), [7.0, 10.0]);
+		composition.set_duration(8.0);
+		assert_eq!(composition.work_area(), [7.0, 8.0]);
+		composition.clear_work_area();
+		assert!(!composition.has_work_area());
 	}
 
 	#[test]

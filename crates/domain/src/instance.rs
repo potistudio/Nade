@@ -113,6 +113,38 @@ impl TransformAnimation {
 		}
 	}
 
+	/// Move every key of every channel by `delta` seconds.
+	pub fn shift(&mut self, delta: f32) {
+		for curve in self.curves.iter_mut().chain(self.anchor.iter_mut()) {
+			curve.shift_times(delta);
+		}
+	}
+
+	/// Times of all keys on every channel (unsorted, may repeat).
+	pub fn key_times(&self) -> impl Iterator<Item = f32> + '_ {
+		self.curves
+			.iter()
+			.chain(self.anchor.iter())
+			.flat_map(|curve| curve.keys().iter().map(|key| key.time))
+	}
+
+	/// Easy Ease every key sitting on `time` (all keys when `time` is None).
+	/// Returns how many keys changed.
+	pub fn easy_ease(&mut self, time: Option<f32>) -> usize {
+		let mut count = 0;
+		for property in TransformProperty::ALL {
+			let curve = self.curve_mut(property);
+			let ids: Vec<u64> = match time {
+				Some(time) => curve.key_at(time).map(|key| key.id).into_iter().collect(),
+				None => curve.keys().iter().map(|key| key.id).collect(),
+			};
+			for id in ids {
+				count += usize::from(curve.easy_ease(id));
+			}
+		}
+		count
+	}
+
 	pub fn evaluate(&self, base: Transform, time: f32) -> Transform {
 		let mut result = base;
 		for property in TransformProperty::ALL {
@@ -433,6 +465,55 @@ impl Instance {
 		self.start_time + self.duration
 	}
 
+	/// Move the layer in time; its keyframes move with it.
+	pub fn move_to(&mut self, start: f32) {
+		let delta = start - self.start_time;
+		self.start_time = start;
+		self.animation.shift(delta);
+	}
+
+	/// Footage length when the layer plays timed media.
+	fn source_length(&self) -> Option<f32> {
+		self.content
+			.is_timed_media()
+			.then(|| self.content.as_media().and_then(|source| source.info.duration))
+			.flatten()
+	}
+
+	/// Alt+[: move the in point to `time`, keeping the out point and the
+	/// footage in place. Returns `false` when nothing would remain.
+	pub fn trim_in(&mut self, time: f32) -> bool {
+		const MIN: f32 = 1.0 / 240.0;
+		let end = self.end_time();
+		// フッテージの先頭より前には伸ばせない
+		let time = if self.source_length().is_some() {
+			time.max(self.start_time - self.source_offset)
+		} else {
+			time
+		};
+		if time >= end - MIN {
+			return false;
+		}
+		self.source_offset = (self.source_offset + time - self.start_time).max(0.0);
+		self.start_time = time;
+		self.duration = end - time;
+		true
+	}
+
+	/// Alt+]: move the out point to `time` (not past the footage end).
+	pub fn trim_out(&mut self, time: f32) -> bool {
+		const MIN: f32 = 1.0 / 240.0;
+		let mut duration = time - self.start_time;
+		if let Some(length) = self.source_length() {
+			duration = duration.min(length - self.source_offset);
+		}
+		if duration < MIN {
+			return false;
+		}
+		self.duration = duration;
+		true
+	}
+
 	/// Whether the layer is shown at composition time `time`.
 	pub fn is_active_at(&self, time: f32) -> bool {
 		time >= self.start_time && time < self.end_time()
@@ -591,5 +672,22 @@ mod tests {
 		let mut animation = TransformAnimation::default();
 		animation.curve_mut(TransformProperty::Opacity).add_key(0.0, 2.0);
 		assert_eq!(animation.evaluate(Transform::default(), 0.0).opacity, 1.0);
+	}
+
+	#[test]
+	fn moving_and_trimming_keep_keys_and_footage_in_place() {
+		let mut instance = Instance::new(InstanceId::new(0), NodeId::new(0), "Clip", 1.0, 4.0);
+		instance.toggle_key_at(TransformProperty::Opacity, 2.0);
+		instance.move_to(3.0);
+		assert_eq!(instance.start_time(), 3.0);
+		assert_eq!(instance.animation.curve(TransformProperty::Opacity).keys()[0].time, 4.0);
+
+		assert!(instance.trim_in(4.0));
+		assert_eq!((instance.start_time(), instance.end_time()), (4.0, 7.0));
+		assert_eq!(instance.source_offset, 1.0);
+		assert!(instance.trim_out(5.5));
+		assert_eq!(instance.end_time(), 5.5);
+		assert!(!instance.trim_out(3.0), "out point cannot pass the in point");
+		assert_eq!(instance.animation.easy_ease(Some(4.0)), 1);
 	}
 }

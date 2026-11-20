@@ -202,6 +202,32 @@ impl AnimationCurve {
 			.map(|key| key.time)
 	}
 
+	/// Move every key by `delta` seconds (the layer moved in time).
+	pub fn shift_times(&mut self, delta: f32) {
+		for key in &mut self.keys {
+			key.time += delta;
+		}
+	}
+
+	/// After Effects' Easy Ease (F9): flat Bezier handles reaching a third of
+	/// the way to the neighbouring keys, so motion eases in and out.
+	pub fn easy_ease(&mut self, id: u64) -> bool {
+		let Some(index) = self.keys.iter().position(|key| key.id == id) else {
+			return false;
+		};
+		let time = self.keys[index].time;
+		let previous = index.checked_sub(1).map(|previous| self.keys[previous].time);
+		let next = self.keys.get(index + 1).map(|key| key.time);
+		let key = &mut self.keys[index];
+		key.interpolation = Interpolation::Bezier;
+		key.left_handle = [
+			previous.map_or(-DEFAULT_HANDLE_TIME, |previous| (previous - time) / 3.0),
+			0.0,
+		];
+		key.right_handle = [next.map_or(DEFAULT_HANDLE_TIME, |next| (next - time) / 3.0), 0.0];
+		true
+	}
+
 	pub fn bounds(&self) -> Option<([f32; 2], [f32; 2])> {
 		let first = self.keys.first()?;
 		let mut min = [first.time, first.value];
@@ -330,5 +356,23 @@ mod tests {
 		assert_eq!(curve.next_key_time(1.0), Some(3.0));
 		assert_eq!(curve.next_key_time(3.0), None);
 		assert_eq!(curve.previous_key_time(0.5), None);
+	}
+
+	#[test]
+	fn easy_ease_flattens_handles_to_a_third() {
+		let mut curve = AnimationCurve::default();
+		curve.add_key(0.0, 0.0);
+		let middle = curve.add_key(3.0, 10.0);
+		curve.add_key(4.5, 0.0);
+		curve.set_interpolation(middle, Interpolation::Linear);
+		assert!(curve.easy_ease(middle));
+		let key = curve.key(middle).unwrap();
+		assert_eq!(key.interpolation, Interpolation::Bezier);
+		assert_eq!(key.left_handle, [-1.0, 0.0]);
+		assert_eq!(key.right_handle, [0.5, 0.0]);
+
+		curve.shift_times(1.0);
+		assert_eq!(curve.keys()[0].time, 1.0);
+		assert_eq!(curve.evaluate(0.0, 4.0), 10.0);
 	}
 }
