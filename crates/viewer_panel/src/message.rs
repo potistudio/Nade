@@ -68,3 +68,25 @@ pub enum TransportMessage {
 	PreviousEditPoint,
 	NextEditPoint,
 }
+
+/// Shell work after the viewer state applied a message: preview
+/// refreshes and app-level actions it cannot perform itself.
+#[derive(Debug, Clone, Copy)]
+pub enum ViewerRequest {
+	/// Re-render the preview (e.g. resolution changed).
+	RefreshPreview,
+	/// Transport bar / shortcut action.
+	Transport(TransportMessage),
+	/// Select (or deselect) a layer in the composition.
+	SelectLayer(Option<InstanceId>),
+	/// Move the selected layer (parent-space delta).
+	MoveLayer { delta: [f32; 2] },
+	/// Set the selected layer's scale.
+	ScaleLayer { scale: [f32; 2] },
+	/// Move the anchor while preserving the look (Pan Behind).
+	MoveAnchor { anchor: [f32; 2], position: [f32; 2] },
+	/// Rotate the selected layer.
+	RotateLayer { degrees: f32 },
+	/// Place a text layer with the text tool.
+	CreateText { position: [f32; 2] },
+}
