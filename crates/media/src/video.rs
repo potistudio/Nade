@@ -206,7 +206,7 @@ pub(crate) mod tests {
 		for (time, frame) in [(0.0, 0), (1.0 / 30.0, 1), (0.1, 3), (0.5, 15), (0.2, 6), (1.99, 59)] {
 			let picture = decoder.frame_at(time).expect("frame decodes");
 			assert_eq!(picture.dimensions(), (64, 36));
-			let expected = (frame * 4) as i32;
+			let expected = frame * 4;
 			assert!(
 				(i32::from(red(&picture)) - expected).abs() <= 2,
 				"time {time}: expected red {expected}, got {}",

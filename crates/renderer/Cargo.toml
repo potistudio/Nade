@@ -17,6 +17,7 @@ effects = { workspace = true }
 encoder = { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }
+media = { workspace = true }
 image = "0.25.10"
 rayon = "1.12.0"
 swash = "0.2.10"

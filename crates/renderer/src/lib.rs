@@ -2,6 +2,12 @@
 //!
 //! エフェクトベースのレンダリングシステムを提供します。
 
+mod compositor;
+mod scene;
+
+pub use compositor::{Compositor, render_scene};
+pub use scene::{LayerKind, Scene, SceneLayer};
+
 use anyhow::Result;
 use core::{FrameBuffer, RectangleObject, RenderContext, RgbColor, SceneObjectData, TextObject};
 use domain::Composition;
@@ -128,7 +134,7 @@ pub fn render_frame_with_composition(
 /// `ImageBuffer::from_pixel` はピクセル単位のループで塗るため、1920x1080 では
 /// デバッグビルドで 50ms 近くかかる。4バイトのパターンを倍々にコピーすることで
 /// 塗りつぶしを O(log n) 回の memcpy に落とす。
-fn filled_buffer(width: u32, height: u32, color: Rgba<u8>) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+pub(crate) fn filled_buffer(width: u32, height: u32, color: Rgba<u8>) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
 	let len = width as usize * height as usize * 4;
 	let mut data = vec![0u8; len];
 	if len >= 4 {
@@ -297,7 +303,12 @@ pub fn measure_text(font_path: &str, text: &str, font_size: f32, spacing: f32) -
 	Some([max_width, line_height * lines as f32 - metrics.leading])
 }
 
-fn draw_text(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, text: &TextObject, canvas_width: u32, canvas_height: u32) {
+pub(crate) fn draw_text(
+	img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+	text: &TextObject,
+	canvas_width: u32,
+	canvas_height: u32,
+) {
 	if text.text.is_empty() || text.font_size <= 0.0 {
 		return;
 	}
