@@ -105,6 +105,8 @@ pub struct TimelineWidget<'a> {
 	duration: Option<f32>,
 	/// Keyframe times per clip id (absolute composition time).
 	keyframes: HashMap<usize, Vec<f32>>,
+	/// Work area `[start, end]` (seconds).
+	work_area: Option<[f32; 2]>,
 }
 
 //* -------- Public API -------- */
@@ -120,7 +122,14 @@ impl<'a> TimelineWidget<'a> {
 			fps: 30.0,
 			duration: None,
 			keyframes: HashMap::new(),
+			work_area: None,
 		}
+	}
+
+	/// Work area shown as a bar under the ruler; time outside it is dimmed.
+	pub fn work_area(mut self, range: [f32; 2]) -> Self {
+		self.work_area = Some(range);
+		self
 	}
 
 	/// Frame rate used for the timecode readout and ruler labels.
@@ -207,6 +216,7 @@ impl TimelineWidget<'_> {
 		self.draw_timeline_content(frame, self.state, self.model, layout.content);
 		self.draw_composition_end(frame, layout.ruler, layout.content);
 		self.draw_ruler(frame, self.state, layout.ruler, layout.content);
+		self.draw_work_area(frame, layout.ruler, layout.content);
 		self.draw_range_slider(frame, self.state, self.model, layout.range_slider);
 		self.draw_track_labels(frame, self.state, self.model, layout.track_labels);
 		self.draw_corner(
@@ -386,6 +396,43 @@ impl TimelineWidget<'_> {
 				});
 			}
 		}
+	}
+
+	/// ワークエリア: ルーラー下端のバーと、範囲外の薄い陰
+	fn draw_work_area(&self, frame: &mut canvas::Frame, ruler: Rectangle, lanes: Rectangle) {
+		let Some([start, end]) = self.work_area else {
+			return;
+		};
+		let left = self.state.time_to_x(start, lanes.x).max(lanes.x);
+		let right = self.state.time_to_x(end, lanes.x).min(lanes.x + lanes.width);
+		if right <= left {
+			return;
+		}
+		let full = self
+			.duration
+			.is_none_or(|duration| start <= 1e-4 && end >= duration - 1e-4);
+		if !full {
+			let shade = Color::from_rgba(0.0, 0.0, 0.0, 0.18);
+			let top = ruler.y + ruler.height;
+			let bottom = lanes.y + lanes.height;
+			if left > lanes.x {
+				frame.fill_rectangle(Point::new(lanes.x, top), Size::new(left - lanes.x, bottom - top), shade);
+			}
+			let lanes_right = lanes.x + lanes.width;
+			if right < lanes_right {
+				frame.fill_rectangle(
+					Point::new(right, top),
+					Size::new(lanes_right - right, bottom - top),
+					shade,
+				);
+			}
+		}
+		let accent = constants::style::ACCENT_COLOR;
+		frame.fill_rectangle(
+			Point::new(left, ruler.y + ruler.height - 4.0),
+			Size::new(right - left, 3.0),
+			Color { a: 0.75, ..accent },
+		);
 	}
 
 	/// コンポジション終端より後ろを暗くし、終端に線を引く

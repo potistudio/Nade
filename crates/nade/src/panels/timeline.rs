@@ -14,6 +14,7 @@ pub struct TimelineProps<'a> {
 	pub duration: f32,
 	/// Keyframe times per clip id.
 	pub keyframes: HashMap<usize, Vec<f32>>,
+	pub work_area: [f32; 2],
 }
 
 pub fn view<'a>(props: TimelineProps<'a>) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
@@ -21,6 +22,7 @@ pub fn view<'a>(props: TimelineProps<'a>) -> Element<'a, PanelSystemMessage<Pane
 		.frame_rate(props.fps)
 		.duration(props.duration)
 		.keyframes(props.keyframes)
+		.work_area(props.work_area)
 		.view(props.current_time)
 		.map(|message| PanelSystemMessage::AppMessage(AppPanelMessage::Timeline(message)))
 }
