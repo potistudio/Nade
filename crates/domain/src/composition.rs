@@ -3,7 +3,7 @@ use core::{CompositionId, NodeId, id::InstanceId};
 use crate::instance::Instance;
 
 /// Composition is a container that manages multiple instances and controls them over time.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Composition {
 	/// ID of the composition
 	id: CompositionId,

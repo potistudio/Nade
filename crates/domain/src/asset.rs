@@ -1,7 +1,7 @@
 use core::{AssetId, MediaInfo};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub enum AssetType {
 	Image,
 	Video,
@@ -26,7 +26,7 @@ impl AssetType {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Asset {
 	id: AssetId,
 	kind: AssetType,

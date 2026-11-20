@@ -197,17 +197,97 @@ impl Project {
 	}
 
 	//==== Update Method =======================================================
+	/// Writes the project to its file. Fails when the project was never saved.
 	pub fn save(&self) -> Result<(), std::io::Error> {
-		Ok(())
+		let path = self
+			.path
+			.as_ref()
+			.ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "project has no file yet"))?;
+		self.write_to(path)
 	}
 
-	/// Saves the project to the given file path. If the project is already saved, it updates the file path.
+	/// Saves the project to the given file path and remembers it. The project
+	/// takes the file name (without extension) as its name.
 	pub fn save_as(&mut self, path: impl Into<std::path::PathBuf>) -> Result<(), std::io::Error> {
-		//TODO: Implement save logic here
-
-		self.path = Some(path.into());
+		let path = path.into();
+		if let Some(stem) = path.file_stem() {
+			self.name = stem.to_string_lossy().into_owned();
+		}
+		self.write_to(&path)?;
+		self.path = Some(path);
 		Ok(())
 	}
+
+	fn write_to(&self, path: &Path) -> Result<(), std::io::Error> {
+		let mut compositions: Vec<&Composition> = self.compositions.values().collect();
+		compositions.sort_by_key(|comp| comp.id());
+		let file = ProjectFileRef {
+			format: PROJECT_FORMAT,
+			name: &self.name,
+			bitdepth: self.bitdepth,
+			sample_rate: self.sample_rate,
+			compositions,
+			assets: &self.assets,
+			nodes: self.nodes.len(),
+		};
+		let json = serde_json::to_vec_pretty(&file).map_err(std::io::Error::other)?;
+		// 書き込み途中で落ちても元のファイルを壊さないよう、一時ファイルから置き換える
+		let temporary = path.with_extension("nade-tmp");
+		std::fs::write(&temporary, json)?;
+		std::fs::rename(&temporary, path)
+	}
+
+	/// Reads a project written by [`Project::save_as`].
+	pub fn open(path: impl Into<std::path::PathBuf>) -> Result<Self, std::io::Error> {
+		let path = path.into();
+		let bytes = std::fs::read(&path)?;
+		let file: ProjectFile = serde_json::from_slice(&bytes)
+			.map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+		if file.format > PROJECT_FORMAT {
+			return Err(std::io::Error::new(
+				std::io::ErrorKind::InvalidData,
+				format!("project format {} is newer than this version of Nade", file.format),
+			));
+		}
+		Ok(Self {
+			name: file.name,
+			path: Some(path),
+			bitdepth: file.bitdepth,
+			sample_rate: file.sample_rate,
+			compositions: file
+				.compositions
+				.into_iter()
+				.map(|composition| (composition.id(), composition))
+				.collect(),
+			assets: file.assets,
+			nodes: (0..file.nodes).map(|index| Node::new(NodeId::new(index))).collect(),
+		})
+	}
+}
+
+/// Version of the `.nade` file layout.
+const PROJECT_FORMAT: u32 = 1;
+
+#[derive(serde::Serialize)]
+struct ProjectFileRef<'a> {
+	format: u32,
+	name: &'a str,
+	bitdepth: BitDepth,
+	sample_rate: SampleRate,
+	compositions: Vec<&'a Composition>,
+	assets: &'a [Asset],
+	nodes: usize,
+}
+
+#[derive(serde::Deserialize)]
+struct ProjectFile {
+	format: u32,
+	name: String,
+	bitdepth: BitDepth,
+	sample_rate: SampleRate,
+	compositions: Vec<Composition>,
+	assets: Vec<Asset>,
+	nodes: usize,
 }
 
 /// Editable state of a project at one point in time.
@@ -276,6 +356,42 @@ mod tests {
 		project.restore(before.clone());
 		assert_eq!(project.snapshot(), before);
 		assert!(project.composition(&comp).unwrap().is_empty());
+	}
+
+	#[test]
+	fn save_and_open_round_trip() {
+		let dir = std::env::temp_dir().join(format!("nade-project-{}", std::process::id()));
+		std::fs::create_dir_all(&dir).unwrap();
+		let path = dir.join("Round Trip.nade");
+
+		let mut project = Project::default();
+		let folder = project.create_folder("Assets", None);
+		let clip = project.import_media("/tmp/clip.mp4", Some(folder)).unwrap();
+		project.asset_mut(clip).unwrap().media_info = Some(core::MediaInfo::still(4, 4));
+		let comp = project.create_composition("Main", 1280, 720, 24.0);
+		let node = project.create_node();
+		{
+			let composition = project.composition_mut(&comp).unwrap();
+			composition.set_background([0.1, 0.2, 0.3, 1.0]);
+			let layer = composition.add_instance_named(node, "Title");
+			layer.set_content(crate::InstanceContent::text("Hello"));
+			layer
+				.animation
+				.curve_mut(crate::TransformProperty::Opacity)
+				.add_key(1.0, 0.5);
+			layer.source_offset = 0.25;
+		}
+		assert!(project.save().is_err(), "unsaved projects need a path");
+		project.save_as(&path).unwrap();
+		assert_eq!(project.name(), "Round Trip");
+
+		let opened = Project::open(&path).unwrap();
+		assert_eq!(opened.snapshot(), project.snapshot());
+		assert_eq!(opened.name(), "Round Trip");
+		assert_eq!(opened.path(), Some(&path));
+		assert_eq!(opened.asset(clip), project.asset(clip));
+		assert_eq!(opened.nodes().len(), 1);
+		assert!(Project::open(dir.join("missing.nade")).is_err());
 	}
 
 	#[test]

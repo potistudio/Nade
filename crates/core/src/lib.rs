@@ -237,7 +237,7 @@ pub fn update(mut model: Model, msg: Msg) -> (Model, Vec<CoreEffect>) {
 // =============================================================================
 
 /// 3次元トランスフォーム
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Transform {
 	pub position: [f32; 3],
 	pub rotation: [f32; 3],

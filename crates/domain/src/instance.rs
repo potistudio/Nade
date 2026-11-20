@@ -78,7 +78,7 @@ impl TransformProperty {
 }
 
 /// Keyframe curves for every scalar transform channel.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransformAnimation {
 	curves: [AnimationCurve; 10],
 }
@@ -103,7 +103,7 @@ impl TransformAnimation {
 }
 
 /// Kind of footage a media layer plays.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum MediaKind {
 	Image,
 	Video,
@@ -111,7 +111,7 @@ pub enum MediaKind {
 }
 
 /// Footage referenced by a media layer.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MediaSource {
 	/// Asset the layer was created from.
 	pub asset: AssetId,
@@ -137,7 +137,7 @@ impl MediaSource {
 }
 
 /// インスタンスが持つ描画コンテンツ
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum InstanceContent {
 	/// 中身のないプレースホルダ
 	#[default]
@@ -269,7 +269,7 @@ impl InstanceContent {
 }
 
 /// コンポジション上のインスタンス（タイムラインクリップのソース）
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Instance {
 	/// ID of the instance
 	id: InstanceId,

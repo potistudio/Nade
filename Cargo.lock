@@ -1208,6 +1208,8 @@ name = "domain"
 version = "0.0.1"
 dependencies = [
  "core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

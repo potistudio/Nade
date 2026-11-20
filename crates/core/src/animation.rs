@@ -1,10 +1,12 @@
 //! Scalar keyframe animation curves.
 
+use serde::{Deserialize, Serialize};
+
 const KEY_TIME_EPSILON: f32 = 0.0001;
 const DEFAULT_HANDLE_TIME: f32 = 1.0 / 3.0;
 
 /// Interpolation used from a keyframe to the following keyframe.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Interpolation {
 	#[default]
 	Bezier,
@@ -20,7 +22,7 @@ pub enum HandleSide {
 }
 
 /// A scalar keyframe. Handle values are offsets from `(time, value)`.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Keyframe {
 	pub id: u64,
 	pub time: f32,
@@ -52,7 +54,7 @@ impl Keyframe {
 }
 
 /// An ordered collection of scalar keyframes.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct AnimationCurve {
 	keys: Vec<Keyframe>,
 	next_id: u64,

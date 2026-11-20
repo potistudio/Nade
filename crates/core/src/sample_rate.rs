@@ -1,5 +1,5 @@
 /// Represents the sample rate of audio data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SampleRate {
 	Hz44100,
 	Hz48000,
