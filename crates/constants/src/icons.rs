@@ -77,6 +77,7 @@ icon_set! {
 	SkipStart => "skip_start",
 	Solo => "solo",
 	Sparkle => "sparkle",
+	Spinner => "spinner",
 	StepBack => "step_back",
 	StepForward => "step_forward",
 	Stopwatch => "stopwatch",
