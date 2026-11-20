@@ -79,6 +79,11 @@ impl Project {
 		self.assets.iter().map(|asset| asset.id()).collect()
 	}
 
+	/// Iterates over every asset in insertion order (no allocation).
+	pub fn iter_assets(&self) -> impl Iterator<Item = &Asset> {
+		self.assets.iter()
+	}
+
 	/// Returns IDs of root assets (no parent) for the project tree.
 	pub fn root_assets(&self) -> Vec<AssetId> {
 		self.assets
