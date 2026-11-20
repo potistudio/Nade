@@ -61,6 +61,12 @@ pub struct AnimationCurve {
 }
 
 impl AnimationCurve {
+	/// A curve without keys (usable in statics).
+	pub const EMPTY: Self = Self {
+		keys: Vec::new(),
+		next_id: 0,
+	};
+
 	pub fn keys(&self) -> &[Keyframe] {
 		&self.keys
 	}

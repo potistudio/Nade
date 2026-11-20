@@ -1,6 +1,8 @@
 use core::{AnimationCurve, AssetId, BlendMode, CompositionId, MediaInfo, NodeId, Transform, id::InstanceId};
 use std::path::PathBuf;
 
+use crate::effect::{EffectKind, EvaluatedEffect, LayerEffect};
+
 /// A scalar channel of an instance transform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(usize)]
@@ -371,6 +373,10 @@ pub struct Instance {
 	/// How this layer composites onto the layers below.
 	#[serde(default)]
 	pub blend_mode: BlendMode,
+
+	/// Effect stack, applied top to bottom before compositing.
+	#[serde(default)]
+	pub effects: Vec<LayerEffect>,
 }
 
 impl Instance {
@@ -389,6 +395,7 @@ impl Instance {
 			content: InstanceContent::default(),
 			parent: None,
 			blend_mode: BlendMode::Normal,
+			effects: Vec::new(),
 		}
 	}
 
@@ -470,6 +477,72 @@ impl Instance {
 		let delta = start - self.start_time;
 		self.start_time = start;
 		self.animation.shift(delta);
+		for effect in &mut self.effects {
+			effect.shift(delta);
+		}
+	}
+
+	/// Append `kind` to the effect stack. Returns the new effect's id.
+	pub fn add_effect(&mut self, kind: EffectKind) -> u32 {
+		let id = self.effects.iter().map(|effect| effect.id + 1).max().unwrap_or(0);
+		self.effects.push(LayerEffect::new(id, kind));
+		id
+	}
+
+	pub fn effect(&self, id: u32) -> Option<&LayerEffect> {
+		self.effects.iter().find(|effect| effect.id == id)
+	}
+
+	pub fn effect_mut(&mut self, id: u32) -> Option<&mut LayerEffect> {
+		self.effects.iter_mut().find(|effect| effect.id == id)
+	}
+
+	/// Remove an effect. Returns `false` when it does not exist.
+	pub fn remove_effect(&mut self, id: u32) -> bool {
+		let before = self.effects.len();
+		self.effects.retain(|effect| effect.id != id);
+		self.effects.len() != before
+	}
+
+	/// Move an effect one step up (earlier) or down the stack.
+	pub fn move_effect(&mut self, id: u32, up: bool) -> bool {
+		let Some(index) = self.effects.iter().position(|effect| effect.id == id) else {
+			return false;
+		};
+		let target = if up { index.checked_sub(1) } else { Some(index + 1) };
+		match target {
+			Some(target) if target < self.effects.len() => {
+				self.effects.swap(index, target);
+				true
+			}
+			_ => false,
+		}
+	}
+
+	/// Enabled effects evaluated at `time`, in stack order.
+	pub fn effects_at(&self, time: f32) -> Vec<EvaluatedEffect> {
+		self.effects
+			.iter()
+			.filter(|effect| effect.enabled)
+			.map(|effect| effect.evaluate(time))
+			.collect()
+	}
+
+	/// Times of every transform and effect key (unsorted, may repeat).
+	pub fn key_times(&self) -> impl Iterator<Item = f32> + '_ {
+		self.animation
+			.key_times()
+			.chain(self.effects.iter().flat_map(LayerEffect::key_times))
+	}
+
+	/// Easy Ease transform and effect keys on `time` (all when `None`).
+	pub fn easy_ease(&mut self, time: Option<f32>) -> usize {
+		self.animation.easy_ease(time)
+			+ self
+				.effects
+				.iter_mut()
+				.map(|effect| effect.easy_ease(time))
+				.sum::<usize>()
 	}
 
 	/// Footage length when the layer plays timed media.
@@ -689,5 +762,28 @@ mod tests {
 		assert_eq!(instance.end_time(), 5.5);
 		assert!(!instance.trim_out(3.0), "out point cannot pass the in point");
 		assert_eq!(instance.animation.easy_ease(Some(4.0)), 1);
+	}
+
+	#[test]
+	fn effect_stack_edits_and_follows_the_layer() {
+		let mut instance = Instance::new(InstanceId::new(0), NodeId::new(0), "Clip", 0.0, 4.0);
+		let blur = instance.add_effect(EffectKind::GaussianBlur);
+		let tint = instance.add_effect(EffectKind::Tint);
+		assert_ne!(blur, tint);
+		assert!(instance.move_effect(tint, true));
+		assert_eq!(instance.effects[0].id, tint);
+		assert!(!instance.move_effect(tint, true), "already on top");
+
+		instance.effect_mut(blur).unwrap().toggle_key_at(0, 1.0);
+		instance.move_to(2.0);
+		assert_eq!(instance.effect(blur).unwrap().key_times().next(), Some(3.0));
+		assert!(instance.key_times().any(|time| time == 3.0));
+
+		instance.effect_mut(tint).unwrap().enabled = false;
+		let evaluated = instance.effects_at(2.0);
+		assert_eq!(evaluated.len(), 1);
+		assert_eq!(evaluated[0].kind, EffectKind::GaussianBlur);
+		assert!(instance.remove_effect(tint));
+		assert!(!instance.remove_effect(tint));
 	}
 }
