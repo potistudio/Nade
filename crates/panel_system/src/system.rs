@@ -1564,7 +1564,6 @@ impl<C: AreaKind> PanelSystem<C> {
 			outline_width: PANEL_OUTLINE_WIDTH,
 			outer_radius: nade_constants::style::PANEL_RADIUS,
 			inner_radius: nade_constants::style::PANEL_RADIUS - PANEL_OUTLINE_WIDTH,
-			exponent: nade_constants::style::PANEL_SQUIRCLE_EXPONENT,
 			panel_color: nade_constants::style::PANEL_COLOR,
 			header_color: colors::HEADER_BG,
 			outline_color: colors::PANEL_OUTLINE_COLOR,
@@ -1577,8 +1576,7 @@ impl<C: AreaKind> PanelSystem<C> {
 			chrome,
 			container(column![header, body_container].spacing(0))
 				.width(Length::Fill)
-				.height(Length::Fill)
-				.padding(PANEL_OUTLINE_WIDTH),
+				.height(Length::Fill),
 		)
 	}
 

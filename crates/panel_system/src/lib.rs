@@ -8,7 +8,6 @@ mod consts;
 mod container;
 mod drag;
 mod node;
-mod squircle;
 mod system;
 
 pub use container::Area;

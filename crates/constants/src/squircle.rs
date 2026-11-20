@@ -7,6 +7,10 @@
 use iced::Rectangle;
 use iced::widget::canvas::Path;
 
+/// Ratio between an iced-style circular radius and the extent of the
+/// continuous corner drawn by the quad shader and [`path`].
+pub const EXTENT: f32 = 2.25;
+
 /// Builds a squircle path with the same radius semantics as `iced-squircle`:
 /// the corner looks as deep as a circular arc of `radius`.
 pub fn path(rect: Rectangle, radius: f32) -> Path {
