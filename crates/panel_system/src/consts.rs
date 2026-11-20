@@ -50,10 +50,6 @@ pub mod colors {
 	};
 	pub const HEADER_SEPARATOR: Color = Color::from_rgba(0.0, 0.0, 0.0, 0.28);
 	pub const PANEL_HOVER_OUTLINE: Color = style::BORDER_ACTIVE_COLOR;
-	pub const GUTTER_ACTIVE: Color = Color {
-		a: 0.85,
-		..style::ACCENT_COLOR
-	};
 	pub const TAB_ACTIVE_BG: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.08);
 	pub const TAB_HOVER_BG: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.05);
 	pub const TAB_INSERT_MARKER: Color = style::ACCENT_COLOR;

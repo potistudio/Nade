@@ -364,15 +364,6 @@ impl<C: AreaKind> PanelSystem<C> {
 		self.focused_area = Some(area_id);
 	}
 
-	fn is_gutter_hot(&self, path: &[usize]) -> bool {
-		let resizing = matches!(&self.drag_state, DragState::Resizing { path: active, .. } if active == path);
-		let hovered = self
-			.gutter_hover
-			.as_ref()
-			.is_some_and(|(hover_path, count)| *count > 0 && hover_path == path);
-		resizing || (hovered && matches!(self.drag_state, DragState::None))
-	}
-
 	/// Toggles the menu for `area_id` in `mode`; another open menu is replaced.
 	fn toggle_editor_menu(&mut self, area_id: usize, mode: EditorMenuMode) {
 		if let Some(menu) = self
@@ -1929,39 +1920,6 @@ impl<C: AreaKind> PanelSystem<C> {
 			SplitDirection::Vertical => (Length::Fill, Length::Fixed(PANEL_GAP)),
 		};
 
-		// Hovering or dragging a split reveals a slim pill in the gutter.
-		let hot = self.is_gutter_hot(&path);
-		let indicator: Element<'a, PanelSystemMessage<C, M>> = if hot {
-			let (pill_w, pill_h): (Length, Length) = match direction {
-				SplitDirection::Horizontal => (Length::Fixed(2.0), Length::Fill),
-				SplitDirection::Vertical => (Length::Fill, Length::Fixed(2.0)),
-			};
-			container(
-				container(Space::new())
-					.width(pill_w)
-					.height(pill_h)
-					.style(|_| container::Style {
-						background: Some(colors::GUTTER_ACTIVE.into()),
-						border: iced::Border {
-							radius: 1.0.into(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-			)
-			.width(width)
-			.height(height)
-			.padding(match direction {
-				SplitDirection::Horizontal => iced::Padding::from([12.0, 0.0]),
-				SplitDirection::Vertical => iced::Padding::from([0.0, 12.0]),
-			})
-			.center_x(width)
-			.center_y(height)
-			.into()
-		} else {
-			Space::new().width(width).height(height).into()
-		};
-
 		stack![
 			container(Space::new())
 				.width(width)
@@ -1970,7 +1928,6 @@ impl<C: AreaKind> PanelSystem<C> {
 					background: Some(colors::RESIZE_HANDLE.into()),
 					..Default::default()
 				}),
-			indicator,
 			self.view_resize_hit(direction, path, width, height),
 		]
 		.width(width)
