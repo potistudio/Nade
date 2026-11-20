@@ -12,6 +12,7 @@ use crate::workspace::Workspace;
 use nade_core::{FrameData, MediaInfo};
 
 pub use nade_asset_browser::AssetBrowserMessage;
+use nade_asset_browser::ImportTicket;
 pub use nade_browser_panel::ProjectPaneMessage;
 pub use nade_viewer_panel::{PreviewMessage, Tool, TransportMessage, ViewerRequest};
 
@@ -128,12 +129,23 @@ pub enum Message {
 	SaveProjectTo(Option<PathBuf>),
 	/// 書き出し先が選ばれた（キャンセル時は None）
 	ExportTo(Option<PathBuf>),
-	/// ファイルダイアログで選ばれ、プローブ済みのメディア（キャンセル時は空）
+	/// プローブ済みのメディアを選択中の取り込み先へ追加する（開発ツール用の同期経路）
 	MediaImported(Vec<(PathBuf, Result<MediaInfo, String>)>),
+	/// ファイルダイアログでメディアが選ばれた（キャンセル時は空）
+	MediaPicked(Vec<PathBuf>),
+	/// 取り込み中のファイルのプローブが終わった
+	MediaProbed(ImportTicket, PathBuf, Result<MediaInfo, String>),
 	/// ウィンドウへファイルがドロップされた（.nade は開き、他は読み込む）
 	FileDropped(PathBuf),
+	/// ファイルがウィンドウ上へドラッグされてきた
+	FileHovered(PathBuf),
+	/// ドラッグ中のファイルがウィンドウから離れた
+	FilesHoveredLeft,
 	Menu(MenuMessage),
 	/// デバッグ用スクリーンショットの取得結果
 	#[cfg(debug_assertions)]
 	DevScreenshot(iced::window::Screenshot),
+	/// デバッグ用: プローブせずに取り込み中の行だけを出す
+	#[cfg(debug_assertions)]
+	DevStageImport(PathBuf),
 }

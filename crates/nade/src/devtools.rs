@@ -8,7 +8,9 @@
 //! Media can be staged too: `import=/path/clip.mp4;add=1;solid=1;export=/tmp/out.mp4`, and edits
 //! run with `edit=split` (`undo`, `redo`, `duplicate`, `copy`, `cut`, `paste`, `delete`, `precompose`, `work-start`, `work-end`, `move-in`,
 //! `move-out`, `trim-in`, `trim-out`, `ease`). Menus open with `menubar=edit` or
-//! `context=640,400` (window coordinates).
+//! `context=640,400` (window coordinates). Import feedback stages with
+//! `hover=/path/clip.mov` (files dragged over the window) and
+//! `importing=/path/clip.mov` (a placeholder row that never finishes).
 
 use std::path::PathBuf;
 
@@ -154,6 +156,8 @@ pub fn scene_messages(select_layer: impl Fn(&str) -> Option<AppPanelMessage>) ->
 					AppPanelMessage::Assets(nade_asset_browser::AssetBrowserMessage::AddToTimeline),
 				))],
 				"solid" => vec![Message::Shell(ShellMessage::NewSolid)],
+				"hover" => vec![Message::FileHovered(PathBuf::from(value))],
+				"importing" => vec![Message::DevStageImport(PathBuf::from(value))],
 				"export" => vec![Message::ExportTo(Some(PathBuf::from(value)))],
 				"save" => vec![Message::SaveProjectTo(Some(PathBuf::from(value)))],
 				"open" => vec![Message::ProjectChosen(Some(PathBuf::from(value)))],

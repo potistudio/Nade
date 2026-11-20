@@ -73,6 +73,8 @@ fn on_window_event(event: iced::Event, status: iced::event::Status, _id: iced::w
 		}
 		iced::Event::Window(iced::window::Event::Resized(size)) => Some(Message::WindowResized(size)),
 		iced::Event::Window(iced::window::Event::FileDropped(path)) => Some(Message::FileDropped(path)),
+		iced::Event::Window(iced::window::Event::FileHovered(path)) => Some(Message::FileHovered(path)),
+		iced::Event::Window(iced::window::Event::FilesHoveredLeft) => Some(Message::FilesHoveredLeft),
 		// 押下（キャプチャ済みを含む）でポインタ下のパネルへフォーカス
 		iced::Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => {
 			Some(Message::PanelSystem(PanelSystemMessage::FocusPointer))
@@ -698,6 +700,12 @@ impl NadeApp {
 			}
 
 			#[cfg(debug_assertions)]
+			Message::DevStageImport(path) => {
+				self.asset_browser.begin_import(&self.project, &path, self.now);
+				Task::none()
+			}
+
+			#[cfg(debug_assertions)]
 			Message::DevScreenshot(screenshot) => {
 				if let Some(capture) = &self.capture {
 					capture.save(&screenshot);
@@ -739,14 +747,42 @@ impl NadeApp {
 
 			Message::MediaImported(files) => {
 				for (path, info) in files {
-					self.import_media_path(path, info);
+					let parent = self.asset_browser.import_parent(&self.project);
+					self.import_media_path(path, info, parent);
 				}
+				Task::none()
+			}
+
+			Message::MediaPicked(paths) => {
+				let tasks: Vec<_> = paths.into_iter().map(|path| self.start_import(path)).collect();
+				Task::batch(tasks)
+			}
+
+			Message::MediaProbed(ticket, path, info) => {
+				// 別のプロジェクトを開いた後に届いた結果は捨てる
+				if let Some(pending) = self.asset_browser.finish_import(ticket) {
+					self.import_media_path(path, info, pending.parent);
+				}
+				Task::none()
+			}
+
+			Message::FileHovered(path) => {
+				// .nade や未対応の形式は取り込まないので強調しない
+				if AssetType::from_path(&path).is_some() {
+					self.asset_browser.drop_hover = true;
+				}
+				Task::none()
+			}
+
+			Message::FilesHoveredLeft => {
+				self.asset_browser.drop_hover = false;
 				Task::none()
 			}
 
 			Message::Menu(message) => self.apply_menu_message(message),
 
 			Message::FileDropped(path) => {
+				self.asset_browser.drop_hover = false;
 				if path
 					.extension()
 					.is_some_and(|extension| extension.eq_ignore_ascii_case("nade"))
@@ -754,18 +790,7 @@ impl NadeApp {
 					self.open_project(path);
 					return Task::none();
 				}
-				if nade_domain::AssetType::from_path(&path).is_none() {
-					self.show_toast(Icon::Close, "Unsupported file type");
-					return Task::none();
-				}
-				// ffprobe はブロッキングなので UI スレッドの外で回す
-				Task::perform(
-					async move {
-						let info = nade_media::probe(&path).map_err(|error| format!("{error:#}"));
-						vec![(path, info)]
-					},
-					Message::MediaImported,
-				)
+				self.start_import(path)
 			}
 
 			Message::CloseRequested(_id) => {
@@ -1210,6 +1235,8 @@ impl NadeApp {
 			|| self.inspector_ui.is_animating(self.now)
 			|| self.tool_pill.is_animating(self.now)
 			|| self.toast.as_ref().is_some_and(|toast| toast.is_active(self.now))
+			// 取り込み中の行のスピナーを回す
+			|| !self.asset_browser.importing.is_empty()
 	}
 
 	// -------------------------------------------------------------------------
@@ -2809,21 +2836,30 @@ impl NadeApp {
 				else {
 					return Vec::new();
 				};
-				// ffprobe はブロッキングなので UI スレッドの外で回す
-				handles
-					.into_iter()
-					.map(|handle| {
-						let path = handle.path().to_path_buf();
-						let info = nade_media::probe(&path).map_err(|error| format!("{error:#}"));
-						(path, info)
-					})
-					.collect()
+				handles.into_iter().map(|handle| handle.path().to_path_buf()).collect()
 			},
-			Message::MediaImported,
+			Message::MediaPicked,
 		)
 	}
 
-	fn import_media_path(&mut self, path: PathBuf, info: Result<MediaInfo, String>) {
+	/// Shows the file as an importing row right away and probes it in the
+	/// background; [`Message::MediaProbed`] finishes the import.
+	fn start_import(&mut self, path: PathBuf) -> Task<Message> {
+		let Some(ticket) = self.asset_browser.begin_import(&self.project, &path, self.now) else {
+			self.show_toast(Icon::Close, "Unsupported file type");
+			return Task::none();
+		};
+		// ffprobe はブロッキングなので UI スレッドの外で回す
+		Task::perform(
+			async move {
+				let info = nade_media::probe(&path).map_err(|error| format!("{error:#}"));
+				(path, info)
+			},
+			move |(path, info)| Message::MediaProbed(ticket, path, info),
+		)
+	}
+
+	fn import_media_path(&mut self, path: PathBuf, info: Result<MediaInfo, String>, parent: Option<AssetId>) {
 		let name = path
 			.file_name()
 			.map(|name| name.to_string_lossy().into_owned())
@@ -2836,7 +2872,6 @@ impl NadeApp {
 				return;
 			}
 		};
-		let parent = self.asset_import_parent();
 		match self.project.import_media(&path, parent) {
 			Some(id) => {
 				if let Some(asset) = self.project.asset_mut(id) {
@@ -2856,17 +2891,8 @@ impl NadeApp {
 		}
 	}
 
-	fn asset_import_parent(&self) -> Option<AssetId> {
-		let selected = self.asset_browser.selected_id?;
-		let asset = self.project.asset(selected)?;
-		match asset.kind() {
-			AssetType::Folder => Some(selected),
-			_ => asset.parent,
-		}
-	}
-
 	fn create_asset_folder(&mut self) {
-		let parent = self.asset_import_parent();
+		let parent = self.asset_browser.import_parent(&self.project);
 		let name = unique_asset_folder_name(&self.project, parent);
 		let id = self.project.create_folder(name, parent);
 		if let Some(parent_id) = parent {
@@ -3065,7 +3091,7 @@ impl NadeApp {
 			PanelContent::MainPreview => panels::preview::view(self.viewer_props()),
 			PanelContent::Inspector => panels::inspector::view(self.inspector_target(), &self.inspector_ui, self.now),
 			PanelContent::Project => panels::browser::view(&self.project, &self.project_pane),
-			PanelContent::Assets => panels::assets::view(&self.project, &self.asset_browser),
+			PanelContent::Assets => panels::assets::view(&self.project, &self.asset_browser, self.now),
 		}
 	}
 
