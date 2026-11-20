@@ -141,6 +141,8 @@ pub enum Message {
 	FileHovered(PathBuf),
 	/// ドラッグ中のファイルがウィンドウから離れた
 	FilesHoveredLeft,
+	/// アセットを押している間だけ届くポインタ位置（ウィンドウ座標）
+	PointerMoved(iced::Point),
 	Menu(MenuMessage),
 	/// デバッグ用スクリーンショットの取得結果
 	#[cfg(debug_assertions)]

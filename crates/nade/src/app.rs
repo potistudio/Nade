@@ -14,7 +14,9 @@ use nade_constants::icons::Icon;
 use nade_curve_editor_panel::{CurveEditorMessage, CurveEditorState};
 use nade_inspector_panel::{EditContext, InspectorMessage, apply_layer_edit};
 use nade_panel_system::{PanelSystem, PanelSystemMessage};
-use nade_timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
+use nade_timeline_panel::{
+	DropPreview, TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -55,6 +57,14 @@ fn store_cursor(position: iced::Point) {
 	CURSOR.store(bits, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// アセットの行を押している間だけ、ポインタ移動をメッセージとして流す
+/// （常に流すと移動のたびに update が走るため）
+static TRACK_POINTER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn set_pointer_tracking(enabled: bool) {
+	TRACK_POINTER.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn last_cursor() -> iced::Point {
 	let bits = CURSOR.load(std::sync::atomic::Ordering::Relaxed);
 	iced::Point::new(f32::from_bits((bits >> 32) as u32), f32::from_bits(bits as u32))
@@ -65,7 +75,9 @@ fn on_window_event(event: iced::Event, status: iced::event::Status, _id: iced::w
 	match event {
 		iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
 			store_cursor(position);
-			None
+			TRACK_POINTER
+				.load(std::sync::atomic::Ordering::Relaxed)
+				.then_some(Message::PointerMoved(position))
 		}
 		// 右クリック: 押した対象を選択したうえでコンテキストメニューを開く
 		iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Right)) => {
@@ -194,6 +206,34 @@ impl Default for TimelinePanelState {
 	}
 }
 
+/// Pointer travel before a pressed asset row turns into a drag.
+const ASSET_DRAG_THRESHOLD: f32 = 4.0;
+
+/// A media asset row being pressed, and dragged once it moved far enough.
+#[derive(Debug, Clone, Copy)]
+struct AssetDrag {
+	asset: AssetId,
+	origin: iced::Point,
+	position: iced::Point,
+	active: bool,
+}
+
+/// Track a dropped asset goes to.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct TrackPlacement {
+	track: usize,
+	/// Open a new track at `track` first (the slot there is taken).
+	insert: bool,
+}
+
+/// Where a dragged asset would land on the timeline right now.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct AssetDrop {
+	start: f32,
+	duration: f32,
+	placement: TrackPlacement,
+}
+
 /// Keys being dragged on the timeline, pinned when the drag starts.
 struct KeyDragSession {
 	clip_id: usize,
@@ -277,6 +317,8 @@ pub(super) struct NadeApp {
 	clipboard: Vec<Instance>,
 	/// マウスボタン押下中（ドラッグ中は履歴を確定しない）
 	pointer_down: bool,
+	/// アセットブラウザからタイムラインへのドラッグ
+	asset_drag: Option<AssetDrag>,
 	/// 実行中の書き出し
 	export: Option<ExportTask>,
 	/// 再生中の音声
@@ -340,6 +382,7 @@ impl NadeApp {
 			history: History::with_snapshot(project_for_history),
 			clipboard: Vec::new(),
 			pointer_down: false,
+			asset_drag: None,
 			export: None,
 			audio: nade_audio::AudioPreview::new(),
 			audio_started: None,
@@ -544,6 +587,7 @@ impl NadeApp {
 			Message::PointerReleased | Message::PanelSystem(PanelSystemMessage::PointerReleased) => {
 				self.pointer_down = false;
 				self.key_drag = None;
+				self.finish_asset_drag();
 			}
 			_ => {}
 		}
@@ -604,6 +648,9 @@ impl NadeApp {
 				if self.panel_system.is_move_dragging() {
 					self.panel_system
 						.update(PanelSystemMessage::<_, AppPanelMessage>::CancelDrag);
+					Task::none()
+				} else if self.asset_drag.is_some_and(|drag| drag.active) {
+					self.cancel_asset_drag();
 					Task::none()
 				} else if self.asset_browser.rename.is_some() {
 					// 編集欄は Esc で自分のフォーカスを外して処理済みにするため、未処理かどうかは問わない
@@ -776,6 +823,17 @@ impl NadeApp {
 
 			Message::FilesHoveredLeft => {
 				self.asset_browser.drop_hover = false;
+				Task::none()
+			}
+
+			Message::PointerMoved(position) => {
+				if let Some(drag) = &mut self.asset_drag {
+					drag.position = position;
+					// 少し動かすまではクリック（選択）として扱う
+					if !drag.active && drag.origin.distance(position) > ASSET_DRAG_THRESHOLD {
+						drag.active = true;
+					}
+				}
 				Task::none()
 			}
 
@@ -2786,6 +2844,19 @@ impl NadeApp {
 	}
 
 	fn apply_assets_message(&mut self, msg: AssetBrowserMessage) -> Task<Message> {
+		// メディアの行を押したら、そのままタイムラインへドラッグできるよう構えておく
+		if let AssetBrowserMessage::Select(id) = msg
+			&& self.project.asset(id).is_some_and(|asset| asset.kind().is_media())
+		{
+			let origin = last_cursor();
+			self.asset_drag = Some(AssetDrag {
+				asset: id,
+				origin,
+				position: origin,
+				active: false,
+			});
+			set_pointer_tracking(true);
+		}
 		let requests = self.asset_browser.apply(&self.project, msg);
 		self.run_asset_requests(requests)
 	}
@@ -2902,24 +2973,88 @@ impl NadeApp {
 		self.asset_browser.expanded_ids.insert(id);
 	}
 
-	fn add_selected_asset_to_timeline(&mut self) {
-		let Some(id) = self.asset_browser.selected_id else {
+	/// Placement of the dragged asset under the pointer: the track there when
+	/// it is free for the clip's span, otherwise a new track opened there.
+	fn asset_drop(&self, drag: &AssetDrag) -> Option<AssetDrop> {
+		let slot = self.timeline.state.drop_slot(&self.timeline.model, drag.position)?;
+		let (_, duration) = self.asset_clip(drag.asset)?;
+		let composition = self.target_composition().and_then(|id| self.project.composition(&id))?;
+		let fps = self.composition_fps().max(1.0);
+		let start = (slot.time * fps).round() / fps;
+		// 最後のトラックより下は、そのまま新しいトラックになる
+		let insert =
+			slot.lane < self.timeline.model.tracks.len() && !composition.is_track_free_at(slot.lane, start, duration);
+		Some(AssetDrop {
+			start,
+			duration,
+			placement: TrackPlacement {
+				track: slot.lane,
+				insert,
+			},
+		})
+	}
+
+	/// Ends an asset press: a drag released over the timeline inserts the asset.
+	fn finish_asset_drag(&mut self) {
+		set_pointer_tracking(false);
+		let Some(drag) = self.asset_drag.take() else {
 			return;
 		};
+		if !drag.active {
+			return;
+		}
+		if let Some(drop) = self.asset_drop(&drag) {
+			self.add_asset_to_timeline(drag.asset, drop.start, Some(drop.placement));
+		}
+	}
+
+	fn cancel_asset_drag(&mut self) {
+		set_pointer_tracking(false);
+		self.asset_drag = None;
+	}
+
+	fn add_selected_asset_to_timeline(&mut self) {
+		if let Some(id) = self.asset_browser.selected_id {
+			self.add_asset_to_timeline(id, self.current_model.preview.time, None);
+		}
+	}
+
+	/// Media kind and clip length of a media asset placed on the timeline.
+	fn asset_clip(&self, id: AssetId) -> Option<(MediaKind, f32)> {
+		let asset = self.project.asset(id)?;
+		let info = asset.media_info?;
+		let kind = match asset.kind() {
+			AssetType::Image => MediaKind::Image,
+			// 動画の音声のみ・映像のみのファイルにも対応する
+			AssetType::Video if !info.has_video => MediaKind::Audio,
+			AssetType::Video => MediaKind::Video,
+			AssetType::Audio => MediaKind::Audio,
+			_ => return None,
+		};
+		let duration = match kind {
+			MediaKind::Image => 5.0,
+			MediaKind::Video | MediaKind::Audio => info.duration.unwrap_or(5.0),
+		}
+		.max(1.0 / self.composition_fps().max(1.0));
+		Some((kind, duration))
+	}
+
+	/// Adds a media asset as a layer starting at `start_time`.
+	///
+	/// `placement` puts it on a given track (opening a new one there first
+	/// when asked); without it the first free track is used.
+	fn add_asset_to_timeline(&mut self, id: AssetId, start_time: f32, placement: Option<TrackPlacement>) {
 		let Some(asset) = self.project.asset(id) else {
 			return;
 		};
-		let kind = match asset.kind() {
-			AssetType::Image => MediaKind::Image,
-			AssetType::Video => MediaKind::Video,
-			AssetType::Audio => MediaKind::Audio,
-			_ => {
-				log::debug!("Add to timeline ignored for non-media asset");
-				return;
-			}
-		};
+		if !asset.kind().is_media() {
+			log::debug!("Add to timeline ignored for non-media asset");
+			return;
+		}
 		let name = asset.name.clone();
-		let (Some(path), Some(info)) = (asset.source_path.clone(), asset.media_info) else {
+		let (Some(path), Some(info), Some((kind, duration))) =
+			(asset.source_path.clone(), asset.media_info, self.asset_clip(id))
+		else {
 			self.show_toast(Icon::Close, format!("“{name}” has no media file"));
 			return;
 		};
@@ -2928,23 +3063,20 @@ impl NadeApp {
 			return;
 		};
 
-		// 動画の音声のみ・映像のみのファイルにも対応する
-		let kind = match kind {
-			MediaKind::Video if !info.has_video => MediaKind::Audio,
-			kind => kind,
-		};
-		let start_time = self.current_model.preview.time;
-		let duration = match kind {
-			MediaKind::Image => 5.0,
-			MediaKind::Video | MediaKind::Audio => info.duration.unwrap_or(5.0),
-		}
-		.max(1.0 / self.composition_fps().max(1.0));
 		let node_id = self.project.create_node();
 		let Some(comp) = self.project.composition_mut(&composition_id) else {
 			return;
 		};
 		let (comp_width, comp_height) = (comp.width() as f32, comp.height() as f32);
-		let instance = comp.add_instance_at(node_id, name.clone(), start_time, duration);
+		let instance = match placement {
+			Some(placement) => {
+				if placement.insert {
+					comp.insert_track(placement.track);
+				}
+				comp.add_instance_on_track(node_id, name.clone(), start_time, duration, placement.track)
+			}
+			None => comp.add_instance_at(node_id, name.clone(), start_time, duration),
+		};
 		let source = MediaSource {
 			asset: id,
 			kind,
@@ -3061,6 +3193,21 @@ impl NadeApp {
 		if let Some(toast) = self.toast.as_ref().filter(|toast| toast.is_active(self.now)) {
 			layers = layers.push(shell::toast::view(toast, self.now, STATUS_BAR_HEIGHT + 18.0));
 		}
+		if let Some(drag) = self.asset_drag.filter(|drag| drag.active)
+			&& let Some(asset) = self.project.asset(drag.asset)
+		{
+			// ポインタの右下に、掴んでいる行を浮かべる
+			layers = layers.push(
+				container(nade_asset_browser::drag_ghost(&asset.name, asset.kind()))
+					.padding(iced::Padding {
+						top: drag.position.y + 6.0,
+						left: drag.position.x + 10.0,
+						..iced::Padding::ZERO
+					})
+					.width(Length::Fill)
+					.height(Length::Fill),
+			);
+		}
 		if let Some(open) = self.menu {
 			let entries = self.menu_entries(open.kind);
 			let position = menu::clamp_position(open.position, menu::panel_size(&entries), self.window_size);
@@ -3082,6 +3229,16 @@ impl NadeApp {
 				duration: self.composition_duration(),
 				keyframes: self.clip_keyframes(),
 				work_area: self.work_area(),
+				drop_preview: self
+					.asset_drag
+					.filter(|drag| drag.active)
+					.and_then(|drag| self.asset_drop(&drag))
+					.map(|drop| DropPreview {
+						lane: drop.placement.track,
+						start: drop.start,
+						duration: drop.duration,
+						insert: drop.placement.insert,
+					}),
 			}),
 			PanelContent::CurveEditor => panels::curve_editor::view(
 				&self.curve_editor,

@@ -4,7 +4,7 @@ use crate::message::AppPanelMessage;
 use crate::panel_content::PanelContent;
 use iced::Element;
 use nade_panel_system::PanelSystemMessage;
-use nade_timeline_panel::{TimelineInteraction, TimelineModel, TimelineWidget};
+use nade_timeline_panel::{DropPreview, TimelineInteraction, TimelineModel, TimelineWidget};
 
 pub struct TimelineProps<'a> {
 	pub state: &'a TimelineInteraction,
@@ -15,6 +15,8 @@ pub struct TimelineProps<'a> {
 	/// Keyframe times per clip id.
 	pub keyframes: HashMap<usize, Vec<f32>>,
 	pub work_area: [f32; 2],
+	/// Ghost of an asset being dragged in from the asset browser.
+	pub drop_preview: Option<DropPreview>,
 }
 
 pub fn view<'a>(props: TimelineProps<'a>) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
@@ -23,6 +25,7 @@ pub fn view<'a>(props: TimelineProps<'a>) -> Element<'a, PanelSystemMessage<Pane
 		.duration(props.duration)
 		.keyframes(props.keyframes)
 		.work_area(props.work_area)
+		.drop_preview(props.drop_preview)
 		.view(props.current_time)
 		.map(|message| PanelSystemMessage::AppMessage(AppPanelMessage::Timeline(message)))
 }
