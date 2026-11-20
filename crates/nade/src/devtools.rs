@@ -5,7 +5,8 @@
 //! screenshots. `NADE_SCREENSHOT_SCENE` stages the UI first, e.g.
 //! `select=Title;workspace=graph;tool=t;time=1.5;loop=1;play=1;menu=2`.
 //! Media can be staged too: `import=/path/clip.mp4;add=1;solid=1;export=/tmp/out.mp4`, and edits
-//! run with `edit=split` (`undo`, `redo`, `duplicate`, `copy`, `cut`, `paste`, `delete`, `precompose`).
+//! run with `edit=split` (`undo`, `redo`, `duplicate`, `copy`, `cut`, `paste`, `delete`, `precompose`, `work-start`, `work-end`, `move-in`,
+//! `move-out`, `trim-in`, `trim-out`, `ease`).
 
 use std::path::PathBuf;
 
@@ -122,6 +123,13 @@ pub fn scene_messages(select_layer: impl Fn(&str) -> Option<AppPanelMessage>) ->
 					"paste" => EditCommand::Paste,
 					"delete" => EditCommand::Delete,
 					"precompose" => EditCommand::Precompose,
+					"work-start" => EditCommand::WorkAreaStart,
+					"work-end" => EditCommand::WorkAreaEnd,
+					"move-in" => EditCommand::MoveInPoint,
+					"move-out" => EditCommand::MoveOutPoint,
+					"trim-in" => EditCommand::TrimInPoint,
+					"trim-out" => EditCommand::TrimOutPoint,
+					"ease" => EditCommand::EasyEase,
 					_ => return None,
 				};
 				Some(Message::Edit(command))

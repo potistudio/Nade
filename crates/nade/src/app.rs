@@ -88,7 +88,14 @@ fn shortcut(key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Messa
 			_ => None,
 		};
 	}
-	if modifiers.control() || modifiers.alt() {
+	if modifiers.alt() && !modifiers.control() {
+		return match key.as_ref() {
+			keyboard::Key::Character("[") => Some(Message::Edit(EditCommand::TrimInPoint)),
+			keyboard::Key::Character("]") => Some(Message::Edit(EditCommand::TrimOutPoint)),
+			_ => None,
+		};
+	}
+	if modifiers.control() {
 		return None;
 	}
 
@@ -99,6 +106,20 @@ fn shortcut(key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Messa
 		keyboard::Key::Named(Named::End) => Some(Message::Transport(TransportMessage::GoToEnd)),
 		keyboard::Key::Named(Named::ArrowLeft) => Some(Message::Transport(TransportMessage::StepBackward)),
 		keyboard::Key::Named(Named::ArrowRight) => Some(Message::Transport(TransportMessage::StepForward)),
+		keyboard::Key::Named(Named::PageUp) => Some(Message::Transport(TransportMessage::StepBackward)),
+		keyboard::Key::Named(Named::PageDown) => Some(Message::Transport(TransportMessage::StepForward)),
+		keyboard::Key::Named(Named::F9) => Some(Message::Edit(EditCommand::EasyEase)),
+		keyboard::Key::Character(c) if !modifiers.shift() => match c {
+			"b" => Some(Message::Edit(EditCommand::WorkAreaStart)),
+			"n" => Some(Message::Edit(EditCommand::WorkAreaEnd)),
+			"[" => Some(Message::Edit(EditCommand::MoveInPoint)),
+			"]" => Some(Message::Edit(EditCommand::MoveOutPoint)),
+			"i" => Some(Message::Transport(TransportMessage::GoToLayerIn)),
+			"o" => Some(Message::Transport(TransportMessage::GoToLayerOut)),
+			"j" => Some(Message::Transport(TransportMessage::PreviousEditPoint)),
+			"k" => Some(Message::Transport(TransportMessage::NextEditPoint)),
+			_ => Tool::from_key(c).map(|tool| Message::Shell(ShellMessage::SelectTool(tool))),
+		},
 		keyboard::Key::Named(Named::Delete | Named::Backspace) => Some(Message::Edit(EditCommand::Delete)),
 		keyboard::Key::Character(c) => Tool::from_key(c).map(|tool| Message::Shell(ShellMessage::SelectTool(tool))),
 		_ => None,
@@ -744,10 +765,12 @@ impl NadeApp {
 
 		match transport {
 			TransportMessage::TogglePlay => {
-				// 終端で再生したら先頭から
-				let at_end = core::timecode::frame_at(time, fps) >= last_frame;
-				if !self.current_model.preview.is_playing && at_end {
-					self.apply_core_msg(Msg::SetTime(0.0));
+				// ワークエリアの外や終端で再生したらワークエリアの先頭から
+				let [start, end] = self.work_area();
+				let last = core::timecode::frame_at(end, fps).saturating_sub(1);
+				let outside = time < start - 1e-4 || core::timecode::frame_at(time, fps) >= last;
+				if !self.current_model.preview.is_playing && outside {
+					self.apply_core_msg(Msg::SetTime(start));
 				}
 				self.apply_core_msg(Msg::TogglePlay);
 				self.last_play_tick = self.current_model.preview.is_playing.then_some(self.now);
@@ -775,22 +798,76 @@ impl NadeApp {
 				};
 				self.show_toast(Icon::Loop, label);
 			}
+			TransportMessage::GoToLayerIn | TransportMessage::GoToLayerOut => {
+				let Some(layer) = self.focused_layer() else {
+					return;
+				};
+				let target = if matches!(transport, TransportMessage::GoToLayerIn) {
+					layer.start_time()
+				} else {
+					// アウトポイントはレイヤー最後のフレーム
+					(layer.end_time() - 1.0 / fps.max(1.0)).max(layer.start_time())
+				};
+				self.apply_core_msg(Msg::SetTime(target.clamp(0.0, duration)));
+			}
+			TransportMessage::PreviousEditPoint | TransportMessage::NextEditPoint => {
+				let points = self.edit_points();
+				let target = if matches!(transport, TransportMessage::NextEditPoint) {
+					points.into_iter().filter(|point| *point > time + 1e-4).reduce(f32::min)
+				} else {
+					points.into_iter().filter(|point| *point < time - 1e-4).reduce(f32::max)
+				};
+				if let Some(target) = target {
+					let frame = core::timecode::frame_at(target.clamp(0.0, duration), fps).min(last_frame);
+					self.apply_core_msg(Msg::SetTime(core::timecode::time_of_frame(frame, fps)));
+				}
+			}
 		}
 	}
 
-	/// 再生がコンポジションの終端を越えたらループ or 停止
+	/// The layer I / O and F9 act on: the first selected layer of the shown comp.
+	fn focused_layer(&self) -> Option<&domain::Instance> {
+		let composition = self.target_composition()?;
+		let (_, instance) = self
+			.selected_instances()
+			.into_iter()
+			.find(|(comp, _)| *comp == composition)?;
+		self.project.composition(&composition)?.get(instance)
+	}
+
+	/// J / K stops: comp and work area bounds, layer in / out points of shown
+	/// tracks and every keyframe.
+	fn edit_points(&self) -> Vec<f32> {
+		let Some(comp) = self.target_composition().and_then(|id| self.project.composition(&id)) else {
+			return Vec::new();
+		};
+		let model = &self.timeline.model;
+		let mut points = vec![0.0, comp.duration()];
+		points.extend(comp.work_area());
+		for layer in comp
+			.all_objects()
+			.filter(|layer| layer.track_index() >= model.tracks.len() || model.is_track_rendered(layer.track_index()))
+		{
+			points.extend([layer.start_time(), layer.end_time()]);
+			points.extend(layer.animation.key_times());
+		}
+		points
+	}
+
+	/// 再生がワークエリアの終端を越えたらループ or 停止
 	fn wrap_playback(&mut self) {
-		let duration = self.composition_duration();
+		let [start, end] = self.work_area();
 		let time = self.current_model.preview.time;
-		if time < duration {
+		if time < end {
 			return;
 		}
 		if self.loop_playback {
-			self.apply_core_msg(Msg::SetTime(time % duration.max(f32::EPSILON)));
+			let length = (end - start).max(f32::EPSILON);
+			self.apply_core_msg(Msg::SetTime(start + (time - start) % length));
 		} else {
 			self.apply_core_msg(Msg::TogglePlay);
 			let fps = self.composition_fps();
-			let last_frame = core::timecode::frame_at(duration, fps).saturating_sub(1);
+			let last_frame = core::timecode::frame_at(end, fps).saturating_sub(1);
 			self.apply_core_msg(Msg::SetTime(core::timecode::time_of_frame(last_frame, fps)));
 		}
 	}
@@ -929,7 +1006,7 @@ impl NadeApp {
 			&self.project,
 		)
 		.audio;
-		let until = comp.duration();
+		let until = comp.work_area()[1];
 		self.audio_started = Some((self.now, time));
 		self.audio.play(&clips, time, until);
 	}
@@ -938,6 +1015,13 @@ impl NadeApp {
 		self.target_composition()
 			.and_then(|id| self.project.composition(&id))
 			.map_or(30.0, |comp| comp.fps())
+	}
+
+	/// Work area of the shown composition (whole timeline without one).
+	fn work_area(&self) -> [f32; 2] {
+		self.target_composition()
+			.and_then(|id| self.project.composition(&id))
+			.map_or([0.0, self.composition_duration()], |comp| comp.work_area())
 	}
 
 	fn composition_duration(&self) -> f32 {
@@ -1001,7 +1085,128 @@ impl NadeApp {
 			EditCommand::Paste => self.paste_clipboard(),
 			EditCommand::Delete => self.delete_selected_layers(),
 			EditCommand::Precompose => self.precompose_selection(),
+			EditCommand::WorkAreaStart | EditCommand::WorkAreaEnd => self.set_work_area_edge(command),
+			EditCommand::MoveInPoint
+			| EditCommand::MoveOutPoint
+			| EditCommand::TrimInPoint
+			| EditCommand::TrimOutPoint => self.retime_selection(command),
+			EditCommand::EasyEase => self.easy_ease_selection(),
 		}
+	}
+
+	/// B / N
+	fn set_work_area_edge(&mut self, command: EditCommand) {
+		let time = self.current_model.preview.time;
+		let fps = self.composition_fps();
+		let Some(comp) = self
+			.target_composition()
+			.and_then(|id| self.project.composition_mut(&id))
+		else {
+			return;
+		};
+		if command == EditCommand::WorkAreaStart {
+			comp.set_work_area_start(time);
+		} else {
+			// 終点は再生ヘッドのフレームを含める
+			comp.set_work_area_end(time + 1.0 / fps.max(1.0));
+		}
+		let [start, end] = comp.work_area();
+		self.show_toast(
+			Icon::Loop,
+			format!(
+				"Work area {} – {}",
+				core::timecode::format(start, fps),
+				core::timecode::format(end, fps)
+			),
+		);
+	}
+
+	/// [ / ] / Alt+[ / Alt+]
+	fn retime_selection(&mut self, command: EditCommand) {
+		let Some(composition) = self.target_composition() else {
+			return;
+		};
+		let layers: Vec<InstanceId> = self
+			.selected_instances()
+			.into_iter()
+			.filter(|(comp, _)| *comp == composition)
+			.map(|(_, instance)| instance)
+			.collect();
+		if layers.is_empty() {
+			self.show_toast(Icon::Close, "Select a layer first");
+			return;
+		}
+		let time = self.current_model.preview.time;
+		// アウトポイントは再生ヘッドのフレームの終わり
+		let frame_end = time + 1.0 / self.composition_fps().max(1.0);
+		let Some(comp) = self.project.composition_mut(&composition) else {
+			return;
+		};
+		for id in &layers {
+			let Some(layer) = comp.get_mut(*id) else {
+				continue;
+			};
+			match command {
+				EditCommand::MoveInPoint => layer.move_to(time),
+				EditCommand::MoveOutPoint => layer.move_to(frame_end - layer.duration()),
+				EditCommand::TrimInPoint => {
+					layer.trim_in(time);
+				}
+				EditCommand::TrimOutPoint => {
+					layer.trim_out(frame_end);
+				}
+				_ => {}
+			}
+		}
+		self.finish_layer_edit(composition, layers.first().copied());
+	}
+
+	/// F9: the curve editor's selected key, else keys under the playhead of
+	/// the selected layers, else all their keys.
+	fn easy_ease_selection(&mut self) {
+		let Some(composition) = self.target_composition() else {
+			return;
+		};
+		let layers: Vec<InstanceId> = self
+			.selected_instances()
+			.into_iter()
+			.filter(|(comp, _)| *comp == composition)
+			.map(|(_, instance)| instance)
+			.collect();
+		let time = self.current_model.preview.time;
+		let (property, key) = (self.curve_editor.selected_property, self.curve_editor.selected_key);
+		let Some(comp) = self.project.composition_mut(&composition) else {
+			return;
+		};
+		let mut count = 0;
+		if let (Some(key), [layer]) = (key, layers.as_slice())
+			&& let Some(layer) = comp.get_mut(*layer)
+			&& layer.animation.curve_mut(property).easy_ease(key)
+		{
+			count = 1;
+		} else {
+			for id in &layers {
+				if let Some(layer) = comp.get_mut(*id) {
+					count += layer.animation.easy_ease(Some(time));
+				}
+			}
+			if count == 0 {
+				for id in &layers {
+					if let Some(layer) = comp.get_mut(*id) {
+						count += layer.animation.easy_ease(None);
+					}
+				}
+			}
+		}
+		if count == 0 {
+			self.show_toast(Icon::Close, "No keyframes to ease");
+			return;
+		}
+		self.request_preview_refresh();
+		self.show_toast(
+			Icon::InterpBezier,
+			format!("Easy Ease on {count} key{}", if count == 1 { "" } else { "s" }),
+		);
 	}
 
 	/// 選択レイヤーをプリコンポーズし、置き換わったコンポレイヤーを選択する
@@ -1216,7 +1421,7 @@ impl NadeApp {
 		let mut last = None;
 		for mut copy in copies {
 			let track = copy.track_index();
-			copy.set_start_time(time + copy.start_time() - base);
+			copy.move_to(time + copy.start_time() - base);
 			last = Some(comp.insert_instance(copy, Some(track)));
 		}
 		let end = comp.content_end();
@@ -1541,6 +1746,12 @@ impl NadeApp {
 
 				let trimmed_left = (clip.start_time - instance.start_time()).abs() > EPSILON
 					&& (clip.end_time() - instance.end_time()).abs() <= EPSILON;
+				let shift = clip.start_time - instance.start_time();
+				let moved = shift.abs() > EPSILON && (clip.end_time() - instance.end_time() - shift).abs() <= EPSILON;
+				if moved {
+					// レイヤーを動かしたらキーフレームも一緒に動く（AE と同じ）
+					instance.move_to(clip.start_time);
+				}
 				if trimmed_left {
 					let offset = instance.source_offset + clip.start_time - instance.start_time();
 					instance.source_offset = offset;
@@ -1595,7 +1806,7 @@ impl NadeApp {
 			let Some(mut copy) = comp.get(instance).cloned() else {
 				continue;
 			};
-			copy.set_start_time(start_time);
+			copy.move_to(start_time);
 			last = Some(comp.insert_instance(copy, Some(track_index)));
 		}
 		self.rebuild_timeline_for_composition(composition);
@@ -2541,6 +2752,7 @@ impl NadeApp {
 				fps: self.composition_fps(),
 				duration: self.composition_duration(),
 				keyframes: self.clip_keyframes(),
+				work_area: self.work_area(),
 			}),
 			PanelContent::CurveEditor => panels::curve_editor::view(
 				&self.curve_editor,
@@ -2641,7 +2853,38 @@ fn unique_numbered_name(base: &str, existing: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::parse_hex_color;
+	use super::{EditCommand, Message, TransportMessage, parse_hex_color, shortcut};
+	use iced::keyboard::{Key, Modifiers};
+
+	fn press(key: &str, modifiers: Modifiers) -> Option<Message> {
+		shortcut(&Key::Character(key.into()), modifiers)
+	}
+
+	#[test]
+	fn after_effects_shortcuts() {
+		let edit = |key, modifiers| match press(key, modifiers) {
+			Some(Message::Edit(command)) => Some(command),
+			_ => None,
+		};
+		assert_eq!(edit("b", Modifiers::empty()), Some(EditCommand::WorkAreaStart));
+		assert_eq!(edit("n", Modifiers::empty()), Some(EditCommand::WorkAreaEnd));
+		assert_eq!(edit("[", Modifiers::empty()), Some(EditCommand::MoveInPoint));
+		assert_eq!(edit("]", Modifiers::ALT), Some(EditCommand::TrimOutPoint));
+		assert_eq!(
+			edit("c", Modifiers::COMMAND | Modifiers::SHIFT),
+			Some(EditCommand::Precompose)
+		);
+		assert!(matches!(
+			press("k", Modifiers::empty()),
+			Some(Message::Transport(TransportMessage::NextEditPoint))
+		));
+		assert!(matches!(
+			press("y", Modifiers::empty()),
+			Some(Message::Shell(crate::message::ShellMessage::SelectTool(
+				crate::tool::Tool::Anchor
+			)))
+		));
+	}
 
 	#[test]
 	fn parses_hex_colors() {

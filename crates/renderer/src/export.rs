@@ -97,7 +97,7 @@ fn retime(clip: AudioClip, shift: f32, window: [f32; 2]) -> Option<AudioClip> {
 	let start = clip.start + shift;
 	let end = start + clip.duration;
 	let (visible_start, visible_end) = (start.max(window[0]), end.min(window[1]));
-	(visible_end - visible_start > 1e-4).then(|| AudioClip {
+	(visible_end - visible_start > 1e-4).then_some(AudioClip {
 		source_offset: clip.source_offset + (visible_start - start),
 		start: visible_start,
 		duration: visible_end - visible_start,

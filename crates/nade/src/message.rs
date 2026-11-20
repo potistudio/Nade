@@ -84,6 +84,12 @@ pub enum TransportMessage {
 	StepBackward,
 	StepForward,
 	ToggleLoop,
+	/// I / O: 選択レイヤーのインポイント／アウトポイントへ
+	GoToLayerIn,
+	GoToLayerOut,
+	/// J / K: 前／次のキーフレーム・レイヤー端・ワークエリア端へ
+	PreviousEditPoint,
+	NextEditPoint,
 }
 
 /// 編集コマンド（メニュー・ショートカット共通）
@@ -100,6 +106,17 @@ pub enum EditCommand {
 	Delete,
 	/// 選択レイヤーを新しいコンポジションへまとめる（AE の Pre-compose）
 	Precompose,
+	/// B / N: ワークエリアの開始／終了を再生ヘッドに
+	WorkAreaStart,
+	WorkAreaEnd,
+	/// [ / ]: レイヤーのイン／アウトポイントが再生ヘッドに来るよう移動
+	MoveInPoint,
+	MoveOutPoint,
+	/// Alt+[ / Alt+]: イン／アウトポイントを再生ヘッドでトリム
+	TrimInPoint,
+	TrimOutPoint,
+	/// F9: 選択キー（無ければ再生ヘッド上のキー）にイージーイーズ
+	EasyEase,
 }
 
 /// ウィンドウ上部のツールバー／タイトルストリップからの操作
