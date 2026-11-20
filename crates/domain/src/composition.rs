@@ -1,6 +1,6 @@
-use core::{CompositionId, NodeId, id::InstanceId};
+use core::{Affine, CompositionId, NodeId, id::InstanceId};
 
-use crate::instance::Instance;
+use crate::instance::{Instance, TransformProperty};
 
 /// Composition is a container that manages multiple instances and controls them over time.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -236,11 +236,98 @@ impl Composition {
 		self.instances.iter_mut().find(|obj| obj.id() == id)
 	}
 
-	/// オブジェクトを削除
+	/// オブジェクトを削除。子レイヤーの親参照も外す。
 	pub fn remove(&mut self, id: InstanceId) {
 		if let Some(pos) = self.instances.iter().position(|obj| obj.id() == id) {
 			self.instances.remove(pos);
 		}
+		for instance in &mut self.instances {
+			if instance.parent == Some(id) {
+				instance.parent = None;
+			}
+		}
+	}
+
+	//==== Parenting ===========================================================
+
+	/// Layer space (origin at the layer center) → composition space (origin at
+	/// the composition center), following the parent chain.
+	pub fn world_matrix(&self, id: InstanceId, time: f32) -> Affine {
+		let mut matrix = Affine::IDENTITY;
+		let mut current = self.get(id);
+		// 親の連鎖は高々レイヤー数で終わる（循環していても止まる）
+		for _ in 0..=self.instances.len() {
+			let Some(instance) = current else { break };
+			matrix = instance.transform_at(time).local_matrix().then_apply(matrix);
+			current = instance.parent.and_then(|parent| self.get(parent));
+		}
+		matrix
+	}
+
+	/// Matrix of the space a layer's `position` lives in (its parent's layer
+	/// space mapped to the composition), or identity without a parent.
+	pub fn parent_matrix(&self, id: InstanceId, time: f32) -> Affine {
+		self.get(id)
+			.and_then(|instance| instance.parent)
+			.filter(|parent| self.get(*parent).is_some())
+			.map_or(Affine::IDENTITY, |parent| self.world_matrix(parent, time))
+	}
+
+	/// Whether `candidate` is `id` or one of its descendants.
+	fn is_in_subtree(&self, candidate: InstanceId, id: InstanceId) -> bool {
+		let mut current = Some(candidate);
+		for _ in 0..=self.instances.len() {
+			let Some(node) = current else { return false };
+			if node == id {
+				return true;
+			}
+			current = self.get(node).and_then(|instance| instance.parent);
+		}
+		true
+	}
+
+	/// Re-parent a layer like After Effects: the layer keeps its on-screen
+	/// placement at `time`, its transform is rewritten relative to the new
+	/// parent. Returns `false` (no change) for unknown layers or cycles.
+	pub fn set_parent(&mut self, id: InstanceId, parent: Option<InstanceId>, time: f32) -> bool {
+		if self.get(id).is_none() {
+			return false;
+		}
+		if let Some(parent) = parent
+			&& (self.get(parent).is_none() || self.is_in_subtree(parent, id))
+		{
+			return false;
+		}
+		let world = self.world_matrix(id, time);
+		let parent_world = parent.map_or(Affine::IDENTITY, |parent| self.world_matrix(parent, time));
+		let Some(local) = parent_world.inverse().map(|inverse| inverse.then_apply(world)) else {
+			return false;
+		};
+
+		let instance = self.get_mut(id).expect("checked above");
+		let anchor = instance.transform_at(time).anchor;
+		// local = T(p)·R(r)·S(s)·T(-anchor) を分解（スキューは無視）
+		let pivoted = local.then_apply(Affine::translate(anchor[0], anchor[1]));
+		let [x, y] = pivoted.apply([0.0, 0.0]);
+		let [mut sx, sy] = pivoted.axis_scales();
+		if pivoted.determinant() < 0.0 {
+			sx = -sx;
+		}
+		let rotation = pivoted.rotation();
+		let current_rotation = instance.property_at(TransformProperty::RotationZ, time);
+		// 回転は ±180° に丸めず、元の回転数に近い値を選ぶ
+		let rotation = rotation + ((current_rotation - rotation) / 360.0).round() * 360.0;
+		for (property, value) in [
+			(TransformProperty::PositionX, x),
+			(TransformProperty::PositionY, y),
+			(TransformProperty::RotationZ, rotation),
+			(TransformProperty::ScaleX, sx),
+			(TransformProperty::ScaleY, sy),
+		] {
+			instance.set_property_at(property, time, value);
+		}
+		instance.parent = parent;
+		true
 	}
 
 	/// オブジェクトの数を取得
@@ -282,6 +369,44 @@ mod tests {
 
 		assert_ne!(b, c);
 		assert!(composition.get(b).is_some_and(|instance| instance.name() == "B"));
+	}
+
+	fn approx(a: [f32; 2], b: [f32; 2]) -> bool {
+		(a[0] - b[0]).abs() < 1e-3 && (a[1] - b[1]).abs() < 1e-3
+	}
+
+	#[test]
+	fn parenting_follows_parent_and_keeps_placement() {
+		let mut composition = Composition::new(CompositionId::new(0), "Test", 1920, 1080, 60.0);
+		let parent = composition.add_instance_named(NodeId::new(0), "Null").id();
+		let child = composition.add_instance_named(NodeId::new(1), "Child").id();
+		{
+			let parent = composition.get_mut(parent).unwrap();
+			parent.transform.position = [100.0, 0.0, 0.0];
+			parent.transform.rotation[2] = 90.0;
+			parent.transform.scale = [2.0, 2.0, 1.0];
+		}
+		composition.get_mut(child).unwrap().transform.position = [100.0, 50.0, 0.0];
+
+		let before = composition.world_matrix(child, 0.0).apply([0.0, 0.0]);
+		assert!(composition.set_parent(child, Some(parent), 0.0));
+		let after = composition.world_matrix(child, 0.0).apply([0.0, 0.0]);
+		assert!(approx(before, after), "{before:?} vs {after:?}");
+		assert!((composition.get(child).unwrap().transform.scale[0] - 0.5).abs() < 1e-4);
+
+		// 親を動かすと子が付いてくる
+		composition.get_mut(parent).unwrap().transform.position[0] += 10.0;
+		let moved = composition.world_matrix(child, 0.0).apply([0.0, 0.0]);
+		assert!(approx(moved, [after[0] + 10.0, after[1]]));
+
+		// 循環は拒否、親を外しても位置は保たれる
+		assert!(!composition.set_parent(parent, Some(child), 0.0));
+		assert!(composition.set_parent(child, None, 0.0));
+		assert!(approx(composition.world_matrix(child, 0.0).apply([0.0, 0.0]), moved));
+
+		composition.set_parent(child, Some(parent), 0.0);
+		composition.remove(parent);
+		assert_eq!(composition.get(child).unwrap().parent, None);
 	}
 
 	#[test]

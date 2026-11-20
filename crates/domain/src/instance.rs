@@ -1,4 +1,4 @@
-use core::{AnimationCurve, AssetId, MediaInfo, NodeId, Transform, id::InstanceId};
+use core::{AnimationCurve, AssetId, BlendMode, MediaInfo, NodeId, Transform, id::InstanceId};
 use std::path::PathBuf;
 
 /// A scalar channel of an instance transform.
@@ -15,10 +15,14 @@ pub enum TransformProperty {
 	ScaleY,
 	ScaleZ,
 	Opacity,
+	AnchorX,
+	AnchorY,
 }
 
 impl TransformProperty {
-	pub const ALL: [Self; 10] = [
+	pub const ALL: [Self; 12] = [
+		Self::AnchorX,
+		Self::AnchorY,
 		Self::PositionX,
 		Self::PositionY,
 		Self::PositionZ,
@@ -43,6 +47,8 @@ impl TransformProperty {
 			Self::ScaleY => "Scale Y",
 			Self::ScaleZ => "Scale Z",
 			Self::Opacity => "Opacity",
+			Self::AnchorX => "Anchor X",
+			Self::AnchorY => "Anchor Y",
 		}
 	}
 
@@ -58,6 +64,8 @@ impl TransformProperty {
 			Self::ScaleY => transform.scale[1],
 			Self::ScaleZ => transform.scale[2],
 			Self::Opacity => transform.opacity,
+			Self::AnchorX => transform.anchor[0],
+			Self::AnchorY => transform.anchor[1],
 		}
 	}
 
@@ -73,6 +81,8 @@ impl TransformProperty {
 			Self::ScaleY => transform.scale[1] = value,
 			Self::ScaleZ => transform.scale[2] = value,
 			Self::Opacity => transform.opacity = value.clamp(0.0, 1.0),
+			Self::AnchorX => transform.anchor[0] = value,
+			Self::AnchorY => transform.anchor[1] = value,
 		}
 	}
 }
@@ -81,15 +91,26 @@ impl TransformProperty {
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransformAnimation {
 	curves: [AnimationCurve; 10],
+	/// Anchor X / Y (stored apart so files written before anchors still load).
+	#[serde(default)]
+	anchor: [AnimationCurve; 2],
 }
 
 impl TransformAnimation {
 	pub fn curve(&self, property: TransformProperty) -> &AnimationCurve {
-		&self.curves[property as usize]
+		match property {
+			TransformProperty::AnchorX => &self.anchor[0],
+			TransformProperty::AnchorY => &self.anchor[1],
+			_ => &self.curves[property as usize],
+		}
 	}
 
 	pub fn curve_mut(&mut self, property: TransformProperty) -> &mut AnimationCurve {
-		&mut self.curves[property as usize]
+		match property {
+			TransformProperty::AnchorX => &mut self.anchor[0],
+			TransformProperty::AnchorY => &mut self.anchor[1],
+			_ => &mut self.curves[property as usize],
+		}
 	}
 
 	pub fn evaluate(&self, base: Transform, time: f32) -> Transform {
@@ -299,6 +320,14 @@ pub struct Instance {
 
 	/// Drawable content
 	pub content: InstanceContent,
+
+	/// Layer whose transform this one inherits (AE-style parenting).
+	#[serde(default)]
+	pub parent: Option<InstanceId>,
+
+	/// How this layer composites onto the layers below.
+	#[serde(default)]
+	pub blend_mode: BlendMode,
 }
 
 impl Instance {
@@ -315,6 +344,8 @@ impl Instance {
 			transform: Transform::default(),
 			animation: TransformAnimation::default(),
 			content: InstanceContent::default(),
+			parent: None,
+			blend_mode: BlendMode::Normal,
 		}
 	}
 

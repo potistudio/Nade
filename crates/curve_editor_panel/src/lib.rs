@@ -731,6 +731,8 @@ fn property_color(property: TransformProperty) -> Color {
 		TransformProperty::ScaleY => LABEL_COLORS[5],
 		TransformProperty::ScaleZ => TEXT_SECONDARY_COLOR,
 		TransformProperty::Opacity => Color::from_rgb8(220, 220, 228),
+		TransformProperty::AnchorX => Color::from_rgb8(232, 150, 96),
+		TransformProperty::AnchorY => Color::from_rgb8(150, 200, 120),
 	}
 }
 
