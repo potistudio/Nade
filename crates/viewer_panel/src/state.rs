@@ -22,7 +22,7 @@ impl Default for ViewerState {
 	fn default() -> Self {
 		Self {
 			settings: ViewerSettings::default(),
-			/// Default area until the overlay reports the real size.
+			// Default area until the overlay reports the real size.
 			size: Size::new(960.0, 540.0),
 		}
 	}
