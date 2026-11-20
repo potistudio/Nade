@@ -37,16 +37,6 @@ impl fmt::Display for Resolution {
 	}
 }
 
-/// Composition facts shown in the viewer and status bar.
-#[derive(Debug, Clone, Copy)]
-pub struct CompositionSummary<'a> {
-	pub name: &'a str,
-	pub width: u32,
-	pub height: u32,
-	pub fps: f32,
-	pub duration: f32,
-}
-
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ViewerSettings {
 	pub show_grid: bool,

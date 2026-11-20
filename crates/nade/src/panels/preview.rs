@@ -15,11 +15,12 @@ use panel_system::PanelSystemMessage;
 use crate::message::{AppPanelMessage, PreviewMessage, TransportMessage};
 use crate::panel_content::PanelContent;
 use crate::tool::Tool;
-use crate::viewer::{CompositionSummary, Resolution, ViewerSettings};
+use crate::viewer::{Resolution, ViewerSettings};
 use crate::widgets::play_glyph::PlayGlyph;
 use crate::widgets::video_view::VideoView;
 use crate::widgets::viewer_overlay::{LayerBox, ViewerOverlay};
 use crate::widgets::viewport::Viewport;
+use core::CompositionSummary;
 
 const BAR_HEIGHT: f32 = constants::style::ROW_HEIGHT;
 const TRANSPORT_HEIGHT: f32 = constants::style::ROW_HEIGHT;

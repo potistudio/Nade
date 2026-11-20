@@ -144,6 +144,16 @@ impl Default for PreviewModel {
 	}
 }
 
+/// Composition facts shown in the viewer, inspector and status bar.
+#[derive(Debug, Clone, Copy)]
+pub struct CompositionSummary<'a> {
+	pub name: &'a str,
+	pub width: u32,
+	pub height: u32,
+	pub fps: f32,
+	pub duration: f32,
+}
+
 /// フレームデータ
 #[derive(Debug, Clone)]
 pub struct FrameData {

@@ -2500,7 +2500,7 @@ impl NadeApp {
 		};
 		panels::preview::ViewerProps {
 			preview: &self.current_model.preview,
-			composition: composition.map(|comp| crate::viewer::CompositionSummary {
+			composition: composition.map(|comp| core::CompositionSummary {
 				name: comp.name(),
 				width: comp.width(),
 				height: comp.height(),
@@ -2892,7 +2892,7 @@ impl NadeApp {
 			}
 			Some(ObjectId::Composition(id)) => match self.project.composition(&id) {
 				Some(comp) => InspectorTarget::Composition {
-					summary: crate::viewer::CompositionSummary {
+					summary: core::CompositionSummary {
 						name: comp.name(),
 						width: comp.width(),
 						height: comp.height(),
@@ -3190,7 +3190,7 @@ impl NadeApp {
 				export: self.export.as_ref().map(ExportTask::progress),
 				pulse,
 				render_fps: self.render_fps,
-				composition: composition.map(|comp| crate::viewer::CompositionSummary {
+				composition: composition.map(|comp| core::CompositionSummary {
 					name: comp.name(),
 					width: comp.width(),
 					height: comp.height(),

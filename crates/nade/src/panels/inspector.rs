@@ -20,8 +20,8 @@ use std::collections::HashSet;
 
 use crate::message::AppPanelMessage;
 use crate::panel_content::PanelContent;
-use crate::viewer::CompositionSummary;
 use crate::widgets::draggable_number::{KeyState, number_field};
+use core::CompositionSummary;
 
 const LABEL_WIDTH: f32 = 56.0;
 /// Effect parameter names are longer than transform labels.
