@@ -16,6 +16,20 @@ use core::{FrameData, InstanceId, MediaInfo};
 pub use asset_browser::AssetBrowserMessage;
 pub use browser_panel::ProjectPaneMessage;
 
+/// メニューバーとコンテキストメニュー
+#[derive(Debug, Clone)]
+pub enum MenuMessage {
+	/// メニューバーのタイトルを押した（開閉）
+	ToggleBar(crate::shell::menu::MenuKind),
+	/// 開いている間にタイトルへ乗ったら切り替える
+	HoverBar(crate::shell::menu::MenuKind),
+	/// 右クリック位置（ウィンドウ座標）にコンテキストメニューを開く
+	OpenContext(iced::Point),
+	Close,
+	/// 項目を選んだ: メニューを閉じてから実行する
+	Run(Box<Message>),
+}
+
 /// プレビュー（ビューア）パネルメッセージ
 #[derive(Debug, Clone)]
 pub enum PreviewMessage {
@@ -117,6 +131,8 @@ pub enum EditCommand {
 	TrimOutPoint,
 	/// F9: 選択キー（無ければ再生ヘッド上のキー）にイージーイーズ
 	EasyEase,
+	/// ワークエリアをコンポ全体に戻す
+	ClearWorkArea,
 }
 
 /// ウィンドウ上部のツールバー／タイトルストリップからの操作
@@ -175,6 +191,7 @@ pub enum Message {
 	MediaImported(Vec<(PathBuf, Result<MediaInfo, String>)>),
 	/// ウィンドウへファイルがドロップされた（.nade は開き、他は読み込む）
 	FileDropped(PathBuf),
+	Menu(MenuMessage),
 	/// デバッグ用スクリーンショットの取得結果
 	#[cfg(debug_assertions)]
 	DevScreenshot(iced::window::Screenshot),

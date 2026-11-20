@@ -25,12 +25,15 @@ use domain::{
 use renderer::Scene;
 
 use crate::history::History;
-use crate::message::{AppPanelMessage, EditCommand, Message, PreviewMessage, ShellMessage, TransportMessage};
+use crate::message::{
+	AppPanelMessage, EditCommand, MenuMessage, Message, PreviewMessage, ShellMessage, TransportMessage,
+};
 use crate::panel_content::PanelContent;
 use crate::panels;
 use crate::services::export::ExportTask;
 use crate::services::render_service::{RenderConnection, build_render_stream};
 use crate::services::render_worker::{RenderJob, RenderWorker};
+use crate::shell::menu::{self, Entry, MenuKind, OpenMenu};
 use crate::shell::{self, toast::Toast};
 use crate::theme::{SHELL_GUTTER, STATUS_BAR_HEIGHT, TITLE_BAR_HEIGHT, panel_area};
 use crate::tool::Tool;
@@ -44,8 +47,29 @@ use crate::workspace::Workspace;
 // =============================================================================
 
 /// ウィンドウイベントをアプリのメッセージへ写像する（キャプチャ済みのキーは無視）
+/// 最後に見たカーソル位置（右クリックメニューの表示位置）。f32 2 つを詰めて持つ
+static CURSOR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn store_cursor(position: iced::Point) {
+	let bits = (u64::from(position.x.to_bits()) << 32) | u64::from(position.y.to_bits());
+	CURSOR.store(bits, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn last_cursor() -> iced::Point {
+	let bits = CURSOR.load(std::sync::atomic::Ordering::Relaxed);
+	iced::Point::new(f32::from_bits((bits >> 32) as u32), f32::from_bits(bits as u32))
+}
+
 fn on_window_event(event: iced::Event, status: iced::event::Status, _id: iced::window::Id) -> Option<Message> {
 	match event {
+		iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
+			store_cursor(position);
+			None
+		}
+		// 右クリック: 押した対象を選択したうえでコンテキストメニューを開く
+		iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Right)) => {
+			Some(Message::Menu(MenuMessage::OpenContext(last_cursor())))
+		}
 		iced::Event::Window(iced::window::Event::Resized(size)) => Some(Message::WindowResized(size)),
 		iced::Event::Window(iced::window::Event::FileDropped(path)) => Some(Message::FileDropped(path)),
 		// 押下（キャプチャ済みを含む）でポインタ下のパネルへフォーカス
@@ -218,6 +242,8 @@ pub(super) struct NadeApp {
 	loop_playback: bool,
 	/// HUD 通知
 	toast: Option<Toast>,
+	/// 開いているメニュー（メニューバー or コンテキスト）
+	menu: Option<OpenMenu>,
 	/// 直近の update 時刻（アニメーション評価用）
 	now: Instant,
 	/// アプリ起動時刻（ステータスの呼吸アニメーション用）
@@ -288,6 +314,7 @@ impl NadeApp {
 			workspace: Workspace::default(),
 			loop_playback: true,
 			toast: None,
+			menu: None,
 			now: Instant::now(),
 			started: Instant::now(),
 			window_size,
@@ -663,6 +690,8 @@ impl NadeApp {
 				Task::none()
 			}
 
+			Message::Menu(message) => self.apply_menu_message(message),
+
 			Message::FileDropped(path) => {
 				if path
 					.extension()
@@ -793,6 +822,10 @@ impl NadeApp {
 				)
 			}
 			ShellMessage::CancelExport => {
+				// Esc はまず開いているメニューを閉じる
+				if self.menu.take().is_some() {
+					return Task::none();
+				}
 				if let Some(export) = &self.export {
 					export.cancel();
 				}
@@ -1137,6 +1170,186 @@ impl NadeApp {
 			| EditCommand::TrimInPoint
 			| EditCommand::TrimOutPoint => self.retime_selection(command),
 			EditCommand::EasyEase => self.easy_ease_selection(),
+			EditCommand::ClearWorkArea => {
+				if let Some(comp) = self
+					.target_composition()
+					.and_then(|id| self.project.composition_mut(&id))
+				{
+					comp.clear_work_area();
+				}
+			}
+		}
+	}
+
+	fn apply_menu_message(&mut self, message: MenuMessage) -> Task<Message> {
+		match message {
+			MenuMessage::ToggleBar(kind) => {
+				self.menu = match self.menu {
+					Some(open) if open.kind == kind => None,
+					_ => Some(OpenMenu {
+						kind,
+						position: menu::bar_menu_position(kind, TITLE_BAR_HEIGHT),
+					}),
+				};
+			}
+			MenuMessage::HoverBar(kind) => {
+				if let Some(open) = self.menu
+					&& open.kind != MenuKind::Context
+					&& open.kind != kind
+				{
+					self.menu = Some(OpenMenu {
+						kind,
+						position: menu::bar_menu_position(kind, TITLE_BAR_HEIGHT),
+					});
+				}
+			}
+			MenuMessage::OpenContext(position) => {
+				// メニューの外での右クリックは閉じるだけ
+				if self.menu.take().is_none() {
+					self.menu = Some(OpenMenu {
+						kind: MenuKind::Context,
+						position,
+					});
+				}
+			}
+			MenuMessage::Close => self.menu = None,
+			MenuMessage::Run(message) => {
+				self.menu = None;
+				return self.update_inner(*message);
+			}
+		}
+		Task::none()
+	}
+
+	/// Items of a menu, enabled for the current selection.
+	fn menu_entries(&self, kind: MenuKind) -> Vec<Entry> {
+		let edit = Message::Edit;
+		let shell = Message::Shell;
+		let transport = Message::Transport;
+		let preview = |message| Message::PanelSystem(PanelSystemMessage::AppMessage(AppPanelMessage::Preview(message)));
+		let composition = self.target_composition().and_then(|id| self.project.composition(&id));
+		let has_comp = composition.is_some();
+		let layer = self.focused_layer();
+		let selected = layer.is_some();
+		let nested = layer.is_some_and(|layer| layer.content().as_composition().is_some());
+		let parented = layer.is_some_and(|layer| layer.parent.is_some());
+		let can_paste = has_comp && !self.clipboard.is_empty();
+		let work_area = composition.is_some_and(|comp| comp.has_work_area());
+		let remove_parent = Message::PanelSystem(PanelSystemMessage::AppMessage(AppPanelMessage::Inspector(
+			inspector_panel::InspectorMessage::SetParent(None),
+		)));
+		let open_nested = Message::PanelSystem(PanelSystemMessage::AppMessage(AppPanelMessage::Inspector(
+			inspector_panel::InspectorMessage::OpenNestedComposition,
+		)));
+
+		match kind {
+			MenuKind::File => vec![
+				Entry::item("New Composition", "", shell(ShellMessage::NewComposition)),
+				Entry::Separator,
+				Entry::item("Open Project…", "⌘O", shell(ShellMessage::OpenProject)),
+				Entry::item("Save", "⌘S", shell(ShellMessage::SaveProject)),
+				Entry::item("Save As…", "⇧⌘S", shell(ShellMessage::SaveProjectAs)),
+				Entry::Separator,
+				Entry::item("Import Media…", "⌘I", shell(ShellMessage::ImportMedia)),
+				Entry::when(has_comp, "Export…", "⌘M", shell(ShellMessage::Export)),
+			],
+			MenuKind::Edit => vec![
+				Entry::item("Undo", "⌘Z", edit(EditCommand::Undo)),
+				Entry::item("Redo", "⇧⌘Z", edit(EditCommand::Redo)),
+				Entry::Separator,
+				Entry::when(selected, "Cut", "⌘X", edit(EditCommand::Cut)),
+				Entry::when(selected, "Copy", "⌘C", edit(EditCommand::Copy)),
+				Entry::when(can_paste, "Paste", "⌘V", edit(EditCommand::Paste)),
+				Entry::when(selected, "Duplicate", "⌘D", edit(EditCommand::Duplicate)),
+				Entry::when(has_comp, "Split Layer", "⇧⌘D", edit(EditCommand::Split)),
+				Entry::when(selected, "Delete", "⌫", edit(EditCommand::Delete)),
+			],
+			MenuKind::Composition => vec![
+				Entry::item("New Composition", "", shell(ShellMessage::NewComposition)),
+				Entry::Separator,
+				Entry::when(has_comp, "Set Work Area Start", "B", edit(EditCommand::WorkAreaStart)),
+				Entry::when(has_comp, "Set Work Area End", "N", edit(EditCommand::WorkAreaEnd)),
+				Entry::when(work_area, "Clear Work Area", "", edit(EditCommand::ClearWorkArea)),
+				Entry::Separator,
+				Entry::item("Go to Start", "Home", transport(TransportMessage::GoToStart)),
+				Entry::item("Go to End", "End", transport(TransportMessage::GoToEnd)),
+				Entry::item("Loop Playback", "", transport(TransportMessage::ToggleLoop)),
+				Entry::Separator,
+				Entry::when(has_comp, "Export…", "⌘M", shell(ShellMessage::Export)),
+			],
+			MenuKind::Layer => vec![
+				Entry::when(has_comp, "New Text Layer", "", shell(ShellMessage::NewTextLayer)),
+				Entry::when(has_comp, "New Solid", "⌘Y", shell(ShellMessage::NewSolid)),
+				Entry::Separator,
+				Entry::when(selected, "Pre-compose", "⇧⌘C", edit(EditCommand::Precompose)),
+				Entry::when(nested, "Open Composition", "", open_nested),
+				Entry::when(parented, "Remove Parent", "", remove_parent),
+				Entry::Separator,
+				Entry::when(selected, "In Point to Playhead", "[", edit(EditCommand::MoveInPoint)),
+				Entry::when(selected, "Out Point to Playhead", "]", edit(EditCommand::MoveOutPoint)),
+				Entry::when(selected, "Trim In Point", "⌥[", edit(EditCommand::TrimInPoint)),
+				Entry::when(selected, "Trim Out Point", "⌥]", edit(EditCommand::TrimOutPoint)),
+				Entry::Separator,
+				Entry::when(
+					selected,
+					"Go to In Point",
+					"I",
+					transport(TransportMessage::GoToLayerIn),
+				),
+				Entry::when(
+					selected,
+					"Go to Out Point",
+					"O",
+					transport(TransportMessage::GoToLayerOut),
+				),
+				Entry::when(selected, "Easy Ease", "F9", edit(EditCommand::EasyEase)),
+			],
+			MenuKind::View => vec![
+				Entry::item("Zoom In", "", preview(PreviewMessage::ZoomBy(1.25))),
+				Entry::item("Zoom Out", "", preview(PreviewMessage::ZoomBy(1.0 / 1.25))),
+				Entry::item("Fit in Viewer", "", preview(PreviewMessage::FitView)),
+				Entry::item("Actual Pixels", "", preview(PreviewMessage::ActualPixels)),
+				Entry::Separator,
+				Entry::item("Grid", "", preview(PreviewMessage::ToggleGrid)),
+				Entry::item("Safe Areas", "", preview(PreviewMessage::ToggleSafeAreas)),
+				Entry::Separator,
+				Entry::item("Previous Keyframe", "J", transport(TransportMessage::PreviousEditPoint)),
+				Entry::item("Next Keyframe", "K", transport(TransportMessage::NextEditPoint)),
+			],
+			MenuKind::Context if selected => {
+				let mut entries = vec![
+					Entry::item("Cut", "⌘X", edit(EditCommand::Cut)),
+					Entry::item("Copy", "⌘C", edit(EditCommand::Copy)),
+					Entry::when(can_paste, "Paste", "⌘V", edit(EditCommand::Paste)),
+					Entry::item("Duplicate", "⌘D", edit(EditCommand::Duplicate)),
+					Entry::item("Split Layer", "⇧⌘D", edit(EditCommand::Split)),
+					Entry::item("Delete", "⌫", edit(EditCommand::Delete)),
+					Entry::Separator,
+					Entry::item("Pre-compose", "⇧⌘C", edit(EditCommand::Precompose)),
+				];
+				if nested {
+					entries.push(Entry::item("Open Composition", "", open_nested));
+				}
+				if parented {
+					entries.push(Entry::item("Remove Parent", "", remove_parent));
+				}
+				entries.extend([
+					Entry::Separator,
+					Entry::item("In Point to Playhead", "[", edit(EditCommand::MoveInPoint)),
+					Entry::item("Out Point to Playhead", "]", edit(EditCommand::MoveOutPoint)),
+					Entry::item("Easy Ease", "F9", edit(EditCommand::EasyEase)),
+				]);
+				entries
+			}
+			MenuKind::Context => vec![
+				Entry::when(has_comp, "New Text Layer", "", shell(ShellMessage::NewTextLayer)),
+				Entry::when(has_comp, "New Solid", "⌘Y", shell(ShellMessage::NewSolid)),
+				Entry::item("Import Media…", "⌘I", shell(ShellMessage::ImportMedia)),
+				Entry::when(can_paste, "Paste", "⌘V", edit(EditCommand::Paste)),
+				Entry::Separator,
+				Entry::when(has_comp, "Set Work Area Start", "B", edit(EditCommand::WorkAreaStart)),
+				Entry::when(has_comp, "Set Work Area End", "N", edit(EditCommand::WorkAreaEnd)),
+			],
 		}
 	}
 
@@ -2843,6 +3056,9 @@ impl NadeApp {
 			chrome = chrome.push(shell::title_bar::view(
 				self.project.name(),
 				composition.map(|comp| comp.name()),
+				self.menu
+					.map(|open| open.kind)
+					.filter(|kind| *kind != MenuKind::Context),
 			));
 		}
 
@@ -2879,13 +3095,16 @@ impl NadeApp {
 			.height(Length::Fill)
 			.style(constants::widgets::window);
 
-		match self.toast.as_ref().filter(|toast| toast.is_active(self.now)) {
-			Some(toast) => stack![base, shell::toast::view(toast, self.now, STATUS_BAR_HEIGHT + 18.0)]
-				.width(Length::Fill)
-				.height(Length::Fill)
-				.into(),
-			None => base.into(),
+		let mut layers = stack![base].width(Length::Fill).height(Length::Fill);
+		if let Some(toast) = self.toast.as_ref().filter(|toast| toast.is_active(self.now)) {
+			layers = layers.push(shell::toast::view(toast, self.now, STATUS_BAR_HEIGHT + 18.0));
 		}
+		if let Some(open) = self.menu {
+			let entries = self.menu_entries(open.kind);
+			let position = menu::clamp_position(open.position, menu::panel_size(&entries), self.window_size);
+			layers = layers.push(menu::overlay(entries, position));
+		}
+		layers.into()
 	}
 
 	fn view_panel_content<'a>(

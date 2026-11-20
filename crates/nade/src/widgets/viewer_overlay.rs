@@ -531,6 +531,11 @@ impl Program<PreviewMessage> for ViewerOverlay {
 			Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) if inside => {
 				self.press_left(state, &viewport, local?)
 			}
+			// 右クリック: 下のレイヤーを選択（メニューはアプリ側で開く）
+			Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) if inside => {
+				let hit = self.hit_test(&viewport, local?).map(|layer| layer.id);
+				(hit != self.selected).then(|| canvas::Action::publish(PreviewMessage::SelectLayer(hit)))
+			}
 			Event::Mouse(mouse::Event::CursorMoved { .. }) => {
 				let message = self.drag_to(state, &viewport, local?)?;
 				Some(canvas::Action::publish(message).and_capture())
