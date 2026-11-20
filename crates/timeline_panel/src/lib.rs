@@ -5,8 +5,10 @@
 
 mod icons;
 mod interaction;
+mod message;
 mod widget;
 
 pub use core::{TimelineClip, TimelineModel, TimelineTrack, TrackVisibilityDisplay};
 pub use interaction::TimelineInteraction;
-pub use widget::{TimelineCanvasEvent, TimelineMessage, TimelineUpdate, TimelineWidget};
+pub use message::{TimelineCanvasEvent, TimelineMessage, TimelineUpdate};
+pub use widget::TimelineWidget;
