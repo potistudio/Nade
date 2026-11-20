@@ -10,6 +10,13 @@ pub const HEADER_PADDING: f32 = style::SPACE_1;
 /// 20px controls with 2px padding on all sides give a 24px header.
 pub const HEADER_HEIGHT: f32 = style::CONTROL_CONTENT_HEIGHT + HEADER_PADDING * 2.0;
 
+/// Gap between header tabs; equal to the header padding.
+pub const TAB_SPACING: f32 = HEADER_PADDING;
+/// Tab width cap. Tabs share the header width evenly below this.
+pub const TAB_MAX_WIDTH: f32 = 128.0;
+/// Pointer travel (px) before a pressed tab starts dragging.
+pub const TAB_DRAG_THRESHOLD: f32 = 4.0;
+
 /// Visible gutter between tiled panels.
 pub const PANEL_GAP: f32 = 6.0;
 
@@ -42,12 +49,12 @@ pub mod colors {
 		..style::ACCENT_COLOR
 	};
 	pub const HEADER_SEPARATOR: Color = Color::from_rgba(0.0, 0.0, 0.0, 0.28);
-	pub const FOCUS_RING: Color = Color {
-		a: 0.75,
-		..style::ACCENT_COLOR
-	};
+	pub const PANEL_HOVER_OUTLINE: Color = style::BORDER_ACTIVE_COLOR;
 	pub const GUTTER_ACTIVE: Color = Color {
 		a: 0.85,
 		..style::ACCENT_COLOR
 	};
+	pub const TAB_ACTIVE_BG: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.08);
+	pub const TAB_HOVER_BG: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.05);
+	pub const TAB_INSERT_MARKER: Color = style::ACCENT_COLOR;
 }

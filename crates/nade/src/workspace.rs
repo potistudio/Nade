@@ -6,10 +6,10 @@ use crate::panel_content::PanelContent;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Workspace {
-	/// Layers · Viewer/Timeline · Properties
+	/// Layers · Viewer/Timeline (+ Curves tab) · Properties
 	#[default]
 	Animate,
-	/// Viewer over a large curve editor
+	/// Viewer over a large curve editor (+ Timeline tab)
 	Graph,
 	/// Media-heavy layout with a tall timeline
 	Edit,
@@ -33,9 +33,11 @@ impl Workspace {
 	/// ┌──────┬────────────┬──────┐    ┌──────┬────────────┬──────┐    ┌──────┬────────────┬──────┐
 	/// │Layers│   Viewer   │Props │    │Layers│   Viewer   │Props │    │Assets│   Viewer   │Props │
 	/// ├──────┼────────────┤      │    │      ├────────────┤      │    │      ├────────────┤      │
-	/// │Assets│  Timeline  │      │    │      │   Curves   │      │    │Layers│  Timeline  │      │
+	/// │Assets│Timeline¦Crv│      │    │      │Curves¦Tmln │      │    │Layers│  Timeline  │      │
 	/// └──────┴────────────┴──────┘    └──────┴────────────┴──────┘    └──────┴────────────┴──────┘
 	/// ```
+	///
+	/// `A¦B` marks one area with tabs `A` (active) and `B`.
 	pub fn layout(self) -> (DockNode<PanelContent>, usize) {
 		let mut builder = LayoutBuilder::new();
 		let layout = match self {
@@ -43,7 +45,7 @@ impl Workspace {
 				let layers = builder.area(PanelContent::Project);
 				let assets = builder.area(PanelContent::Assets);
 				let viewer = builder.area(PanelContent::MainPreview);
-				let timeline = builder.area(PanelContent::Timeline);
+				let timeline = builder.tabs(vec![PanelContent::Timeline, PanelContent::CurveEditor]);
 				let properties = builder.area(PanelContent::Inspector);
 
 				let left = LayoutBuilder::vsplit(layers, assets, 0.58);
@@ -54,7 +56,7 @@ impl Workspace {
 			Self::Graph => {
 				let layers = builder.area(PanelContent::Project);
 				let viewer = builder.area(PanelContent::MainPreview);
-				let curves = builder.area(PanelContent::CurveEditor);
+				let curves = builder.tabs(vec![PanelContent::CurveEditor, PanelContent::Timeline]);
 				let properties = builder.area(PanelContent::Inspector);
 
 				let center = LayoutBuilder::vsplit(viewer, curves, 0.5);

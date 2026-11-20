@@ -1,7 +1,7 @@
 //! # Panel System
 //!
 //! Blender 風のエリア分割システム。
-//! 各エリアは単一エディタを表示し、コーナー分割・結合・種別切替・リサイズをサポートします。
+//! 各エリアはタブで複数のエディタを持ち、コーナー分割・結合・種別切替・リサイズ・タブのドラッグ移動をサポートします。
 
 mod chrome;
 mod consts;
@@ -12,7 +12,7 @@ mod squircle;
 mod system;
 
 pub use container::Area;
-pub use drag::{CornerAction, CornerPreview, DragState};
+pub use drag::{CornerAction, CornerPreview, DragState, TabDrop};
 pub use node::{DockNode, SplitDirection};
 pub use system::{LayoutBuilder, PanelSystem, PanelSystemMessage};
 

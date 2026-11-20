@@ -25,6 +25,30 @@ impl CornerAction {
 	}
 }
 
+/// タブのドロップ先
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TabDrop {
+	/// エリアのタブバーへ挿入する。`index` は挿入位置（`0..=タブ数`）。
+	Insert { area_id: usize, index: usize },
+	/// エリア中央へのドロップ。タブ列の末尾へ追加する。
+	Merge { area_id: usize },
+	/// エリア端へのドロップ。タブを新しいエリアとして分割ドックする。
+	Split {
+		area_id: usize,
+		direction: SplitDirection,
+		ratio: f32,
+		new_is_first: bool,
+	},
+}
+
+impl TabDrop {
+	pub fn area_id(self) -> usize {
+		match self {
+			Self::Insert { area_id, .. } | Self::Merge { area_id } | Self::Split { area_id, .. } => area_id,
+		}
+	}
+}
+
 /// ドラッグ状態
 #[derive(Debug, Clone, Default)]
 pub enum DragState {
@@ -52,6 +76,18 @@ pub enum DragState {
 		direction: Option<SplitDirection>,
 		/// 移動先で新しいエリアを first 側に置くか
 		new_is_first: bool,
+	},
+	/// タブを押下中（しきい値を超えるとドラッグ）
+	TabDrag {
+		area_id: usize,
+		tab_index: usize,
+		start_pos: Point,
+		current_pos: Point,
+		/// ポインタがドラッグしきい値を超えて動いたか
+		dragging: bool,
+		/// 押下前からアクティブなタブだったか（クリックでエディタ種別メニューを開く）
+		was_active: bool,
+		drop: Option<TabDrop>,
 	},
 }
 

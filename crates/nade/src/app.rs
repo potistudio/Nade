@@ -76,6 +76,10 @@ fn on_window_event(event: iced::Event, status: iced::event::Status, _id: iced::w
 		iced::Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => {
 			Some(Message::PanelSystem(PanelSystemMessage::FocusPointer))
 		}
+		// パネル外での解放でもドラッグを終える（パネル内の解放はドラッグオーバーレイが処理する）
+		iced::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)) => {
+			Some(Message::PanelSystem(PanelSystemMessage::PointerReleased))
+		}
 		iced::Event::Mouse(iced::mouse::Event::ButtonReleased(_)) => Some(Message::PointerReleased),
 		iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. })
 			if status == iced::event::Status::Ignored =>
@@ -522,8 +526,9 @@ impl NadeApp {
 	pub(super) fn update(&mut self, message: Message) -> Task<Message> {
 		crate::platform::sync_scroll_phase(&mut self.timeline.state);
 		match &message {
+			// 左ボタン解放はパネルドラッグ終了メッセージで届くため、ここでも共通の解放処置を行う
 			Message::PanelSystem(PanelSystemMessage::FocusPointer) => self.pointer_down = true,
-			Message::PointerReleased => {
+			Message::PointerReleased | Message::PanelSystem(PanelSystemMessage::PointerReleased) => {
 				self.pointer_down = false;
 				self.key_drag = None;
 			}
