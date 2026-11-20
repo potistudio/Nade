@@ -272,17 +272,14 @@ impl TimelineInteraction {
 		self.selected_clips.clear();
 	}
 
-	/// Where something dragged in from outside would land at `position`
-	/// (window coordinates). `None` off the track lanes.
+	/// Where something dragged in from outside would land, at the pointer the
+	/// canvas last saw over itself. `None` off the track lanes or once the
+	/// pointer has left the timeline.
 	///
-	/// Only answers when the canvas itself last saw the pointer at
-	/// `position`: once the pointer leaves the timeline the canvas stops
-	/// reporting it, so stale bounds (a moved or closed panel) never yield a
-	/// slot.
-	pub fn drop_slot(&self, model: &TimelineModel, position: Point) -> Option<DropSlot> {
-		if self.canvas_pointer != Some(position) {
-			return None;
-		}
+	/// Uses the canvas' own pointer rather than one tracked elsewhere: the two
+	/// arrive through different paths, and comparing them flickers.
+	pub fn drop_slot(&self, model: &TimelineModel) -> Option<DropSlot> {
+		let position = self.canvas_pointer?;
 		let layout = TimelineLayout::from_bounds_absolute(self.canvas_bounds?);
 		if !layout.content.contains(position) {
 			return None;
@@ -310,6 +307,7 @@ impl TimelineInteraction {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::message::TimelineCanvasEvent;
 	use nade_core::TimelineTrack;
 
 	fn model(tracks: usize) -> TimelineModel {
@@ -332,7 +330,7 @@ mod tests {
 		state.canvas_bounds = Some(canvas);
 		let slot_at = |state: &mut TimelineInteraction, point: Point| {
 			state.canvas_pointer = Some(point);
-			state.drop_slot(&model, point)
+			state.drop_slot(&model)
 		};
 
 		let slot = slot_at(
@@ -359,18 +357,18 @@ mod tests {
 		assert!((zoomed.time - 1.0).abs() < 1e-4);
 	}
 
-	/// A pointer the canvas has not seen (it left the timeline) never drops.
+	/// Once the pointer leaves the canvas, nothing drops on the timeline.
 	#[test]
-	fn drop_slot_ignores_pointers_the_canvas_did_not_see() {
-		let model = model(1);
+	fn drop_slot_ends_when_the_pointer_leaves() {
+		let mut model = model(1);
 		let mut state = TimelineInteraction::new();
-		let canvas = Rectangle::new(Point::ORIGIN, iced::Size::new(800.0, 300.0));
-		let inside = Point::new(TRACK_LABEL_WIDTH + 50.0, RANGE_SLIDER_HEIGHT + RULER_HEIGHT + 5.0);
-		state.canvas_bounds = Some(canvas);
+		let bounds = Rectangle::new(Point::ORIGIN, iced::Size::new(800.0, 300.0));
+		let position = Point::new(TRACK_LABEL_WIDTH + 50.0, RANGE_SLIDER_HEIGHT + RULER_HEIGHT + 5.0);
 
-		assert_eq!(state.drop_slot(&model, inside), None);
-		state.canvas_pointer = Some(inside);
-		assert!(state.drop_slot(&model, inside).is_some());
-		assert_eq!(state.drop_slot(&model, Point::new(inside.x + 1.0, inside.y)), None);
+		assert_eq!(state.drop_slot(&model), None);
+		state.handle_canvas_event(&mut model, TimelineCanvasEvent::MouseMoved { position, bounds }, 0.0);
+		assert!(state.drop_slot(&model).is_some());
+		state.handle_canvas_event(&mut model, TimelineCanvasEvent::MouseLeft, 0.0);
+		assert_eq!(state.drop_slot(&model), None);
 	}
 }

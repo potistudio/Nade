@@ -18,6 +18,8 @@ use nade_constants::timeline::*;
 pub struct CanvasState {
 	modifiers: keyboard::Modifiers,
 	key_drag: Option<KeyDrag>,
+	/// The pointer was over the canvas at the last move, to report leaving once.
+	pointer_inside: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -62,6 +64,14 @@ impl TimelineWidget<'_> {
 		let layout = TimelineLayout::from_bounds(Rectangle::new(Point::ORIGIN, size));
 		let fps = self.fps.max(1.0);
 		(self.state.x_to_time(x, layout.content.x) * fps).round().max(0.0) / fps
+	}
+}
+
+impl TimelineWidget<'_> {
+	/// Reports the pointer leaving once, so outside drags stop targeting the lanes.
+	fn pointer_left(canvas_state: &mut CanvasState) -> Option<canvas::Action<TimelineMessage>> {
+		std::mem::take(&mut canvas_state.pointer_inside)
+			.then(|| canvas::Action::publish(TimelineMessage::CanvasEvent(TimelineCanvasEvent::MouseLeft)))
 	}
 }
 
@@ -146,12 +156,16 @@ impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
 					.map(|(track_index, clip_id)| {
 						canvas::Action::publish(TimelineMessage::ContextClip { track_index, clip_id })
 					}),
-				mouse::Event::CursorMoved { .. } => cursor_pos.map(|position| {
-					canvas::Action::publish(TimelineMessage::CanvasEvent(TimelineCanvasEvent::MouseMoved {
-						position,
-						bounds,
-					}))
-				}),
+				mouse::Event::CursorMoved { .. } => match cursor_pos {
+					Some(position) => {
+						canvas_state.pointer_inside = true;
+						Some(canvas::Action::publish(TimelineMessage::CanvasEvent(
+							TimelineCanvasEvent::MouseMoved { position, bounds },
+						)))
+					}
+					None => Self::pointer_left(canvas_state),
+				},
+				mouse::Event::CursorLeft => Self::pointer_left(canvas_state),
 				mouse::Event::WheelScrolled { delta } if cursor_pos.is_some() => Some(canvas::Action::publish(
 					TimelineMessage::CanvasEvent(TimelineCanvasEvent::MouseWheelScrolled { delta: *delta, bounds }),
 				)),

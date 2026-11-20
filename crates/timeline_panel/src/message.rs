@@ -46,6 +46,8 @@ pub enum TimelineCanvasEvent {
 		position: Point,
 		bounds: Rectangle,
 	},
+	/// The pointer left the canvas (or the window).
+	MouseLeft,
 	MouseWheelScrolled {
 		delta: mouse::ScrollDelta,
 		bounds: Rectangle,

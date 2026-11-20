@@ -89,6 +89,7 @@ impl TimelineInteraction {
 				self.canvas_pointer = Some(*position);
 			}
 			TimelineCanvasEvent::MouseWheelScrolled { bounds, .. } => self.canvas_bounds = Some(*bounds),
+			TimelineCanvasEvent::MouseLeft => self.canvas_pointer = None,
 			_ => {}
 		}
 		match event {
@@ -131,6 +132,7 @@ impl TimelineInteraction {
 					visibility_changed: false,
 				}
 			}
+			TimelineCanvasEvent::MouseLeft => TimelineUpdate::default(),
 			TimelineCanvasEvent::MouseWheelScrolled { delta, bounds } => {
 				self.scroll_bounds = Some(bounds);
 				self.update_viewport_width(bounds.width);

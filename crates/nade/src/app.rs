@@ -2976,7 +2976,7 @@ impl NadeApp {
 	/// Placement of the dragged asset under the pointer: the track there when
 	/// it is free for the clip's span, otherwise a new track opened there.
 	fn asset_drop(&self, drag: &AssetDrag) -> Option<AssetDrop> {
-		let slot = self.timeline.state.drop_slot(&self.timeline.model, drag.position)?;
+		let slot = self.timeline.state.drop_slot(&self.timeline.model)?;
 		let (_, duration) = self.asset_clip(drag.asset)?;
 		let composition = self.target_composition().and_then(|id| self.project.composition(&id))?;
 		let fps = self.composition_fps().max(1.0);
