@@ -22,7 +22,8 @@ pub struct ExportTask {
 
 impl ExportTask {
 	/// Render `composition` (a copy, so editing can continue) on a worker thread.
-	/// `library` holds the compositions nested comp layers may play.
+	/// `library` holds the compositions nested comp layers may play. Renders
+	/// the composition's work area.
 	pub fn start(
 		composition: Composition,
 		library: Vec<Composition>,
@@ -34,12 +35,14 @@ impl ExportTask {
 		let output = path.clone();
 		let spawned = thread::Builder::new().name("nade-export".into()).spawn(move || {
 			let is_rendered = |track: usize| track_rendered.get(track).copied().unwrap_or(true);
-			let settings = renderer::export_settings(&composition, &output, is_rendered, &library);
+			let range = composition.work_area();
+			let settings = renderer::export_settings(&composition, &output, range, is_rendered, &library);
 			worker.total.store(renderer::frame_count(&settings), Ordering::Relaxed);
-			let result = renderer::export_composition(&composition, settings, is_rendered, &library, |done, _| {
-				worker.done.store(done, Ordering::Relaxed);
-				!worker.cancel.load(Ordering::Relaxed)
-			});
+			let result =
+				renderer::export_composition(&composition, settings, range[0], is_rendered, &library, |done, _| {
+					worker.done.store(done, Ordering::Relaxed);
+					!worker.cancel.load(Ordering::Relaxed)
+				});
 			if let Ok(mut slot) = worker.result.lock() {
 				*slot = Some(result.map_err(|error| format!("{error:#}")));
 			}

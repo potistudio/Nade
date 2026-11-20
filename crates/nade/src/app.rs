@@ -924,6 +924,7 @@ impl NadeApp {
 		let clips = renderer::export_settings(
 			comp,
 			std::path::Path::new(""),
+			[0.0, comp.duration()],
 			|track| track >= model.tracks.len() || model.is_track_rendered(track),
 			&self.project,
 		)
