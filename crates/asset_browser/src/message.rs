@@ -16,3 +16,17 @@ pub enum AssetBrowserMessage {
 	/// Search field text changed.
 	FilterChanged(String),
 }
+
+/// App-level work the panel state cannot perform itself.
+///
+/// `AssetBrowserState::apply` returns these for the shell to execute
+/// (file dialogs, cross-panel edits).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssetBrowserRequest {
+	/// Open a file dialog and import the chosen media files.
+	ImportMedia,
+	/// Create a new folder under the selected folder (or at root).
+	NewFolder,
+	/// Add the selected media asset to the timeline.
+	AddToTimeline,
+}
