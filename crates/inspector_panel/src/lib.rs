@@ -91,6 +91,12 @@ pub enum InspectorMessage {
 	},
 	/// Scale the layer so its picture fits the composition frame.
 	FitToComposition,
+	/// Composition length in seconds.
+	SetCompositionDuration(f32),
+	/// Trim / extend the composition to end with its last layer.
+	FitCompositionToLayers,
+	/// Composition background color (RGB, 0..1).
+	SetCompositionBackground([f32; 3]),
 }
 
 #[cfg(test)]

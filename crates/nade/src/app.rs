@@ -1782,6 +1782,12 @@ impl NadeApp {
 				self.inspector_ui.hex_draft = Some(draft);
 				return;
 			}
+			InspectorMessage::SetCompositionDuration(_)
+			| InspectorMessage::FitCompositionToLayers
+			| InspectorMessage::SetCompositionBackground(_) => {
+				self.apply_composition_setting(msg);
+				return;
+			}
 			_ => {}
 		}
 
@@ -1929,8 +1935,12 @@ impl NadeApp {
 					toast = Some((Icon::Fit, "Fit to composition".to_string()));
 				}
 			}
-			InspectorMessage::ToggleSection(_) | InspectorMessage::ToggleScaleLink | InspectorMessage::HexEdited(_) => {
-			}
+			InspectorMessage::ToggleSection(_)
+			| InspectorMessage::ToggleScaleLink
+			| InspectorMessage::HexEdited(_)
+			| InspectorMessage::SetCompositionDuration(_)
+			| InspectorMessage::FitCompositionToLayers
+			| InspectorMessage::SetCompositionBackground(_) => {}
 		}
 
 		if let Some(name) = renamed {
@@ -1952,6 +1962,33 @@ impl NadeApp {
 		match jump {
 			Some(time) => self.apply_core_msg(Msg::SetTime(time)),
 			None => self.request_preview_refresh(),
+		}
+	}
+
+	fn apply_composition_setting(&mut self, msg: InspectorMessage) {
+		let Some(comp) = self
+			.target_composition()
+			.and_then(|id| self.project.composition_mut(&id))
+		else {
+			return;
+		};
+		match msg {
+			InspectorMessage::SetCompositionDuration(seconds) => comp.set_duration(seconds),
+			InspectorMessage::FitCompositionToLayers => {
+				let end = comp.content_end();
+				if end > 0.0 {
+					comp.set_duration(end);
+				}
+			}
+			InspectorMessage::SetCompositionBackground([r, g, b]) => comp.set_background([r, g, b, 1.0]),
+			_ => return,
+		}
+		// 尺を縮めたら再生ヘッドを範囲内に戻す
+		let duration = self.composition_duration();
+		if self.current_model.preview.time > duration {
+			self.apply_core_msg(Msg::SetTime(duration));
+		} else {
+			self.request_preview_refresh();
 		}
 	}
 
@@ -1984,6 +2021,7 @@ impl NadeApp {
 						duration: comp.duration(),
 					},
 					layers: comp.len(),
+					background: comp.background(),
 				},
 				None => InspectorTarget::Empty,
 			},

@@ -100,6 +100,7 @@ pub enum InspectorTarget<'a> {
 	Composition {
 		summary: CompositionSummary<'a>,
 		layers: usize,
+		background: [f32; 4],
 	},
 	Layer(LayerTarget<'a>),
 }
@@ -111,7 +112,11 @@ pub fn view<'a>(
 ) -> Element<'a, PanelSystemMessage<PanelContent, AppPanelMessage>> {
 	let content: Element<'a, InspectorMessage> = match target {
 		InspectorTarget::Empty => empty_state(),
-		InspectorTarget::Composition { summary, layers } => composition_view(summary, layers),
+		InspectorTarget::Composition {
+			summary,
+			layers,
+			background,
+		} => composition_view(summary, layers, background),
 		InspectorTarget::Layer(layer) => layer_view(layer, ui, now),
 	};
 
@@ -151,7 +156,11 @@ fn empty_state<'a>() -> Element<'a, InspectorMessage> {
 	.into()
 }
 
-fn composition_view<'a>(summary: CompositionSummary<'a>, layers: usize) -> Element<'a, InspectorMessage> {
+fn composition_view<'a>(
+	summary: CompositionSummary<'a>,
+	layers: usize,
+	background: [f32; 4],
+) -> Element<'a, InspectorMessage> {
 	let header = row![
 		badge(Icon::Comp, constants::style::ACCENT_COLOR),
 		column![
@@ -177,7 +186,6 @@ fn composition_view<'a>(summary: CompositionSummary<'a>, layers: usize) -> Eleme
 		column![
 			fact("Resolution", format!("{} × {}", summary.width, summary.height)),
 			fact("Frame Rate", format!("{:.2} fps", summary.fps)),
-			fact("Duration", core::timecode::format(summary.duration, summary.fps)),
 			fact("Layers", layers.to_string()),
 		]
 		.spacing(SPACE_1),
@@ -185,8 +193,79 @@ fn composition_view<'a>(summary: CompositionSummary<'a>, layers: usize) -> Eleme
 	.padding([SPACE_3, SPACE_4 + 2.0])
 	.style(widgets::card);
 
+	let duration = row![
+		number_field(summary.duration, InspectorMessage::SetCompositionDuration)
+			.default_value(10.0)
+			.suffix(" s")
+			.step(0.05)
+			.precision(2),
+		mono_label(core::timecode::format(summary.duration, summary.fps), FONT_UI).color(TEXT_MUTED_COLOR),
+		widgets::tip(
+			button(button_body_center(icon(Icon::Fit, 12.0, TEXT_SECONDARY_COLOR)))
+				.padding(0)
+				.width(24)
+				.height(ROW_HEIGHT)
+				.style(widgets::button_ghost)
+				.on_press(InspectorMessage::FitCompositionToLayers),
+			"Fit Duration to Layers",
+			tooltip::Position::Left,
+		),
+	]
+	.spacing(SPACE_2)
+	.align_y(Alignment::Center);
+
+	let swatches = [
+		Color::BLACK,
+		Color::from_rgb(0.18, 0.18, 0.18),
+		Color::from_rgb(0.5, 0.5, 0.5),
+		Color::WHITE,
+	];
+	let backgrounds = row(swatches.into_iter().chain(LABEL_COLORS).map(|well| {
+		let selected = (well.r - background[0]).abs() < 0.01
+			&& (well.g - background[1]).abs() < 0.01
+			&& (well.b - background[2]).abs() < 0.01;
+		button(Space::new().width(14).height(14))
+			.padding(0)
+			.style(move |_theme, status| button::Style {
+				background: Some(well.into()),
+				border: Border {
+					color: if selected {
+						Color::WHITE
+					} else if matches!(status, button::Status::Hovered) {
+						Color::from_rgba(1.0, 1.0, 1.0, 0.6)
+					} else {
+						Color::from_rgba(1.0, 1.0, 1.0, 0.18)
+					},
+					width: if selected { 2.0 } else { 1.0 },
+					radius: 7.0.into(),
+				},
+				..button::Style::default()
+			})
+			.on_press(InspectorMessage::SetCompositionBackground([well.r, well.g, well.b]))
+			.into()
+	}))
+	.spacing(SPACE_2)
+	.wrap()
+	.vertical_spacing(SPACE_2);
+
+	let setting_label = |label: &'a str| ui_label(label, FONT_UI).color(TEXT_SECONDARY_COLOR).width(76);
+	let settings = container(
+		column![
+			row![setting_label("Duration"), duration]
+				.spacing(SPACE_2)
+				.align_y(Alignment::Center)
+				.height(ROW_HEIGHT),
+			row![setting_label("Background"), backgrounds]
+				.spacing(SPACE_2)
+				.align_y(Alignment::Center),
+		]
+		.spacing(SPACE_2),
+	)
+	.padding([SPACE_3, SPACE_4 + 2.0])
+	.style(widgets::card);
+
 	scrollable(
-		column![header, facts]
+		column![header, facts, settings]
 			.spacing(SPACE_5)
 			.padding([SPACE_5, SPACE_4 + 2.0]),
 	)
