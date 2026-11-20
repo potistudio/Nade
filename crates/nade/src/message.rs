@@ -172,6 +172,8 @@ pub enum Message {
 	Edit(EditCommand),
 	/// マウスボタンが離された（ドラッグ操作の区切り。Undo 履歴の確定に使う）
 	PointerReleased,
+	/// Esc。パネルのドラッグ中ならその取り消し、そうでなければ書き出しの中止（`bool`: キーが未処理だったか）
+	EscapePressed(bool),
 	/// ウィンドウサイズ変更
 	WindowResized(iced::Size),
 	/// 定期更新（再生中のアニメーション用）

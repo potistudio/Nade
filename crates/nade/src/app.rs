@@ -81,6 +81,14 @@ fn on_window_event(event: iced::Event, status: iced::event::Status, _id: iced::w
 			Some(Message::PanelSystem(PanelSystemMessage::PointerReleased))
 		}
 		iced::Event::Mouse(iced::mouse::Event::ButtonReleased(_)) => Some(Message::PointerReleased),
+		// Esc は、ドラッグ中のパネル操作を取り消せるよう処理済みでも通知する
+		iced::Event::Keyboard(keyboard::Event::KeyPressed {
+			key: keyboard::Key::Named(keyboard::key::Named::Escape),
+			modifiers,
+			..
+		}) if !modifiers.command() && !modifiers.alt() && !modifiers.control() => {
+			Some(Message::EscapePressed(status == iced::event::Status::Ignored))
+		}
 		iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. })
 			if status == iced::event::Status::Ignored =>
 		{
@@ -129,7 +137,6 @@ fn shortcut(key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Messa
 	}
 
 	match key.as_ref() {
-		keyboard::Key::Named(Named::Escape) => Some(Message::Shell(ShellMessage::CancelExport)),
 		keyboard::Key::Named(Named::Space) => Some(Message::Transport(TransportMessage::TogglePlay)),
 		keyboard::Key::Named(Named::Home) => Some(Message::Transport(TransportMessage::GoToStart)),
 		keyboard::Key::Named(Named::End) => Some(Message::Transport(TransportMessage::GoToEnd)),
@@ -577,6 +584,18 @@ impl NadeApp {
 			}
 
 			Message::PointerReleased => Task::none(),
+
+			Message::EscapePressed(unhandled) => {
+				if self.panel_system.is_move_dragging() {
+					self.panel_system
+						.update(PanelSystemMessage::<_, AppPanelMessage>::CancelDrag);
+					Task::none()
+				} else if unhandled {
+					self.update_inner(Message::Shell(ShellMessage::CancelExport))
+				} else {
+					Task::none()
+				}
+			}
 
 			Message::WindowResized(size) => {
 				self.window_size = size;
