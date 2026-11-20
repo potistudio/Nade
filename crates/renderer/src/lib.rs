@@ -3,9 +3,11 @@
 //! エフェクトベースのレンダリングシステムを提供します。
 
 mod compositor;
+mod export;
 mod scene;
 
 pub use compositor::{Compositor, render_scene};
+pub use export::{export_composition, export_settings, frame_count};
 pub use scene::{LayerKind, Scene, SceneLayer};
 
 use anyhow::Result;
