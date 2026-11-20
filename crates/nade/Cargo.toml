@@ -62,6 +62,22 @@ serde = "1.0.229"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 muda = { version = "0.21.2", default-features = false }
+objc2 = "0.6.1"
+objc2-app-kit = { version = "0.3.0", default-features = false, features = [
+  "std",
+  "NSApplication",
+  "NSAttributedString",
+  "NSFont",
+  "NSImage",
+] }
+objc2-foundation = { version = "0.3.0", default-features = false, features = [
+  "std",
+  "NSAttributedString",
+  "NSData",
+  "NSDictionary",
+  "NSObject",
+  "NSString",
+] }
 
 [build-dependencies]
 cc = "1.8.0"

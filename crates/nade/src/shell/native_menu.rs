@@ -9,14 +9,26 @@ use std::cell::RefCell;
 
 use iced::futures::Stream;
 use muda::accelerator::{Accelerator, Code, Modifiers};
-use muda::{AboutMetadata, Icon, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+use muda::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+use objc2::AnyThread;
+use objc2::rc::Retained;
+use objc2::runtime::AnyObject;
+use objc2_app_kit::{
+	NSAboutPanelOptionApplicationIcon, NSAboutPanelOptionApplicationName, NSAboutPanelOptionApplicationVersion,
+	NSAboutPanelOptionCredits, NSAboutPanelOptionKey, NSApplication, NSFont, NSFontAttributeName, NSImage,
+};
+use objc2_foundation::{MainThreadMarker, NSAttributedString, NSData, NSDictionary, NSString, ns_string};
 
 use crate::message::{MenuMessage, Message};
 use crate::shell::menu::{Entry, MenuKind};
 
 const QUIT_ID: &str = "app.quit";
+const ABOUT_ID: &str = "app.about";
 const ABOUT_NAME: &str = "Nade";
 const ABOUT_COPYRIGHT: &str = "Copyright © 2026 POTI. All rights reserved.";
+/// The panel draws a plain credits string in Helvetica; the rest of the panel
+/// is set in the system font, so the credits have to ask for it explicitly.
+const ABOUT_CREDITS_FONT_SIZE: f64 = 11.0;
 const ABOUT_ICON: &[u8] = include_bytes!("../../../../assets/icons/x1024.png");
 
 struct NativeMenu {
@@ -60,6 +72,10 @@ pub fn action(id: &str, entries: impl Fn(MenuKind) -> Vec<Entry>) -> Option<Mess
 	if id == QUIT_ID {
 		return Some(Message::CloseRequested(iced::window::Id::unique()));
 	}
+	if id == ABOUT_ID {
+		show_about_panel();
+		return None;
+	}
 	let (menu, entry) = id.split_once(':')?;
 	let kind = *MenuKind::BAR.get(menu.parse::<usize>().ok()?)?;
 	match entries(kind).into_iter().nth(entry.parse().ok()?)? {
@@ -81,7 +97,7 @@ fn build(entries: &impl Fn(MenuKind) -> Vec<Entry>) -> NativeMenu {
 	let menu = Menu::new();
 	let quit = MenuItem::with_id(QUIT_ID, "Quit Nade", true, accelerator("⌘Q"));
 	let app = Submenu::new("Nade", true);
-	let about = PredefinedMenuItem::about(Some("About Nade"), Some(about_metadata()));
+	let about = MenuItem::with_id(ABOUT_ID, "About Nade", true, None);
 	for item in [
 		&about as &dyn muda::IsMenuItem,
 		&PredefinedMenuItem::separator(),
@@ -137,18 +153,8 @@ fn build(entries: &impl Fn(MenuKind) -> Vec<Entry>) -> NativeMenu {
 	NativeMenu { _menu: menu, items }
 }
 
-/// What the About panel shows: name, version, copyright, credits and icon.
-fn about_metadata() -> AboutMetadata {
-	AboutMetadata {
-		name: Some(ABOUT_NAME.into()),
-		version: Some(env!("CARGO_PKG_VERSION").into()),
-		copyright: Some(ABOUT_COPYRIGHT.into()),
-		credits: Some(about_credits()),
-		icon: about_icon(),
-		..AboutMetadata::default()
-	}
-}
-
+/// The credits text under the version: description, author, license and
+/// repository.
 fn about_credits() -> String {
 	format!(
 		"{}\n\nCreated by {}\nReleased under the {} License\n{}",
@@ -159,12 +165,59 @@ fn about_credits() -> String {
 	)
 }
 
+/// AppKit draws the standard panel itself; the options carry the name,
+/// version, icon, credits and copyright.
+fn show_about_panel() {
+	let Some(mtm) = MainThreadMarker::new() else {
+		log::error!("About: not on the main thread");
+		return;
+	};
+	let mut keys: Vec<&NSAboutPanelOptionKey> = Vec::new();
+	let mut values: Vec<Retained<AnyObject>> = Vec::new();
+	keys.push(unsafe { NSAboutPanelOptionApplicationName });
+	values.push(Retained::into_super(Retained::into_super(NSString::from_str(
+		ABOUT_NAME,
+	))));
+	keys.push(unsafe { NSAboutPanelOptionApplicationVersion });
+	values.push(Retained::into_super(Retained::into_super(NSString::from_str(env!(
+		"CARGO_PKG_VERSION"
+	)))));
+	if let Some(icon) = about_icon() {
+		keys.push(unsafe { NSAboutPanelOptionApplicationIcon });
+		values.push(Retained::into_super(Retained::into_super(icon)));
+	}
+	keys.push(unsafe { NSAboutPanelOptionCredits });
+	values.push(Retained::into_super(Retained::into_super(about_credits_attributed())));
+	keys.push(ns_string!("Copyright"));
+	values.push(Retained::into_super(Retained::into_super(NSString::from_str(
+		ABOUT_COPYRIGHT,
+	))));
+	let options = NSDictionary::from_retained_objects(&keys, &values);
+	unsafe { NSApplication::sharedApplication(mtm).orderFrontStandardAboutPanelWithOptions(&options) };
+}
+
+/// The credits keep the system font; the panel would draw a plain string in
+/// Helvetica.
+fn about_credits_attributed() -> Retained<NSAttributedString> {
+	let font = NSFont::systemFontOfSize(ABOUT_CREDITS_FONT_SIZE);
+	let attributes = NSDictionary::<NSString, AnyObject>::from_retained_objects(
+		&[unsafe { NSFontAttributeName }],
+		&[Retained::into_super(Retained::into_super(font))],
+	);
+	unsafe {
+		NSAttributedString::initWithString_attributes(
+			NSAttributedString::alloc(),
+			&NSString::from_str(&about_credits()),
+			Some(&attributes),
+		)
+	}
+}
+
 /// The window icon, decoded for the About panel. A missing icon is fine:
 /// the panel falls back to the bundle icon.
-fn about_icon() -> Option<Icon> {
-	let image = image::load_from_memory(ABOUT_ICON).ok()?.into_rgba8();
-	let (width, height) = image.dimensions();
-	Icon::from_rgba(image.into_raw(), width, height).ok()
+fn about_icon() -> Option<Retained<NSImage>> {
+	let data = NSData::with_bytes(ABOUT_ICON);
+	NSImage::initWithData(NSImage::alloc(), &data)
 }
 
 fn append(menu: &Menu, item: &dyn muda::IsMenuItem) {
@@ -225,15 +278,19 @@ mod tests {
 	}
 
 	#[test]
-	fn about_metadata_describes_the_app() {
-		let about = about_metadata();
-		assert_eq!(about.name.as_deref(), Some(ABOUT_NAME));
-		assert_eq!(about.version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
-		assert_eq!(about.copyright.as_deref(), Some(ABOUT_COPYRIGHT));
-		let credits = about.credits.expect("credits");
-		assert!(credits.contains(env!("CARGO_PKG_AUTHORS")));
-		assert!(credits.contains(env!("CARGO_PKG_REPOSITORY")));
-		assert!(about.icon.is_some(), "icon");
+	fn about_panel_describes_the_app() {
+		let credits = about_credits();
+		for detail in [
+			env!("CARGO_PKG_DESCRIPTION"),
+			env!("CARGO_PKG_AUTHORS"),
+			env!("CARGO_PKG_LICENSE"),
+			env!("CARGO_PKG_REPOSITORY"),
+		] {
+			assert!(credits.contains(detail), "{detail}");
+		}
+		let attributed = about_credits_attributed();
+		assert_eq!(attributed.length(), credits.encode_utf16().count());
+		assert!(about_icon().is_some(), "icon");
 	}
 
 	#[test]
