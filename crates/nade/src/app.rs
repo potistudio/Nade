@@ -12,7 +12,7 @@ use iced::keyboard;
 use iced::time::{Duration, Instant};
 use iced::widget::{column, container, stack};
 use iced::{Animation, Element, Length, Size, Subscription, Task};
-use inspector_panel::{InspectorMessage, PropertyGroup};
+use inspector_panel::{EffectEdit, InspectorMessage, PropertyGroup};
 use panel_system::{PanelSystem, PanelSystemMessage};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -195,6 +195,8 @@ struct KeyDragSession {
 	clip_id: usize,
 	origin: f32,
 	keys: Vec<(TransformProperty, u64)>,
+	/// `(effect id, slot, key id)` of effect keys on `origin`.
+	effect_keys: Vec<(u32, usize, u64)>,
 }
 
 /// Main application state managing the UI, rendering, and project data
@@ -959,7 +961,7 @@ impl NadeApp {
 			.filter(|layer| layer.track_index() >= model.tracks.len() || model.is_track_rendered(layer.track_index()))
 		{
 			points.extend([layer.start_time(), layer.end_time()]);
-			points.extend(layer.animation.key_times());
+			points.extend(layer.key_times());
 		}
 		points
 	}
@@ -1342,6 +1344,25 @@ impl NadeApp {
 				),
 				Entry::when(selected, "Easy Ease", "F9", edit(EditCommand::EasyEase)),
 			],
+			MenuKind::Effect => {
+				let inspector =
+					|message| Message::PanelSystem(PanelSystemMessage::AppMessage(AppPanelMessage::Inspector(message)));
+				let has_effects = layer.is_some_and(|layer| !layer.effects.is_empty());
+				let mut entries = vec![Entry::when(
+					has_effects,
+					"Remove All",
+					"",
+					inspector(InspectorMessage::RemoveAllEffects),
+				)];
+				// カテゴリごとに区切って並べる（AE の Effect メニューと同じ構成）
+				for category in domain::EffectCategory::ALL {
+					entries.push(Entry::Separator);
+					entries.extend(category.effects().map(|kind| {
+						Entry::when(selected, kind.name(), "", inspector(InspectorMessage::AddEffect(kind)))
+					}));
+				}
+				entries
+			}
 			MenuKind::View => vec![
 				Entry::item("Zoom In", "", preview(PreviewMessage::ZoomBy(1.25))),
 				Entry::item("Zoom Out", "", preview(PreviewMessage::ZoomBy(1.0 / 1.25))),
@@ -1484,13 +1505,13 @@ impl NadeApp {
 		} else {
 			for id in &layers {
 				if let Some(layer) = comp.get_mut(*id) {
-					count += layer.animation.easy_ease(Some(time));
+					count += layer.easy_ease(Some(time));
 				}
 			}
 			if count == 0 {
 				for id in &layers {
 					if let Some(layer) = comp.get_mut(*id) {
-						count += layer.animation.easy_ease(None);
+						count += layer.easy_ease(None);
 					}
 				}
 			}
@@ -2351,10 +2372,7 @@ impl NadeApp {
 					.project
 					.composition(&clip.composition_id?)?
 					.get(clip.instance_id?)?;
-				let mut times: Vec<f32> = TransformProperty::ALL
-					.into_iter()
-					.flat_map(|property| instance.animation.curve(property).keys().iter().map(|key| key.time))
-					.collect();
+				let mut times: Vec<f32> = instance.key_times().collect();
 				if times.is_empty() {
 					return None;
 				}
@@ -2396,15 +2414,35 @@ impl NadeApp {
 				.into_iter()
 				.filter_map(|property| Some((property, layer.animation.curve(property).key_at(origin)?.id)))
 				.collect();
-			self.key_drag = Some(KeyDragSession { clip_id, origin, keys });
+			let effect_keys = layer
+				.effects
+				.iter()
+				.flat_map(|effect| {
+					effect
+						.keys_at(origin)
+						.into_iter()
+						.map(move |(slot, key)| (effect.id, slot, key))
+				})
+				.collect();
+			self.key_drag = Some(KeyDragSession {
+				clip_id,
+				origin,
+				keys,
+				effect_keys,
+			});
 		}
-		let Some(KeyDragSession { keys, .. }) = &self.key_drag else {
+		let Some(KeyDragSession { keys, effect_keys, .. }) = &self.key_drag else {
 			return;
 		};
 		for (property, id) in keys {
 			let curve = layer.animation.curve_mut(*property);
 			if let Some(value) = curve.key(*id).map(|key| key.value) {
 				curve.set_key(*id, time, value);
+			}
+		}
+		for (effect, slot, key) in effect_keys {
+			if let Some(effect) = layer.effect_mut(*effect) {
+				effect.move_key(*slot, *key, time);
 			}
 		}
 		if !same_drag {
@@ -2511,6 +2549,15 @@ impl NadeApp {
 				self.nest_shown_composition(outer);
 				return;
 			}
+			InspectorMessage::Effect {
+				id,
+				edit: EffectEdit::ToggleExpanded,
+			} => {
+				if let Some(ObjectId::Instance { instance, .. }) = self.project_pane.selected_id {
+					self.inspector_ui.toggle_effect(instance, id);
+				}
+				return;
+			}
 			_ => {}
 		}
 
@@ -2537,6 +2584,7 @@ impl NadeApp {
 		let mut toast = None;
 		let mut jump = None;
 		let mut renamed = None;
+		let mut added_effect = None;
 
 		match msg {
 			InspectorMessage::SetChannel { property, value } => {
@@ -2659,6 +2707,23 @@ impl NadeApp {
 				}
 			}
 			InspectorMessage::SetBlendMode(mode) => obj.blend_mode = mode,
+			InspectorMessage::AddEffect(kind) => {
+				added_effect = Some(obj.add_effect(kind));
+				toast = Some((Icon::Sparkle, format!("Added {}", kind.name())));
+			}
+			InspectorMessage::RemoveAllEffects => {
+				let count = obj.effects.len();
+				obj.effects.clear();
+				toast = Some((
+					Icon::Trash,
+					format!("Removed {count} effect{}", if count == 1 { "" } else { "s" }),
+				));
+			}
+			InspectorMessage::Effect { id, edit } => {
+				let (result, effect_jump) = edit_effect(obj, id, edit, time, fps);
+				toast = result;
+				jump = effect_jump;
+			}
 			InspectorMessage::ToggleSection(_)
 			| InspectorMessage::ToggleScaleLink
 			| InspectorMessage::HexEdited(_)
@@ -2681,6 +2746,12 @@ impl NadeApp {
 				if clip.instance_id == Some(instance) && clip.composition_id == Some(composition) {
 					clip.name = name.clone();
 				}
+			}
+		}
+		if let Some(effect) = added_effect {
+			self.inspector_ui.expand_effect(instance, effect);
+			if !self.inspector_ui.is_open(inspector_panel::Section::Effects) {
+				self.inspector_ui.toggle(inspector_panel::Section::Effects, now);
 			}
 		}
 		if let Some((icon, text)) = toast {
@@ -3199,6 +3270,60 @@ impl NadeApp {
 }
 
 /// `#RRGGBB` / `RRGGBB` / `#RGB` → linear 0..1 RGB.
+/// Apply an inspector edit to effect `id` of `layer`. Returns the toast to
+/// show and the time to jump to, if any.
+fn edit_effect(
+	layer: &mut domain::Instance,
+	id: u32,
+	edit: EffectEdit,
+	time: f32,
+	fps: f32,
+) -> (Option<(Icon, String)>, Option<f32>) {
+	let Some(name) = layer.effect(id).map(domain::LayerEffect::name) else {
+		return (None, None);
+	};
+	match edit {
+		EffectEdit::Remove => {
+			layer.remove_effect(id);
+			return (Some((Icon::Trash, format!("Removed {name}"))), None);
+		}
+		EffectEdit::Move { up } => {
+			layer.move_effect(id, up);
+			return (None, None);
+		}
+		_ => {}
+	}
+	let Some(effect) = layer.effect_mut(id) else {
+		return (None, None);
+	};
+	match edit {
+		EffectEdit::ToggleEnabled => {
+			effect.enabled = !effect.enabled;
+			(None, None)
+		}
+		EffectEdit::Reset => {
+			effect.reset();
+			(Some((Icon::Reset, format!("{name} reset"))), None)
+		}
+		EffectEdit::SetValue { slot, value } => {
+			effect.set_value_at(slot, time, value);
+			(None, None)
+		}
+		EffectEdit::ToggleKey { param } => {
+			let label = effect.kind.params().get(param).map_or("", |param| param.name);
+			let timecode = core::timecode::format(time, fps);
+			let toast = if effect.toggle_key_at(param, time) {
+				(Icon::KeyframeFilled, format!("Keyed {label} at {timecode}"))
+			} else {
+				(Icon::Keyframe, format!("Removed {label} key at {timecode}"))
+			};
+			(Some(toast), None)
+		}
+		EffectEdit::JumpToKey { param, forward } => (None, effect.adjacent_key_time(param, time, forward)),
+		EffectEdit::ToggleExpanded | EffectEdit::Remove | EffectEdit::Move { .. } => (None, None),
+	}
+}
+
 fn parse_hex_color(input: &str) -> Option<[f32; 3]> {
 	let hex = input.trim().trim_start_matches('#');
 	let expanded: String = match hex.len() {

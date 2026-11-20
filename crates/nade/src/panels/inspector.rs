@@ -8,12 +8,15 @@ use constants::style::{
 };
 use constants::widgets::{self, button_body_center, mono_label, ui_label};
 use core::{BlendMode, CompositionId, InstanceId};
-use domain::{Instance, InstanceContent, MediaKind, MediaSource, TransformProperty};
+use domain::{
+	EffectKind, Instance, InstanceContent, LayerEffect, MediaKind, MediaSource, ParamKind, TransformProperty,
+};
 use iced::time::{Duration, Instant};
 use iced::widget::{Space, button, column, container, pick_list, row, scrollable, slider, text_input, tooltip};
 use iced::{Alignment, Animation, Border, Color, Element, Length};
-use inspector_panel::{InspectorMessage, PropertyGroup, Section};
+use inspector_panel::{EffectEdit, InspectorMessage, PropertyGroup, Section};
 use panel_system::PanelSystemMessage;
+use std::collections::HashSet;
 
 use crate::message::AppPanelMessage;
 use crate::panel_content::PanelContent;
@@ -21,6 +24,10 @@ use crate::viewer::CompositionSummary;
 use crate::widgets::draggable_number::{KeyState, number_field};
 
 const LABEL_WIDTH: f32 = 56.0;
+/// Effect parameter names are longer than transform labels.
+const EFFECT_LABEL_WIDTH: f32 = 92.0;
+/// Width of the `[‹][◆][›]` key cluster.
+const KEY_CLUSTER_WIDTH: f32 = 42.0;
 const ROW_HEIGHT: f32 = constants::style::ROW_HEIGHT;
 
 /// Panel-local UI state owned by the app (section disclosure, links, drafts).
@@ -31,6 +38,9 @@ pub struct InspectorUi {
 	text_open: Animation<bool>,
 	solid_open: Animation<bool>,
 	footage_open: Animation<bool>,
+	effects_open: Animation<bool>,
+	/// Effects whose controls are folded, per layer.
+	collapsed_effects: HashSet<(InstanceId, u32)>,
 	pub scale_linked: bool,
 	pub hex_draft: Option<String>,
 }
@@ -48,6 +58,8 @@ impl Default for InspectorUi {
 			text_open: disclosure(),
 			solid_open: disclosure(),
 			footage_open: disclosure(),
+			effects_open: disclosure(),
+			collapsed_effects: HashSet::new(),
 			scale_linked: true,
 			hex_draft: None,
 		}
@@ -62,6 +74,7 @@ impl InspectorUi {
 			Section::Text => &self.text_open,
 			Section::Solid => &self.solid_open,
 			Section::Footage => &self.footage_open,
+			Section::Effects => &self.effects_open,
 		}
 	}
 
@@ -72,13 +85,29 @@ impl InspectorUi {
 			Section::Text => &mut self.text_open,
 			Section::Solid => &mut self.solid_open,
 			Section::Footage => &mut self.footage_open,
+			Section::Effects => &mut self.effects_open,
 		};
 		let open = animation.value();
 		animation.go_mut(!open, now);
 	}
 
-	fn is_open(&self, section: Section) -> bool {
+	pub fn is_open(&self, section: Section) -> bool {
 		self.disclosure(section).value()
+	}
+	/// Fold / unfold the controls of one effect.
+	pub fn toggle_effect(&mut self, layer: InstanceId, effect: u32) {
+		if !self.collapsed_effects.remove(&(layer, effect)) {
+			self.collapsed_effects.insert((layer, effect));
+		}
+	}
+
+	/// Unfold an effect (e.g. right after adding it).
+	pub fn expand_effect(&mut self, layer: InstanceId, effect: u32) {
+		self.collapsed_effects.remove(&(layer, effect));
+	}
+
+	fn is_effect_open(&self, layer: InstanceId, effect: u32) -> bool {
+		!self.collapsed_effects.contains(&(layer, effect))
 	}
 
 	pub fn is_animating(&self, now: Instant) -> bool {
@@ -88,6 +117,7 @@ impl InspectorUi {
 			&self.text_open,
 			&self.solid_open,
 			&self.footage_open,
+			&self.effects_open,
 		]
 		.iter()
 		.any(|animation| animation.is_animating(now))
@@ -405,6 +435,19 @@ fn layer_view<'a>(layer: LayerTarget<'a>, ui: &'a InspectorUi, now: Instant) -> 
 			ui,
 			now,
 			footage_rows(source, instance, layer.fps),
+		));
+	}
+
+	if accepts_effects(instance.content()) {
+		let clear = (!instance.effects.is_empty()).then(remove_all_effects_button);
+		sections = sections.push(section(
+			Section::Effects,
+			Icon::Sparkle,
+			"Effects",
+			clear,
+			ui,
+			now,
+			effect_rows(&layer, ui),
 		));
 	}
 
@@ -972,6 +1015,409 @@ fn fill_rows<'a>(fill: [f32; 4], ui: &'a InspectorUi) -> Vec<Element<'a, Inspect
 		labelled("Fill", fill_row.into()),
 		row![Space::new().width(42.0 + LABEL_WIDTH + SPACE_2 * 2.0), wells].into(),
 	]
+}
+
+// -----------------------------------------------------------------------------
+// Effects
+// -----------------------------------------------------------------------------
+
+/// Whether the layer draws pixels effects could change.
+fn accepts_effects(content: &InstanceContent) -> bool {
+	match content {
+		InstanceContent::Empty => false,
+		InstanceContent::Media(source) => source.kind != MediaKind::Audio,
+		_ => true,
+	}
+}
+
+fn remove_all_effects_button<'a>() -> Element<'a, InspectorMessage> {
+	widgets::tip(
+		button(button_body_center(icon(Icon::Trash, 12.0, TEXT_SECONDARY_COLOR)))
+			.padding(0)
+			.width(24)
+			.height(ROW_HEIGHT)
+			.style(widgets::button_ghost)
+			.on_press(InspectorMessage::RemoveAllEffects),
+		"Remove All Effects",
+		tooltip::Position::Left,
+	)
+}
+
+/// "Add Effect" picker followed by every effect of the stack.
+fn effect_rows<'a>(layer: &LayerTarget<'a>, ui: &'a InspectorUi) -> Element<'a, InspectorMessage> {
+	let instance = layer.instance;
+	let add = pick_list(EffectKind::ALL, None::<EffectKind>, InspectorMessage::AddEffect)
+		.placeholder("Add Effect…")
+		.text_size(FONT_UI)
+		.padding([2, 8])
+		.width(Length::Fill)
+		.style(widgets::pick_list)
+		.menu_style(widgets::menu);
+
+	let mut rows = column![
+		row![icon(Icon::Plus, 12.0, TEXT_MUTED_COLOR), add]
+			.spacing(SPACE_2)
+			.align_y(Alignment::Center)
+			.height(ROW_HEIGHT)
+	]
+	.spacing(SPACE_2);
+
+	if instance.effects.is_empty() {
+		rows = rows.push(
+			container(ui_label("No effects. Pick one above or from the Effect menu.", FONT_UI).color(TEXT_MUTED_COLOR))
+				.padding([SPACE_1, SPACE_1]),
+		);
+	}
+	let count = instance.effects.len();
+	for (index, effect) in instance.effects.iter().enumerate() {
+		rows = rows.push(effect_block(layer, effect, index, count, ui));
+	}
+	rows.into()
+}
+
+fn effect_message(id: u32, edit: EffectEdit) -> InspectorMessage {
+	InspectorMessage::Effect { id, edit }
+}
+
+fn small_button<'a>(
+	content: Element<'a, InspectorMessage>,
+	label: &'a str,
+	message: Option<InspectorMessage>,
+) -> Element<'a, InspectorMessage> {
+	widgets::tip(
+		button(button_body_center(content))
+			.padding(0)
+			.width(18)
+			.height(ROW_HEIGHT)
+			.style(widgets::button_ghost)
+			.on_press_maybe(message),
+		label,
+		tooltip::Position::Left,
+	)
+}
+
+/// One effect: header (fold, fx switch, name, order, reset, remove) and controls.
+fn effect_block<'a>(
+	layer: &LayerTarget<'a>,
+	effect: &'a LayerEffect,
+	index: usize,
+	count: usize,
+	ui: &'a InspectorUi,
+) -> Element<'a, InspectorMessage> {
+	let id = effect.id;
+	let open = ui.is_effect_open(layer.instance.id(), id);
+	let name_color = if effect.enabled {
+		TEXT_PRIMARY_COLOR
+	} else {
+		TEXT_MUTED_COLOR
+	};
+
+	let fold = button(widgets::button_body(
+		row![
+			icon_transformed(
+				Icon::ChevronRight,
+				9.0,
+				TEXT_SECONDARY_COLOR,
+				if open { std::f32::consts::FRAC_PI_2 } else { 0.0 },
+				1.0,
+			),
+			ui_label(effect.name(), FONT_UI)
+				.color(name_color)
+				.wrapping(iced::widget::text::Wrapping::None),
+		]
+		.spacing(SPACE_2 + 1.0)
+		.align_y(Alignment::Center),
+	))
+	.padding([0.0, SPACE_1])
+	.width(Length::Fill)
+	.height(ROW_HEIGHT)
+	.style(widgets::button_ghost)
+	.on_press(effect_message(id, EffectEdit::ToggleExpanded));
+
+	let switch = widgets::tip(
+		button(button_body_center(icon(
+			Icon::Sparkle,
+			11.0,
+			if effect.enabled {
+				constants::style::ACCENT_BRIGHT_COLOR
+			} else {
+				TEXT_MUTED_COLOR
+			},
+		)))
+		.padding(0)
+		.width(20)
+		.height(ROW_HEIGHT)
+		.style(widgets::button_toggle(effect.enabled))
+		.on_press(effect_message(id, EffectEdit::ToggleEnabled)),
+		if effect.enabled {
+			"Turn Effect Off"
+		} else {
+			"Turn Effect On"
+		},
+		tooltip::Position::Left,
+	);
+
+	let arrow = |up: bool, enabled: bool| {
+		let color = if enabled {
+			TEXT_SECONDARY_COLOR
+		} else {
+			Color {
+				a: 0.3,
+				..TEXT_MUTED_COLOR
+			}
+		};
+		let rotation = if up {
+			-std::f32::consts::FRAC_PI_2
+		} else {
+			std::f32::consts::FRAC_PI_2
+		};
+		small_button(
+			icon_transformed(Icon::ChevronRight, 9.0, color, rotation, 1.0),
+			if up { "Move Up" } else { "Move Down" },
+			enabled.then_some(effect_message(id, EffectEdit::Move { up })),
+		)
+	};
+
+	let header = row![
+		switch,
+		fold,
+		arrow(true, index > 0),
+		arrow(false, index + 1 < count),
+		small_button(
+			icon(Icon::Reset, 11.0, TEXT_SECONDARY_COLOR),
+			"Reset Effect",
+			Some(effect_message(id, EffectEdit::Reset)),
+		),
+		small_button(
+			icon(Icon::Close, 10.0, TEXT_SECONDARY_COLOR),
+			"Remove Effect",
+			Some(effect_message(id, EffectEdit::Remove)),
+		),
+	]
+	.spacing(SPACE_1)
+	.align_y(Alignment::Center);
+
+	let mut content = column![header].spacing(SPACE_1 + 1.0);
+	if open {
+		for (param, _) in effect.kind.params().iter().enumerate() {
+			content = content.push(effect_param_row(layer, effect, param));
+		}
+	}
+	container(content)
+		.padding([SPACE_1, SPACE_1])
+		.width(Length::Fill)
+		.style(widgets::well)
+		.into()
+}
+
+fn effect_key_state(effect: &LayerEffect, slot: usize, time: f32) -> KeyState {
+	let curve = effect.curve(slot);
+	if curve.is_empty() {
+		KeyState::Static
+	} else if curve.key_at(time).is_some() {
+		KeyState::OnKey
+	} else {
+		KeyState::Animated
+	}
+}
+
+/// `[‹][◆][›]` for an effect parameter.
+fn effect_key_cluster<'a>(effect: &LayerEffect, param: usize, time: f32) -> Element<'a, InspectorMessage> {
+	let id = effect.id;
+	let animated = effect.is_animated(param);
+	let on_key = effect.has_key_at(param, time);
+	let (glyph, color, label) = match (animated, on_key) {
+		(_, true) => (Icon::KeyframeFilled, KEYFRAME_COLOR, "Remove Keyframe"),
+		(true, false) => (Icon::Keyframe, KEYFRAME_COLOR, "Add Keyframe"),
+		(false, false) => (Icon::Keyframe, TEXT_MUTED_COLOR, "Animate Property"),
+	};
+	let diamond = widgets::tip(
+		button(button_body_center(icon(glyph, 12.0, color)))
+			.padding(0)
+			.width(18)
+			.height(ROW_HEIGHT)
+			.style(widgets::button_ghost)
+			.on_press(effect_message(id, EffectEdit::ToggleKey { param })),
+		label,
+		tooltip::Position::Left,
+	);
+	let navigate = |forward: bool| -> Element<'a, InspectorMessage> {
+		if !animated {
+			return Space::new().width(12).into();
+		}
+		let exists = effect.adjacent_key_time(param, time, forward).is_some();
+		let glyph = if forward { Icon::ChevronRight } else { Icon::ChevronLeft };
+		let color = if exists {
+			TEXT_SECONDARY_COLOR
+		} else {
+			Color {
+				a: 0.3,
+				..TEXT_MUTED_COLOR
+			}
+		};
+		button(button_body_center(icon(glyph, 9.0, color)))
+			.padding(0)
+			.width(12)
+			.height(ROW_HEIGHT)
+			.style(widgets::button_ghost)
+			.on_press_maybe(exists.then_some(effect_message(id, EffectEdit::JumpToKey { param, forward })))
+			.into()
+	};
+	row![navigate(false), diamond, navigate(true)]
+		.spacing(0)
+		.align_y(Alignment::Center)
+		.into()
+}
+
+/// A pick list entry of a choice parameter.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ChoiceOption {
+	index: usize,
+	label: &'static str,
+}
+
+impl std::fmt::Display for ChoiceOption {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(self.label)
+	}
+}
+
+fn effect_param_row<'a>(
+	layer: &LayerTarget<'a>,
+	effect: &'a LayerEffect,
+	param: usize,
+) -> Element<'a, InspectorMessage> {
+	let time = layer.time;
+	let id = effect.id;
+	let spec = effect.kind.params()[param];
+	let slots = effect.kind.slot_range(param);
+	let first = slots.start;
+	let value = |slot: usize| effect.value_at(slot, time);
+	let set = move |slot: usize| move |value: f32| effect_message(id, EffectEdit::SetValue { slot, value });
+	let field = |slot: usize| {
+		let channel = slot - first;
+		number_field(value(slot), set(slot))
+			.default_value(spec.default.get(channel).copied().unwrap_or(0.0))
+			.key_state(effect_key_state(effect, slot, time))
+	};
+
+	let control: Element<'a, InspectorMessage> = match spec.kind {
+		ParamKind::Number {
+			step,
+			precision,
+			suffix,
+			..
+		} => field(first).step(step).precision(precision).suffix(suffix).into(),
+		ParamKind::Percent { min, max } => row![
+			slider(min..=max, value(first), set(first))
+				.step(0.01_f32)
+				.width(Length::Fill)
+				.style(widgets::slider),
+			field(first).scale(100.0).suffix("%").step(0.005).precision(0).width(58),
+		]
+		.spacing(SPACE_3 + 2.0)
+		.align_y(Alignment::Center)
+		.into(),
+		ParamKind::Angle => field(first).suffix("°").step(0.5).precision(1).into(),
+		ParamKind::Pixels { .. } => field(first).suffix(" px").step(0.1).precision(1).into(),
+		ParamKind::Point => row![
+			field(first).prefix("X", AXIS_X_COLOR).step(1.0).precision(1),
+			field(first + 1).prefix("Y", AXIS_Y_COLOR).step(1.0).precision(1),
+		]
+		.spacing(SPACE_2)
+		.into(),
+		ParamKind::Color => {
+			let swatch = Color::from_rgb(value(first), value(first + 1), value(first + 2));
+			let channel = |slot: usize, label: &'static str| {
+				field(slot)
+					.prefix(label, TEXT_MUTED_COLOR)
+					.scale(255.0)
+					.step(0.004)
+					.precision(0)
+			};
+			row![
+				container(Space::new())
+					.width(16)
+					.height(16)
+					.style(widgets::swatch(swatch)),
+				channel(first, "R"),
+				channel(first + 1, "G"),
+				channel(first + 2, "B"),
+			]
+			.spacing(SPACE_1 + 1.0)
+			.align_y(Alignment::Center)
+			.into()
+		}
+		ParamKind::Choice(options) => {
+			let choices: Vec<ChoiceOption> = options
+				.iter()
+				.enumerate()
+				.map(|(index, label)| ChoiceOption { index, label })
+				.collect();
+			let selected = choices.get(value(first).round().max(0.0) as usize).copied();
+			pick_list(choices, selected, move |choice: ChoiceOption| {
+				effect_message(
+					id,
+					EffectEdit::SetValue {
+						slot: first,
+						value: choice.index as f32,
+					},
+				)
+			})
+			.text_size(FONT_UI)
+			.padding([2, 8])
+			.width(Length::Fill)
+			.style(widgets::pick_list)
+			.menu_style(widgets::menu)
+			.into()
+		}
+		ParamKind::Toggle => {
+			let on = value(first) >= 0.5;
+			row![
+				button(button_body_center(icon(
+					Icon::Check,
+					11.0,
+					if on {
+						constants::style::ACCENT_BRIGHT_COLOR
+					} else {
+						Color::TRANSPARENT
+					},
+				)))
+				.padding(0)
+				.width(ROW_HEIGHT)
+				.height(ROW_HEIGHT)
+				.style(widgets::button_toggle(on))
+				.on_press(effect_message(
+					id,
+					EffectEdit::SetValue {
+						slot: first,
+						value: if on { 0.0 } else { 1.0 },
+					},
+				)),
+				Space::new().width(Length::Fill),
+			]
+			.align_y(Alignment::Center)
+			.into()
+		}
+	};
+
+	let keys: Element<'a, InspectorMessage> = if spec.kind.is_animatable() {
+		effect_key_cluster(effect, param, time)
+	} else {
+		Space::new().width(KEY_CLUSTER_WIDTH).into()
+	};
+	row![
+		keys,
+		ui_label(spec.name, FONT_UI)
+			.color(TEXT_SECONDARY_COLOR)
+			.wrapping(iced::widget::text::Wrapping::None)
+			.width(EFFECT_LABEL_WIDTH),
+		control,
+	]
+	.spacing(SPACE_2)
+	.align_y(Alignment::Center)
+	.height(ROW_HEIGHT)
+	.into()
 }
 
 #[cfg(test)]

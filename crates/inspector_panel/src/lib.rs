@@ -1,7 +1,7 @@
 //! Typed messages and property groups for the properties (inspector) panel.
 
 use core::{BlendMode, CompositionId, InstanceId};
-use domain::TransformProperty;
+use domain::{EffectKind, TransformProperty};
 
 /// A row in the Transform section. Vector rows edit several channels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -58,6 +58,37 @@ pub enum Section {
 	Text,
 	Solid,
 	Footage,
+	Effects,
+}
+
+/// An edit of one effect in the layer's stack.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum EffectEdit {
+	/// The "fx" switch.
+	ToggleEnabled,
+	/// Show / hide the effect's controls.
+	ToggleExpanded,
+	Remove,
+	/// One step up (earlier) or down the stack.
+	Move {
+		up: bool,
+	},
+	/// Defaults, without keyframes.
+	Reset,
+	/// Edit one slot at the current time (keys it when animated).
+	SetValue {
+		slot: usize,
+		value: f32,
+	},
+	/// Stopwatch of a parameter row.
+	ToggleKey {
+		param: usize,
+	},
+	/// Move the playhead to the previous / next key of a parameter row.
+	JumpToKey {
+		param: usize,
+		forward: bool,
+	},
 }
 
 /// Messages for the inspector panel
@@ -110,6 +141,14 @@ pub enum InspectorMessage {
 	OpenNestedComposition,
 	/// Place the shown composition as a layer in another composition.
 	NestInto(CompositionId),
+	/// Append an effect to the selected layer.
+	AddEffect(EffectKind),
+	RemoveAllEffects,
+	/// Edit effect `id` of the selected layer.
+	Effect {
+		id: u32,
+		edit: EffectEdit,
+	},
 }
 
 #[cfg(test)]

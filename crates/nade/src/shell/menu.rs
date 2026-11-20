@@ -25,13 +25,21 @@ pub enum MenuKind {
 	Edit,
 	Composition,
 	Layer,
+	Effect,
 	View,
 	/// Right-click menu for whatever is selected.
 	Context,
 }
 
 impl MenuKind {
-	pub const BAR: [Self; 5] = [Self::File, Self::Edit, Self::Composition, Self::Layer, Self::View];
+	pub const BAR: [Self; 6] = [
+		Self::File,
+		Self::Edit,
+		Self::Composition,
+		Self::Layer,
+		Self::Effect,
+		Self::View,
+	];
 
 	pub fn title(self) -> &'static str {
 		match self {
@@ -39,6 +47,7 @@ impl MenuKind {
 			Self::Edit => "Edit",
 			Self::Composition => "Composition",
 			Self::Layer => "Layer",
+			Self::Effect => "Effect",
 			Self::View => "View",
 			Self::Context => "",
 		}
