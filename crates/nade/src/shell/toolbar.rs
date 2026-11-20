@@ -37,6 +37,9 @@ pub fn view<'a>(state: ToolbarState) -> Element<'a, Message> {
 	);
 
 	let actions = row![
+		action(Icon::Open, "Open Project…  ⌘O", ShellMessage::OpenProject),
+		action(Icon::Save, "Save Project  ⌘S", ShellMessage::SaveProject),
+		widgets::vertical_separator(12.0),
 		action(Icon::Import, "Import Media…  ⌘I", ShellMessage::ImportMedia),
 		action(Icon::Comp, "New Composition", ShellMessage::NewComposition),
 		action(Icon::LayerText, "New Text Layer", ShellMessage::NewTextLayer),

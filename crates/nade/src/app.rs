@@ -81,6 +81,9 @@ fn shortcut(key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Messa
 			("y", false) => Some(Message::Shell(ShellMessage::NewSolid)),
 			("i", false) => Some(Message::Shell(ShellMessage::ImportMedia)),
 			("m", false) | ("e", false) => Some(Message::Shell(ShellMessage::Export)),
+			("s", false) => Some(Message::Shell(ShellMessage::SaveProject)),
+			("s", true) => Some(Message::Shell(ShellMessage::SaveProjectAs)),
+			("o", false) => Some(Message::Shell(ShellMessage::OpenProject)),
 			_ => None,
 		};
 	}
@@ -555,6 +558,31 @@ impl NadeApp {
 				self.update(Message::CloseRequested(iced::window::Id::unique()))
 			}
 
+			Message::ProjectChosen(path) => {
+				if let Some(path) = path {
+					self.open_project(path);
+				}
+				Task::none()
+			}
+
+			Message::SaveProjectTo(path) => {
+				if let Some(path) = path {
+					let path = if path.extension().is_none() {
+						path.with_extension("nade")
+					} else {
+						path
+					};
+					match self.project.save_as(&path) {
+						Ok(()) => self.show_toast(Icon::Save, format!("Saved “{}”", self.project.name())),
+						Err(error) => {
+							log::error!("Save failed: {error}");
+							self.show_toast(Icon::Close, "Save failed — see log");
+						}
+					}
+				}
+				Task::none()
+			}
+
 			Message::ExportTo(path) => {
 				if let Some(path) = path {
 					self.start_export(path);
@@ -617,6 +645,42 @@ impl NadeApp {
 				Task::none()
 			}
 			ShellMessage::ImportMedia => Self::pick_media_file(),
+			ShellMessage::OpenProject => Task::perform(
+				async {
+					rfd::AsyncFileDialog::new()
+						.set_title("Open Project")
+						.add_filter("Nade Project", &["nade"])
+						.pick_file()
+						.await
+						.map(|handle| handle.path().to_path_buf())
+				},
+				Message::ProjectChosen,
+			),
+			ShellMessage::SaveProject if self.project.path().is_some() => {
+				match self.project.save() {
+					Ok(()) => self.show_toast(Icon::Save, format!("Saved “{}”", self.project.name())),
+					Err(error) => {
+						log::error!("Save failed: {error}");
+						self.show_toast(Icon::Close, "Save failed — see log");
+					}
+				}
+				Task::none()
+			}
+			ShellMessage::SaveProject | ShellMessage::SaveProjectAs => {
+				let name = self.project.name().to_string();
+				Task::perform(
+					async move {
+						rfd::AsyncFileDialog::new()
+							.set_title("Save Project")
+							.set_file_name(format!("{name}.nade"))
+							.add_filter("Nade Project", &["nade"])
+							.save_file()
+							.await
+							.map(|handle| handle.path().to_path_buf())
+					},
+					Message::SaveProjectTo,
+				)
+			}
 			ShellMessage::Export => {
 				if self.export.is_some() {
 					self.show_toast(Icon::Export, "An export is already running");
@@ -708,6 +772,41 @@ impl NadeApp {
 			let last_frame = core::timecode::frame_at(duration, fps).saturating_sub(1);
 			self.apply_core_msg(Msg::SetTime(core::timecode::time_of_frame(last_frame, fps)));
 		}
+	}
+
+	/// プロジェクトを読み込み、UI 状態を作り直す
+	fn open_project(&mut self, path: PathBuf) {
+		let project = match Project::open(&path) {
+			Ok(project) => project,
+			Err(error) => {
+				log::error!("Failed to open {}: {error}", path.display());
+				self.show_toast(Icon::Close, "Couldn’t open the project");
+				return;
+			}
+		};
+		if self.current_model.preview.is_playing {
+			self.apply_core_msg(Msg::TogglePlay);
+		}
+		self.project = project;
+		self.history.reset(&self.project);
+		self.clipboard.clear();
+		self.project_pane = ProjectPaneState::default();
+		self.asset_browser = AssetBrowserState::default();
+		for folder in self.project.root_assets() {
+			self.asset_browser.expanded_ids.insert(folder);
+		}
+		self.timeline.state.clear_selection();
+		self.timeline.model.tracks.clear();
+		self.current_model.preview.time = 0.0;
+
+		match self.project.compositions().into_iter().min() {
+			Some(composition) => {
+				self.project_pane.expanded_ids.insert(composition);
+				self.select_object(ObjectId::Composition(composition));
+			}
+			None => self.request_preview_refresh(),
+		}
+		self.show_toast(Icon::Open, format!("Opened “{}”", self.project.name()));
 	}
 
 	fn start_export(&mut self, path: PathBuf) {

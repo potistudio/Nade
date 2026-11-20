@@ -98,6 +98,11 @@ pub enum ShellMessage {
 	NewTextLayer,
 	NewSolid,
 	ImportMedia,
+	/// プロジェクトを開く
+	OpenProject,
+	/// プロジェクトを保存（未保存なら保存先を尋ねる）
+	SaveProject,
+	SaveProjectAs,
 	/// 現在のコンポジションを動画ファイルへ書き出す
 	Export,
 	CancelExport,
@@ -130,6 +135,10 @@ pub enum Message {
 	CloseRequested(iced::window::Id),
 	/// タイムラインパネルメッセージ
 	Timeline(TimelineMessage),
+	/// 開くプロジェクトファイルが選ばれた（キャンセル時は None）
+	ProjectChosen(Option<PathBuf>),
+	/// プロジェクトの保存先が選ばれた（キャンセル時は None）
+	SaveProjectTo(Option<PathBuf>),
 	/// 書き出し先が選ばれた（キャンセル時は None）
 	ExportTo(Option<PathBuf>),
 	/// ファイルダイアログで選ばれ、プローブ済みのメディア（キャンセル時は空）

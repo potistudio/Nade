@@ -15,6 +15,7 @@ pub struct History {
 }
 
 impl History {
+	#[cfg(test)]
 	pub fn new(project: &Project) -> Self {
 		Self::with_snapshot(project.snapshot())
 	}
@@ -70,7 +71,7 @@ impl History {
 
 	/// Forget everything (e.g. after opening another project).
 	pub fn reset(&mut self, project: &Project) {
-		*self = Self::new(project);
+		*self = Self::with_snapshot(project.snapshot());
 	}
 }
 

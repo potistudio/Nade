@@ -108,6 +108,8 @@ pub fn scene_messages(select_layer: impl Fn(&str) -> Option<AppPanelMessage>) ->
 			))),
 			"solid" => Some(Message::Shell(ShellMessage::NewSolid)),
 			"export" => Some(Message::ExportTo(Some(PathBuf::from(value.trim())))),
+			"save" => Some(Message::SaveProjectTo(Some(PathBuf::from(value.trim())))),
+			"open" => Some(Message::ProjectChosen(Some(PathBuf::from(value.trim())))),
 			"edit" => {
 				use crate::message::EditCommand;
 				let command = match value.trim() {
