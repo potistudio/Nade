@@ -12,7 +12,7 @@ use nade_asset_browser::{AssetBrowserMessage, AssetBrowserRequest, AssetBrowserS
 use nade_browser_panel::{ObjectId, ProjectPaneMessage, ProjectPaneState, ProjectPaneUpdate};
 use nade_constants::icons::Icon;
 use nade_curve_editor_panel::{CurveEditorMessage, CurveEditorState};
-use nade_inspector_panel::{EffectEdit, InspectorMessage, PropertyGroup};
+use nade_inspector_panel::{EditContext, InspectorMessage, apply_layer_edit};
 use nade_panel_system::{PanelSystem, PanelSystemMessage};
 use nade_timeline_panel::{TimelineClip, TimelineInteraction, TimelineMessage, TimelineModel, TimelineTrack};
 use std::path::PathBuf;
@@ -2441,62 +2441,60 @@ impl NadeApp {
 	}
 
 	fn apply_inspector_message(&mut self, msg: InspectorMessage) {
-		let now = self.now;
+		let selected = match self.project_pane.selected_id {
+			Some(ObjectId::Instance { instance, .. }) => Some(instance),
+			_ => None,
+		};
+		let Some(msg) = self.inspector_ui.apply(msg, self.now, selected) else {
+			return;
+		};
+
 		match msg {
-			InspectorMessage::ToggleSection(section) => {
-				self.inspector_ui.toggle(section, now);
-				return;
-			}
-			InspectorMessage::ToggleScaleLink => {
-				self.inspector_ui.scale_linked = !self.inspector_ui.scale_linked;
-				return;
-			}
-			InspectorMessage::HexEdited(draft) => {
-				self.inspector_ui.hex_draft = Some(draft);
-				return;
-			}
+			InspectorMessage::SetChannel { .. }
+			| InspectorMessage::ToggleKeyframe(_)
+			| InspectorMessage::JumpToKey { .. }
+			| InspectorMessage::ResetTransform
+			| InspectorMessage::Rename(_)
+			| InspectorMessage::SetText(_)
+			| InspectorMessage::SetFontSize(_)
+			| InspectorMessage::SetTracking(_)
+			| InspectorMessage::SetFillChannel { .. }
+			| InspectorMessage::SetFillRgb(_)
+			| InspectorMessage::HexSubmitted
+			| InspectorMessage::SetSolidSize { .. }
+			| InspectorMessage::FitToComposition
+			| InspectorMessage::SetBlendMode(_)
+			| InspectorMessage::AddEffect(_)
+			| InspectorMessage::RemoveAllEffects
+			| InspectorMessage::Effect { .. } => self.edit_selected_layer(msg),
 			InspectorMessage::SetCompositionDuration(_)
 			| InspectorMessage::FitCompositionToLayers
-			| InspectorMessage::SetCompositionBackground(_) => {
-				self.apply_composition_setting(msg);
-				return;
+			| InspectorMessage::SetCompositionBackground(_) => self.apply_composition_setting(msg),
+			InspectorMessage::SetParent(parent) => self.set_selected_parent(parent),
+			InspectorMessage::OpenNestedComposition => self.open_nested_composition(),
+			InspectorMessage::NestInto(outer) => self.nest_shown_composition(outer),
+			// パネル UI のメッセージは上で状態が処理済み。
+			InspectorMessage::ToggleSection(_) | InspectorMessage::ToggleScaleLink | InspectorMessage::HexEdited(_) => {
 			}
-			InspectorMessage::SetParent(parent) => {
-				self.set_selected_parent(parent);
-				return;
-			}
-			InspectorMessage::OpenNestedComposition => {
-				self.open_nested_composition();
-				return;
-			}
-			InspectorMessage::NestInto(outer) => {
-				self.nest_shown_composition(outer);
-				return;
-			}
-			InspectorMessage::Effect {
-				id,
-				edit: EffectEdit::ToggleExpanded,
-			} => {
-				if let Some(ObjectId::Instance { instance, .. }) = self.project_pane.selected_id {
-					self.inspector_ui.toggle_effect(instance, id);
-				}
-				return;
-			}
-			_ => {}
 		}
+	}
 
+	/// 選択レイヤーへのインスペクター編集: パネルがドメイン書き込みを適用し、
+	/// シェルが結果を各パネルへ波及させる。
+	fn edit_selected_layer(&mut self, msg: InspectorMessage) {
 		let Some(ObjectId::Instance { composition, instance }) = self.project_pane.selected_id else {
 			return;
 		};
-		let time = self.current_model.preview.time;
-		let fps = self.composition_fps();
-		let scale_linked = self.inspector_ui.scale_linked;
-		let hex_draft = self.inspector_ui.hex_draft.take();
-		let frame = self
-			.project
-			.composition(&composition)
-			.map_or([1920.0, 1080.0], |comp| [comp.width() as f32, comp.height() as f32]);
-
+		let ctx = EditContext {
+			time: self.current_model.preview.time,
+			fps: self.composition_fps(),
+			scale_linked: self.inspector_ui.scale_linked,
+			hex_draft: self.inspector_ui.hex_draft.take(),
+			frame: self
+				.project
+				.composition(&composition)
+				.map_or([1920.0, 1080.0], |comp| [comp.width() as f32, comp.height() as f32]),
+		};
 		let Some(obj) = self
 			.project
 			.composition_mut(&composition)
@@ -2504,162 +2502,9 @@ impl NadeApp {
 		else {
 			return;
 		};
+		let outcome = apply_layer_edit(obj, msg, &ctx);
 
-		let mut toast = None;
-		let mut jump = None;
-		let mut renamed = None;
-		let mut added_effect = None;
-
-		match msg {
-			InspectorMessage::SetChannel { property, value } => {
-				let partner = match property {
-					TransformProperty::ScaleX => Some(TransformProperty::ScaleY),
-					TransformProperty::ScaleY => Some(TransformProperty::ScaleX),
-					_ => None,
-				};
-				// 縦横比を固定: 変化率をもう一方の軸にも掛ける
-				if let (true, Some(partner)) = (scale_linked, partner) {
-					let previous = obj.property_at(property, time);
-					let other = obj.property_at(partner, time);
-					let other_next = if previous.abs() > f32::EPSILON {
-						other * value / previous
-					} else {
-						value
-					};
-					obj.set_property_at(partner, time, other_next);
-				}
-				obj.set_property_at(property, time, value);
-			}
-			InspectorMessage::ToggleKeyframe(group) => {
-				let channels = group.channels();
-				let on_key = channels
-					.iter()
-					.any(|property| obj.animation.curve(*property).key_at(time).is_some());
-				for property in channels {
-					let has_key = obj.animation.curve(*property).key_at(time).is_some();
-					if has_key == on_key {
-						obj.toggle_key_at(*property, time);
-					}
-				}
-				let timecode = nade_core::timecode::format(time, fps);
-				toast = Some(if on_key {
-					(Icon::Keyframe, format!("Removed {} key at {timecode}", group.label()))
-				} else {
-					(Icon::KeyframeFilled, format!("Keyed {} at {timecode}", group.label()))
-				});
-			}
-			InspectorMessage::JumpToKey { group, forward } => {
-				let times = group.channels().iter().filter_map(|property| {
-					let curve = obj.animation.curve(*property);
-					if forward {
-						curve.next_key_time(time)
-					} else {
-						curve.previous_key_time(time)
-					}
-				});
-				jump = if forward {
-					times.reduce(f32::min)
-				} else {
-					times.reduce(f32::max)
-				};
-			}
-			InspectorMessage::ResetTransform => {
-				for group in PropertyGroup::ALL {
-					for property in group.channels() {
-						obj.set_property_at(*property, time, PropertyGroup::default_value(*property));
-					}
-				}
-				toast = Some((Icon::Reset, "Transform reset".to_string()));
-			}
-			InspectorMessage::Rename(name) => {
-				obj.name = name.clone();
-				renamed = Some(name);
-			}
-			InspectorMessage::SetText(text) => {
-				if let Some(slot) = obj.content_mut().text_mut() {
-					*slot = text;
-				}
-			}
-			InspectorMessage::SetFontSize(size) => {
-				if let Some(slot) = obj.content_mut().font_size_mut() {
-					*slot = size.max(1.0);
-				}
-			}
-			InspectorMessage::SetTracking(spacing) => {
-				if let Some(slot) = obj.content_mut().spacing_mut() {
-					*slot = spacing;
-				}
-			}
-			InspectorMessage::SetFillChannel { index, value } => {
-				if let Some(color) = obj.content_mut().fill_color_mut()
-					&& let Some(slot) = color.get_mut(index)
-				{
-					*slot = value.clamp(0.0, 1.0);
-				}
-			}
-			InspectorMessage::SetFillRgb(rgb) => {
-				if let Some(color) = obj.content_mut().fill_color_mut() {
-					color[..3].copy_from_slice(&rgb);
-				}
-			}
-			InspectorMessage::HexSubmitted => {
-				if let Some(rgb) = hex_draft.as_deref().and_then(parse_hex_color)
-					&& let Some(color) = obj.content_mut().fill_color_mut()
-				{
-					color[..3].copy_from_slice(&rgb);
-				}
-			}
-			InspectorMessage::SetSolidSize { width, height } => {
-				if let Some((slot_width, slot_height)) = obj.content_mut().solid_size_mut() {
-					*slot_width = width.max(1.0);
-					*slot_height = height.max(1.0);
-				}
-			}
-			InspectorMessage::FitToComposition => {
-				let [width, height] = match obj.content() {
-					InstanceContent::Media(source) => source.size(),
-					InstanceContent::Solid { width, height, .. } => [*width, *height],
-					_ => [0.0, 0.0],
-				};
-				if width > 0.0 && height > 0.0 {
-					let fit = (frame[0] / width).min(frame[1] / height);
-					obj.set_property_at(TransformProperty::ScaleX, time, fit);
-					obj.set_property_at(TransformProperty::ScaleY, time, fit);
-					obj.set_property_at(TransformProperty::PositionX, time, 0.0);
-					obj.set_property_at(TransformProperty::PositionY, time, 0.0);
-					toast = Some((Icon::Fit, "Fit to composition".to_string()));
-				}
-			}
-			InspectorMessage::SetBlendMode(mode) => obj.blend_mode = mode,
-			InspectorMessage::AddEffect(kind) => {
-				added_effect = Some(obj.add_effect(kind));
-				toast = Some((Icon::Sparkle, format!("Added {}", kind.name())));
-			}
-			InspectorMessage::RemoveAllEffects => {
-				let count = obj.effects.len();
-				obj.effects.clear();
-				toast = Some((
-					Icon::Trash,
-					format!("Removed {count} effect{}", if count == 1 { "" } else { "s" }),
-				));
-			}
-			InspectorMessage::Effect { id, edit } => {
-				let (result, effect_jump) = edit_effect(obj, id, edit, time, fps);
-				toast = result;
-				jump = effect_jump;
-			}
-			InspectorMessage::ToggleSection(_)
-			| InspectorMessage::ToggleScaleLink
-			| InspectorMessage::HexEdited(_)
-			| InspectorMessage::SetCompositionDuration(_)
-			| InspectorMessage::FitCompositionToLayers
-			| InspectorMessage::SetCompositionBackground(_)
-			| InspectorMessage::SetParent(_)
-			| InspectorMessage::OpenNestedComposition
-			| InspectorMessage::NestInto(_) => {}
-		}
-
-		if let Some(name) = renamed {
+		if let Some(name) = outcome.renamed {
 			for clip in self
 				.timeline
 				.model
@@ -2672,16 +2517,17 @@ impl NadeApp {
 				}
 			}
 		}
-		if let Some(effect) = added_effect {
+		if let Some(effect) = outcome.added_effect {
 			self.inspector_ui.expand_effect(instance, effect);
 			if !self.inspector_ui.is_open(nade_inspector_panel::Section::Effects) {
-				self.inspector_ui.toggle(nade_inspector_panel::Section::Effects, now);
+				self.inspector_ui
+					.toggle(nade_inspector_panel::Section::Effects, self.now);
 			}
 		}
-		if let Some((icon, text)) = toast {
+		if let Some((icon, text)) = outcome.toast {
 			self.show_toast(icon, text);
 		}
-		match jump {
+		match outcome.jump {
 			Some(time) => self.apply_core_msg(Msg::SetTime(time)),
 			None => self.request_preview_refresh(),
 		}
@@ -3169,73 +3015,6 @@ impl NadeApp {
 /// `#RRGGBB` / `RRGGBB` / `#RGB` → linear 0..1 RGB.
 /// Apply an inspector edit to effect `id` of `layer`. Returns the toast to
 /// show and the time to jump to, if any.
-fn edit_effect(
-	layer: &mut nade_domain::Instance,
-	id: u32,
-	edit: EffectEdit,
-	time: f32,
-	fps: f32,
-) -> (Option<(Icon, String)>, Option<f32>) {
-	let Some(name) = layer.effect(id).map(nade_domain::LayerEffect::name) else {
-		return (None, None);
-	};
-	match edit {
-		EffectEdit::Remove => {
-			layer.remove_effect(id);
-			return (Some((Icon::Trash, format!("Removed {name}"))), None);
-		}
-		EffectEdit::Move { up } => {
-			layer.move_effect(id, up);
-			return (None, None);
-		}
-		_ => {}
-	}
-	let Some(effect) = layer.effect_mut(id) else {
-		return (None, None);
-	};
-	match edit {
-		EffectEdit::ToggleEnabled => {
-			effect.enabled = !effect.enabled;
-			(None, None)
-		}
-		EffectEdit::Reset => {
-			effect.reset();
-			(Some((Icon::Reset, format!("{name} reset"))), None)
-		}
-		EffectEdit::SetValue { slot, value } => {
-			effect.set_value_at(slot, time, value);
-			(None, None)
-		}
-		EffectEdit::ToggleKey { param } => {
-			let label = effect.kind.params().get(param).map_or("", |param| param.name);
-			let timecode = nade_core::timecode::format(time, fps);
-			let toast = if effect.toggle_key_at(param, time) {
-				(Icon::KeyframeFilled, format!("Keyed {label} at {timecode}"))
-			} else {
-				(Icon::Keyframe, format!("Removed {label} key at {timecode}"))
-			};
-			(Some(toast), None)
-		}
-		EffectEdit::JumpToKey { param, forward } => (None, effect.adjacent_key_time(param, time, forward)),
-		EffectEdit::ToggleExpanded | EffectEdit::Remove | EffectEdit::Move { .. } => (None, None),
-	}
-}
-
-fn parse_hex_color(input: &str) -> Option<[f32; 3]> {
-	let hex = input.trim().trim_start_matches('#');
-	let expanded: String = match hex.len() {
-		3 => hex.chars().flat_map(|c| [c, c]).collect(),
-		6 => hex.to_string(),
-		_ => return None,
-	};
-	let channel = |index: usize| u8::from_str_radix(&expanded[index..index + 2], 16).ok();
-	Some([
-		channel(0)? as f32 / 255.0,
-		channel(2)? as f32 / 255.0,
-		channel(4)? as f32 / 255.0,
-	])
-}
-
 fn unique_composition_name(project: &Project) -> String {
 	let existing: Vec<String> = project
 		.compositions()
@@ -3284,7 +3063,7 @@ fn unique_numbered_name(base: &str, existing: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::{EditCommand, Message, TransportMessage, parse_hex_color, shortcut};
+	use super::{EditCommand, Message, TransportMessage, shortcut};
 	use iced::keyboard::{Key, Modifiers};
 
 	fn press(key: &str, modifiers: Modifiers) -> Option<Message> {
@@ -3315,13 +3094,5 @@ mod tests {
 				nade_viewer_panel::Tool::Anchor
 			)))
 		));
-	}
-
-	#[test]
-	fn parses_hex_colors() {
-		assert_eq!(parse_hex_color("#FF0000"), Some([1.0, 0.0, 0.0]));
-		assert_eq!(parse_hex_color("0f0"), Some([0.0, 1.0, 0.0]));
-		assert_eq!(parse_hex_color("#12345"), None);
-		assert_eq!(parse_hex_color("#GG0000"), None);
 	}
 }
