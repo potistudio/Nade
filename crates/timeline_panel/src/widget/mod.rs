@@ -25,6 +25,17 @@ fn rounded_rect(rect: Rectangle, radius: f32) -> Path {
 	Path::rounded_rectangle(rect.position(), rect.size(), radius.min(rect.height * 0.5).into())
 }
 
+/// Ghost of a clip about to be dropped in from outside the timeline.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DropPreview {
+	pub lane: usize,
+	pub start: f32,
+	pub duration: f32,
+	/// A new track opens at `lane` (the lane is taken at that time, or it is
+	/// past the last track), pushing the tracks below down.
+	pub insert: bool,
+}
+
 /// Iced Widget for the timeline pane
 /// Timeline displays tracks and clips, and allows user interaction
 pub struct TimelineWidget<'a> {
@@ -42,6 +53,7 @@ pub struct TimelineWidget<'a> {
 	keyframes: HashMap<usize, Vec<f32>>,
 	/// Work area `[start, end]` (seconds).
 	work_area: Option<[f32; 2]>,
+	drop_preview: Option<DropPreview>,
 }
 
 // -------- Public API ---------------------------------------------------------
@@ -58,7 +70,14 @@ impl<'a> TimelineWidget<'a> {
 			duration: None,
 			keyframes: HashMap::new(),
 			work_area: None,
+			drop_preview: None,
 		}
+	}
+
+	/// Ghost clip shown while an asset is dragged over the lanes.
+	pub fn drop_preview(mut self, preview: Option<DropPreview>) -> Self {
+		self.drop_preview = preview;
+		self
 	}
 
 	/// Work area shown as a bar under the ruler; time outside it is dimmed.

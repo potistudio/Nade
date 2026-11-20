@@ -81,6 +81,16 @@ impl TimelineInteraction {
 		event: TimelineCanvasEvent,
 		current_time: f32,
 	) -> TimelineUpdate {
+		// 外からのドロップ位置を求められるよう、最後に見えた canvas の位置を覚えておく
+		match &event {
+			TimelineCanvasEvent::MousePressed { position, bounds, .. }
+			| TimelineCanvasEvent::MouseMoved { position, bounds } => {
+				self.canvas_bounds = Some(*bounds);
+				self.canvas_pointer = Some(*position);
+			}
+			TimelineCanvasEvent::MouseWheelScrolled { bounds, .. } => self.canvas_bounds = Some(*bounds),
+			_ => {}
+		}
 		match event {
 			TimelineCanvasEvent::MousePressed {
 				position,

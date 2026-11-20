@@ -1,6 +1,6 @@
 //! Layer bars, keyframe diamonds and resize handles.
 
-use crate::widget::{KEYFRAME_RADIUS, TimelineWidget, rounded_rect};
+use crate::widget::{DropPreview, KEYFRAME_RADIUS, TimelineWidget, rounded_rect};
 use crate::{TimelineClip, TimelineModel, interaction::TimelineInteraction};
 use iced::{
 	Color, Point, Rectangle, Size,
@@ -65,6 +65,10 @@ impl TimelineWidget<'_> {
 				);
 			}
 
+			if let Some(preview) = self.drop_preview {
+				self.draw_drop_preview(frame, state, rect, preview);
+			}
+
 			if let Some(insert_idx) = insert_before_idx {
 				let gap_y = rect.y + (insert_idx as f32 * TRACK_HEIGHT) + state.scroll_offset.y;
 				frame.fill_rectangle(
@@ -77,6 +81,41 @@ impl TimelineWidget<'_> {
 				);
 			}
 		}
+	}
+
+	/// Ghost of a dropped-in clip; a new track shows as an insertion line at
+	/// the lane's top edge with the ghost straddling it.
+	fn draw_drop_preview(
+		&self,
+		frame: &mut canvas::Frame,
+		state: &TimelineInteraction,
+		rect: Rectangle,
+		preview: DropPreview,
+	) {
+		let accent = nade_constants::style::ACCENT_COLOR;
+		let lane_y = rect.y + preview.lane as f32 * TRACK_HEIGHT + state.scroll_offset.y;
+		let track_y = if preview.insert {
+			// 差し込み位置（トラックの境目）にまたがって置く
+			let line = Rectangle::new(Point::new(rect.x, lane_y - 1.0), Size::new(rect.width, 2.0));
+			frame.fill_rectangle(line.position(), line.size(), accent);
+			lane_y - TRACK_HEIGHT * 0.5
+		} else {
+			lane_y
+		};
+
+		let x_start = state.time_to_x(preview.start, rect.x);
+		let x_end = state.time_to_x(preview.start + preview.duration, rect.x);
+		let ghost = rounded_rect(
+			Rectangle {
+				x: x_start,
+				y: track_y + TRACK_PADDING,
+				width: (x_end - x_start).max(1.0),
+				height: TRACK_HEIGHT - TRACK_PADDING * 2.0,
+			},
+			CLIP_CORNER_RADIUS,
+		);
+		frame.fill(&ghost, Color { a: 0.35, ..accent });
+		frame.stroke(&ghost, Stroke::default().with_color(accent).with_width(1.0));
 	}
 
 	#[allow(clippy::too_many_arguments)]
