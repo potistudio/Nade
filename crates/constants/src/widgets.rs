@@ -209,23 +209,16 @@ pub fn well(_theme: &Theme) -> container::Style {
 	}
 }
 
-/// Section card inside the inspector: a continuous-corner surface behind `content`.
-/// `content` supplies its own padding.
-pub fn card<'a, Message: 'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
-	iced_squircle::squircle(
-		container(content).style(card_text),
-		iced_squircle::Surface {
-			radius: CARD_RADIUS,
-			fill: white(0.025),
-			border: Some(white(0.05)),
-			shadow: None,
-		},
-	)
-}
-
-fn card_text(_theme: &Theme) -> container::Style {
+/// Section card inside the inspector.
+pub fn card(_theme: &Theme) -> container::Style {
 	container::Style {
+		background: Some(white(0.025).into()),
 		text_color: Some(TEXT_PRIMARY_COLOR),
+		border: Border {
+			color: white(0.05),
+			width: BORDER_THICKNESS,
+			radius: CARD_RADIUS.into(),
+		},
 		..Default::default()
 	}
 }

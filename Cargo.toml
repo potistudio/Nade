@@ -34,6 +34,11 @@ opt-level = 3
 [workspace.lints.clippy]
 all = "warn"
 
+# All iced widget quads (buttons, fields, menus, chips, …) share one shader.
+# Draw continuous corners globally instead of rewriting every widget style.
+[patch.crates-io]
+iced_wgpu = { path = "vendor/iced_wgpu" }
+
 [workspace.dependencies]
 anyhow = "1.0.104"
 env_logger = "0.11.11"

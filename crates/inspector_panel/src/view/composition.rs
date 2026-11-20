@@ -43,17 +43,16 @@ pub(crate) fn composition_view<'a>(
 		.into()
 	};
 
-	let facts = widgets::card(
-		container(
-			column![
-				fact("Resolution", format!("{} × {}", summary.width, summary.height)),
-				fact("Frame Rate", format!("{:.2} fps", summary.fps)),
-				fact("Layers", layers.to_string()),
-			]
-			.spacing(SPACE_1),
-		)
-		.padding([SPACE_3, SPACE_4 + 2.0]),
-	);
+	let facts = container(
+		column![
+			fact("Resolution", format!("{} × {}", summary.width, summary.height)),
+			fact("Frame Rate", format!("{:.2} fps", summary.fps)),
+			fact("Layers", layers.to_string()),
+		]
+		.spacing(SPACE_1),
+	)
+	.padding([SPACE_3, SPACE_4 + 2.0])
+	.style(widgets::card);
 
 	let duration = row![
 		number_field(summary.duration, InspectorMessage::SetCompositionDuration)
@@ -111,36 +110,35 @@ pub(crate) fn composition_view<'a>(
 	.vertical_spacing(SPACE_2);
 
 	let setting_label = |label: &'a str| ui_label(label, FONT_UI).color(TEXT_SECONDARY_COLOR).width(76);
-	let settings = widgets::card(
-		container(
-			column![
-				row![setting_label("Duration"), duration]
-					.spacing(SPACE_2)
-					.align_y(Alignment::Center)
-					.height(ROW_HEIGHT),
-				row![setting_label("Background"), backgrounds]
-					.spacing(SPACE_2)
-					.align_y(Alignment::Center),
-				row![
-					setting_label("Add to"),
-					pick_list(nest_targets, None::<CompositionChoice>, |choice: CompositionChoice| {
-						InspectorMessage::NestInto(choice.id)
-					})
-					.placeholder("Nest in composition…")
-					.text_size(FONT_UI)
-					.padding([2, 8])
-					.width(Length::Fill)
-					.style(widgets::pick_list)
-					.menu_style(widgets::menu),
-				]
+	let settings = container(
+		column![
+			row![setting_label("Duration"), duration]
 				.spacing(SPACE_2)
 				.align_y(Alignment::Center)
 				.height(ROW_HEIGHT),
+			row![setting_label("Background"), backgrounds]
+				.spacing(SPACE_2)
+				.align_y(Alignment::Center),
+			row![
+				setting_label("Add to"),
+				pick_list(nest_targets, None::<CompositionChoice>, |choice: CompositionChoice| {
+					InspectorMessage::NestInto(choice.id)
+				})
+				.placeholder("Nest in composition…")
+				.text_size(FONT_UI)
+				.padding([2, 8])
+				.width(Length::Fill)
+				.style(widgets::pick_list)
+				.menu_style(widgets::menu),
 			]
-			.spacing(SPACE_2),
-		)
-		.padding([SPACE_3, SPACE_4 + 2.0]),
-	);
+			.spacing(SPACE_2)
+			.align_y(Alignment::Center)
+			.height(ROW_HEIGHT),
+		]
+		.spacing(SPACE_2),
+	)
+	.padding([SPACE_3, SPACE_4 + 2.0])
+	.style(widgets::card);
 
 	scrollable(
 		column![header, facts, settings]
