@@ -48,12 +48,11 @@ domain.workspace = true
 panel_system = { path = "../panel_system" }
 timeline_panel = { path = "../timeline_panel" }
 inspector_panel = { path = "../inspector_panel" }
+viewer_panel.workspace = true
 rayon = "1.12.0"
 crossbeam-channel = "0.5.17"
 tokio = { version = "1.53.2", features = ["sync"] }
 bytes = "1.12.1"
-bytemuck = "1.25.2"
-wgpu = "27.0.1"
 iced_wgpu = "0.14.0"
 renderer = { path = "../renderer" }
 media = { workspace = true }

@@ -6,9 +6,9 @@ use core::{Affine, InstanceId};
 use iced::widget::canvas::{self, Frame, Geometry, LineDash, Path, Program, Stroke};
 use iced::{Color, Event, Point, Rectangle, Renderer, Size, Theme, Vector, keyboard, mouse};
 
+use super::viewport::Viewport;
 use crate::message::PreviewMessage;
 use crate::tool::Tool;
-use crate::widgets::viewport::Viewport;
 
 const SCROLL_LINE_PX: f32 = 20.0;
 const WHEEL_ZOOM_SPEED: f32 = 0.01;

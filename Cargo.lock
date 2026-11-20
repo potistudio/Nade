@@ -3189,7 +3189,6 @@ dependencies = [
  "asset_browser",
  "audio",
  "browser_panel",
- "bytemuck",
  "bytes",
  "cc",
  "constants",
@@ -3212,7 +3211,7 @@ dependencies = [
  "serde",
  "timeline_panel",
  "tokio",
- "wgpu 27.0.1",
+ "viewer_panel",
 ]
 
 [[package]]
@@ -5503,6 +5502,17 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "viewer_panel"
+version = "0.0.1"
+dependencies = [
+ "bytemuck",
+ "constants",
+ "core",
+ "iced",
+ "wgpu 27.0.1",
+]
 
 [[package]]
 name = "walkdir"

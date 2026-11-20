@@ -8,8 +8,8 @@ use iced::{Alignment, Element, Length};
 
 use crate::message::{Message, ShellMessage};
 use crate::theme::{SHELL_GUTTER, SHELL_TOOLBAR_HEIGHT, TOOL_SEGMENT};
-use crate::tool::Tool;
 use crate::widgets::segmented::{Segment, segmented};
+use viewer_panel::Tool;
 
 pub struct ToolbarState {
 	pub tool: Tool,

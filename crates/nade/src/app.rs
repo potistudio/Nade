@@ -36,11 +36,8 @@ use crate::services::render_worker::{RenderJob, RenderWorker};
 use crate::shell::menu::{self, Entry, MenuKind, OpenMenu};
 use crate::shell::{self, toast::Toast};
 use crate::theme::{SHELL_GUTTER, STATUS_BAR_HEIGHT, TITLE_BAR_HEIGHT, panel_area};
-use crate::tool::Tool;
-use crate::viewer::ViewerSettings;
-use crate::widgets::viewer_overlay::LayerBox;
-use crate::widgets::viewport::Viewport;
 use crate::workspace::Workspace;
+use viewer_panel::{LayerBox, Tool, ViewerSettings, Viewport};
 
 // =============================================================================
 // ウィンドウ・キーボードイベント
@@ -2279,7 +2276,7 @@ impl NadeApp {
 			PreviewMessage::ZoomBy(factor) => {
 				let preview = &mut self.current_model.preview;
 				let zoom = (preview.view_zoom * factor)
-					.clamp(crate::widgets::viewport::MIN_ZOOM, crate::widgets::viewport::MAX_ZOOM);
+					.clamp(viewer_panel::viewport::MIN_ZOOM, viewer_panel::viewport::MAX_ZOOM);
 				let applied = zoom / preview.view_zoom;
 				preview.view_zoom = zoom;
 				preview.view_offset = [preview.view_offset[0] * applied, preview.view_offset[1] * applied];
@@ -2492,13 +2489,13 @@ impl NadeApp {
 			.collect()
 	}
 
-	fn viewer_props(&self) -> panels::preview::ViewerProps<'_> {
+	fn viewer_props(&self) -> viewer_panel::ViewerProps<'_> {
 		let composition = self.target_composition().and_then(|id| self.project.composition(&id));
 		let selected = match self.project_pane.selected_id {
 			Some(ObjectId::Instance { instance, .. }) => Some(instance),
 			_ => None,
 		};
-		panels::preview::ViewerProps {
+		viewer_panel::ViewerProps {
 			preview: &self.current_model.preview,
 			composition: composition.map(|comp| core::CompositionSummary {
 				name: comp.name(),
@@ -3415,7 +3412,7 @@ mod tests {
 		assert!(matches!(
 			press("y", Modifiers::empty()),
 			Some(Message::Shell(crate::message::ShellMessage::SelectTool(
-				crate::tool::Tool::Anchor
+				viewer_panel::Tool::Anchor
 			)))
 		));
 	}

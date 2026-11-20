@@ -52,4 +52,5 @@ nade-engine = { path = "crates/engine" }
 nade-timeline = { path = "crates/timeline_panel" }
 operators = { path = "crates/operators" }
 serde = { version = "1.0.229", features = ["derive"] }
+viewer_panel = { path = "crates/viewer_panel" }
 uuid = { version = "1.29.2", features = ["v4", "serde"] }

@@ -1,0 +1,18 @@
+[package]
+name = "viewer_panel"
+description = "Viewer (preview) panel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+constants.workspace = true
+core.workspace = true
+iced = { workspace = true, features = ["wgpu"] }
+bytemuck = "1.25.2"
+wgpu = "27.0.1"

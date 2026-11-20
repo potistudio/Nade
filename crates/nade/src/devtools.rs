@@ -17,8 +17,8 @@ use iced::time::{Duration, Instant};
 use iced::window::Screenshot;
 
 use crate::message::{AppPanelMessage, Message, ShellMessage};
-use crate::tool::Tool;
 use crate::workspace::Workspace;
+use viewer_panel::Tool;
 
 #[derive(Debug)]
 pub struct Capture {
