@@ -1,10 +1,10 @@
-use crate::{AssetBrowserMessage, AssetBrowserView, AssetRow};
+use crate::{AssetBrowserMessage, AssetBrowserView, AssetRow, SortDirection, SortKey, SortOrder};
 use iced::widget::{Space, button, column, container, mouse_area, row, scrollable, text_input, tooltip};
 use iced::{Alignment, Color, Element, Length};
-use nade_constants::icons::{Icon, icon};
+use nade_constants::icons::{Icon, icon, icon_transformed};
 use nade_constants::style::*;
 use nade_constants::tree::{Disclosure, TreeRow};
-use nade_constants::widgets::{self, button_body_center, ui_label};
+use nade_constants::widgets::{self, button_body, button_body_center, ui_label};
 use nade_domain::AssetType;
 use std::borrow::Cow;
 
@@ -28,6 +28,7 @@ impl<'a> AssetBrowserWidget<'a> {
 		let AssetBrowserView {
 			filter,
 			rows,
+			sort,
 			can_add_to_timeline,
 		} = self.view;
 
@@ -56,10 +57,12 @@ impl<'a> AssetBrowserWidget<'a> {
 		} else {
 			let clear_area = mouse_area(container(Space::new()).width(Length::Fill).height(Length::Fill))
 				.on_press(AssetBrowserMessage::ClearSelection);
-			scrollable(column![column(rows.into_iter().map(view_row)).spacing(1), clear_area].width(Length::Fill))
-				.height(Length::Fill)
-				.style(widgets::scrollable)
-				.into()
+			let list =
+				scrollable(column![column(rows.into_iter().map(view_row)).spacing(1), clear_area].width(Length::Fill))
+					.height(Length::Fill)
+					.style(widgets::scrollable);
+			// ヘッダーはスクロールさせず、一覧の上に固定する
+			column![sort_header(sort), widgets::separator(), list].into()
 		};
 
 		container(column![toolbar, body])
@@ -86,6 +89,49 @@ fn tool_button<'a>(
 		label,
 		tooltip::Position::Bottom,
 	)
+}
+
+/// Finder-style column headers: click to sort, click again to flip.
+///
+/// Insets line the labels up with the row content below (label on the left,
+/// kind tag on the right).
+fn sort_header<'a>(sort: SortOrder) -> Element<'a, AssetBrowserMessage> {
+	row![
+		header_button("Name", SortKey::Name, sort).width(Length::Fill),
+		header_button("Kind", SortKey::Kind, sort),
+	]
+	.spacing(SPACE_1)
+	.padding([SPACE_1, SPACE_4])
+	.height(ROW_HEIGHT)
+	.into()
+}
+
+fn header_button<'a>(label: &'a str, key: SortKey, sort: SortOrder) -> iced::widget::Button<'a, AssetBrowserMessage> {
+	let active = sort.key == key;
+	let mut content =
+		row![ui_label(label, FONT_TINY + 1.0).color(if active { TEXT_SECONDARY_COLOR } else { TEXT_MUTED_COLOR })]
+			.spacing(SPACE_2)
+			.align_y(Alignment::Center);
+	if active {
+		// 昇順は上向き、降順は下向きのシェブロン
+		let rotation = match sort.direction {
+			SortDirection::Ascending => std::f32::consts::PI,
+			SortDirection::Descending => 0.0,
+		};
+		content = content.push(icon_transformed(
+			Icon::ChevronDown,
+			8.0,
+			TEXT_SECONDARY_COLOR,
+			rotation,
+			1.0,
+		));
+	}
+
+	button(button_body(content))
+		.padding([0.0, SPACE_2])
+		.height(Length::Fill)
+		.style(widgets::button_ghost)
+		.on_press(AssetBrowserMessage::SortBy(key))
 }
 
 fn empty_state<'a>(searching: bool) -> Element<'a, AssetBrowserMessage> {

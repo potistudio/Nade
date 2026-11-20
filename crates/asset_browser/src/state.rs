@@ -1,4 +1,4 @@
-use crate::{AssetBrowserMessage, AssetBrowserRequest};
+use crate::{AssetBrowserMessage, AssetBrowserRequest, SortOrder};
 use nade_core::AssetId;
 use nade_domain::{AssetType, Project};
 use std::collections::HashSet;
@@ -9,6 +9,8 @@ pub struct AssetBrowserState {
 	pub selected_id: Option<AssetId>,
 	/// Case-insensitive name filter from the search field.
 	pub filter: String,
+	/// Sibling order of the outline (display only; the project keeps its own).
+	pub sort: SortOrder,
 }
 
 // -------- Public API ---------------------------------------------------------
@@ -46,6 +48,10 @@ impl AssetBrowserState {
 				self.filter = filter;
 				None
 			}
+			AssetBrowserMessage::SortBy(key) => {
+				self.sort = self.sort.toggled(key);
+				None
+			}
 			AssetBrowserMessage::ImportMedia => Some(AssetBrowserRequest::ImportMedia),
 			AssetBrowserMessage::NewFolder => Some(AssetBrowserRequest::NewFolder),
 			AssetBrowserMessage::AddToTimeline => Some(AssetBrowserRequest::AddToTimeline),
@@ -56,6 +62,7 @@ impl AssetBrowserState {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::{SortDirection, SortKey};
 	use nade_core::{BitDepth, SampleRate};
 
 	fn project() -> Project {
@@ -110,6 +117,21 @@ mod tests {
 
 		state.apply(&project, AssetBrowserMessage::FilterChanged("zoom".into()));
 		assert_eq!(state.filter, "zoom");
+	}
+
+	/// Header clicks flip the active column and reset a new one to ascending.
+	#[test]
+	fn sort_by_toggles_the_sort_order() {
+		let project = project();
+		let mut state = AssetBrowserState::default();
+
+		state.apply(&project, AssetBrowserMessage::SortBy(SortKey::Name));
+		assert_eq!(state.sort.key, SortKey::Name);
+		assert_eq!(state.sort.direction, SortDirection::Descending);
+
+		state.apply(&project, AssetBrowserMessage::SortBy(SortKey::Kind));
+		assert_eq!(state.sort.key, SortKey::Kind);
+		assert_eq!(state.sort.direction, SortDirection::Ascending);
 	}
 
 	/// App-level messages come back as requests for the shell.

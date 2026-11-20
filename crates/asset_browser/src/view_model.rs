@@ -1,10 +1,11 @@
 //! View model of the asset browser.
 //!
 //! The widget only renders [`AssetBrowserView`]; it never touches [`Project`]
-//! or the tree storage. Flattening and filtering happen here, in a single
-//! cached-index pass, so the rules stay testable without building elements.
+//! or the tree storage. Flattening, filtering and sibling sorting happen here,
+//! in a single cached-index pass, so the rules stay testable without building
+//! elements.
 
-use crate::AssetBrowserState;
+use crate::{AssetBrowserState, SortOrder};
 use nade_core::AssetId;
 use nade_domain::{Asset, AssetType, Project};
 use std::collections::{HashMap, HashSet};
@@ -30,6 +31,8 @@ pub struct AssetBrowserView<'a> {
 	/// Raw search text (the text input value, spacing included).
 	pub filter: &'a str,
 	pub rows: Vec<AssetRow<'a>>,
+	/// Active column header and its direction indicator.
+	pub sort: SortOrder,
 	/// The selected, currently visible asset can be sent to the timeline.
 	pub can_add_to_timeline: bool,
 }
@@ -49,19 +52,20 @@ impl AssetBrowserState {
 	pub fn view_model<'a>(&'a self, project: &'a Project) -> AssetBrowserView<'a> {
 		let filter = self.filter.trim().to_lowercase();
 		let index: HashMap<AssetId, &'a Asset> = project.iter_assets().map(|asset| (asset.id(), asset)).collect();
-		let roots = || project.iter_assets().filter(|asset| asset.parent.is_none());
+		let mut roots: Vec<&'a Asset> = project.iter_assets().filter(|asset| asset.parent.is_none()).collect();
+		self.sort.sort(&mut roots);
 
 		let mut rows = Vec::new();
 		if filter.is_empty() {
-			for root in roots() {
+			for root in roots {
 				self.push_rows(root, &index, None, 0, &mut rows);
 			}
 		} else {
 			let mut matched = HashSet::new();
-			for root in roots() {
+			for &root in &roots {
 				collect_matches(root, &index, &filter, &mut matched);
 			}
-			for root in roots() {
+			for root in roots {
 				self.push_rows(root, &index, Some(&matched), 0, &mut rows);
 			}
 		}
@@ -75,6 +79,7 @@ impl AssetBrowserState {
 		AssetBrowserView {
 			filter: &self.filter,
 			rows,
+			sort: self.sort,
 			can_add_to_timeline,
 		}
 	}
@@ -82,7 +87,7 @@ impl AssetBrowserState {
 
 // -------- Internal -----------------------------------------------------------
 impl AssetBrowserState {
-	/// Appends `asset` and, when open, its visible descendants in tree order.
+	/// Appends `asset` and, when open, its visible descendants in sort order.
 	fn push_rows<'a>(
 		&self,
 		asset: &'a Asset,
@@ -114,7 +119,14 @@ impl AssetBrowserState {
 		if !expanded {
 			return;
 		}
-		for child in asset.children.iter().filter_map(|child| index.get(child).copied()) {
+		// 並べ替えは開いているフォルダの子だけ、表示のたびに行う
+		let mut children: Vec<&'a Asset> = asset
+			.children
+			.iter()
+			.filter_map(|child| index.get(child).copied())
+			.collect();
+		self.sort.sort(&mut children);
+		for child in children {
 			self.push_rows(child, index, only, depth + 1, rows);
 		}
 	}
@@ -216,6 +228,26 @@ mod tests {
 		let view = state.view_model(&project);
 
 		assert_eq!(labels(&view), ["score.wav"]);
+	}
+
+	/// Siblings follow the sort order at every level, folders first.
+	#[test]
+	fn rows_follow_the_sort_order() {
+		let mut project = project();
+		project.create_asset("b.wav", AssetType::Audio);
+		let folder = project.create_folder("Footage", None);
+		project.create_asset_in(Some(folder), "clip10.mov", AssetType::Video);
+		project.create_asset_in(Some(folder), "clip2.mov", AssetType::Video);
+		project.create_asset("a.png", AssetType::Image);
+		let mut state = AssetBrowserState::default();
+		state.expanded_ids.insert(folder);
+
+		let view = state.view_model(&project);
+		assert_eq!(labels(&view), ["Footage", "clip2.mov", "clip10.mov", "a.png", "b.wav"]);
+
+		state.sort = state.sort.toggled(crate::SortKey::Name);
+		let view = state.view_model(&project);
+		assert_eq!(labels(&view), ["Footage", "clip10.mov", "clip2.mov", "b.wav", "a.png"]);
 	}
 
 	/// Only a selected media asset that is on screen can go to the timeline.
