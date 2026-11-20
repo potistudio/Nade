@@ -593,6 +593,13 @@ impl NadeApp {
 					self.panel_system
 						.update(PanelSystemMessage::<_, AppPanelMessage>::CancelDrag);
 					Task::none()
+				} else if unhandled
+					&& self.menu.is_none()
+					&& self.export.is_none()
+					&& matches!(self.panel_system.focused_content(), Some(PanelContent::Assets))
+				{
+					// メニューや書き出しが無ければ、フォーカス中のアセットブラウザの選択を外す
+					self.apply_assets_message(AssetBrowserMessage::ClearSelection)
 				} else if unhandled {
 					self.update_inner(Message::Shell(ShellMessage::CancelExport))
 				} else {
