@@ -286,6 +286,8 @@ where
 	PointerExited,
 	/// ウィンドウ内のどこかでマウスボタンが離された（パネル外での解放でドラッグを終える）
 	PointerReleased,
+	/// タブ／角ドラッグを何も適用せずに取り消す（Esc）
+	CancelDrag,
 	/// リサイズガターのホバー開始／終了
 	GutterHover(Vec<usize>, bool),
 	/// アプリケーション固有のメッセージ
@@ -340,6 +342,14 @@ impl<C: AreaKind> PanelSystem<C> {
 	/// Reports whether panel chrome needs animation ticks.
 	pub fn is_animating(&self) -> bool {
 		self.is_editor_menu_animating()
+	}
+
+	/// Whether a tab or corner drag is in progress, i.e. something `CancelDrag` can abort.
+	pub fn is_move_dragging(&self) -> bool {
+		matches!(
+			self.drag_state,
+			DragState::TabDrag { .. } | DragState::CornerDrag { .. }
+		)
 	}
 
 	/// Content of the focused area, if any.
@@ -630,6 +640,12 @@ impl<C: AreaKind> PanelSystem<C> {
 					}
 				} else {
 					// Outside the panels a drag has nowhere to land.
+					self.drag_state = DragState::None;
+				}
+			}
+
+			PanelSystemMessage::CancelDrag => {
+				if self.is_move_dragging() {
 					self.drag_state = DragState::None;
 				}
 			}

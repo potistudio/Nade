@@ -281,6 +281,25 @@ fn releasing_outside_the_panels_cancels_the_drag() {
 	assert_eq!(area(&system, 1), (vec![Kind::C], 0));
 }
 
+#[test]
+fn cancelling_a_tab_drag_applies_nothing() {
+	let mut system = system(tabs(0, vec![Kind::A, Kind::B], 0), tabs(1, vec![Kind::C], 0));
+	let (bounds, _) = system.tab_bar_geometry(1).expect("area 1");
+
+	system.update(Msg::MouseMove(Point::new(20.0, 10.0)));
+	system.update(Msg::TabPress(0, 0));
+	system.update(Msg::MouseMove(Point::new(bounds.center_x(), bounds.center_y())));
+	assert!(system.is_move_dragging());
+
+	system.update(Msg::CancelDrag);
+	assert!(!system.is_move_dragging());
+
+	// The release that follows must not apply the abandoned drop.
+	system.update(Msg::TabDragEnd);
+	assert_eq!(area(&system, 0), (vec![Kind::A, Kind::B], 0));
+	assert_eq!(area(&system, 1), (vec![Kind::C], 0));
+}
+
 fn menu_open(system: &PanelSystem<Kind>) -> bool {
 	system
 		.editor_menu
