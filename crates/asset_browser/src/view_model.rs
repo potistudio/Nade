@@ -12,6 +12,45 @@ use std::collections::{HashMap, HashSet};
 
 /// One visible outline row.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OutlineRow<'a> {
+	Asset(AssetRow<'a>),
+	/// Placeholder for a file whose media is still being probed.
+	Importing(ImportingRow<'a>),
+}
+
+impl<'a> OutlineRow<'a> {
+	pub fn label(&self) -> &'a str {
+		match self {
+			Self::Asset(row) => row.label,
+			Self::Importing(row) => row.label,
+		}
+	}
+
+	pub fn asset(&self) -> Option<&AssetRow<'a>> {
+		match self {
+			Self::Asset(row) => Some(row),
+			Self::Importing(_) => None,
+		}
+	}
+}
+
+/// A row placeholder shown at the destination while a file is imported.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportingRow<'a> {
+	pub depth: usize,
+	pub label: &'a str,
+	pub kind: AssetType,
+}
+
+/// Where a file dropped now would land.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DropTarget<'a> {
+	/// Destination folder name; `None` is the project root.
+	pub folder: Option<&'a str>,
+}
+
+/// An asset row.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssetRow<'a> {
 	pub id: AssetId,
 	/// Nesting level, used for the indent.
@@ -32,7 +71,9 @@ pub struct AssetRow<'a> {
 pub struct AssetBrowserView<'a> {
 	/// Raw search text (the text input value, spacing included).
 	pub filter: &'a str,
-	pub rows: Vec<AssetRow<'a>>,
+	pub rows: Vec<OutlineRow<'a>>,
+	/// Shown while importable files are dragged over the window.
+	pub drop_target: Option<DropTarget<'a>>,
 	/// Active column header and its direction indicator.
 	pub sort: SortOrder,
 	/// The selected, currently visible asset can be sent to the timeline.
@@ -62,6 +103,7 @@ impl AssetBrowserState {
 			for root in roots {
 				self.push_rows(root, &index, None, 0, &mut rows);
 			}
+			self.push_importing(None, 0, &mut rows);
 		} else {
 			let mut matched = HashSet::new();
 			for &root in &roots {
@@ -70,17 +112,27 @@ impl AssetBrowserState {
 			for root in roots {
 				self.push_rows(root, &index, Some(&matched), 0, &mut rows);
 			}
+			self.push_importing(None, 0, &mut rows);
 		}
 
 		// フィルタで隠れた選択は「押せるのに何も起きない」ので無効扱いにする
 		let can_add_to_timeline = rows
 			.iter()
+			.filter_map(OutlineRow::asset)
 			.find(|row| row.selected)
 			.is_some_and(|row| row.kind.is_media());
+
+		let drop_target = self.drop_hover.then(|| DropTarget {
+			folder: self
+				.import_parent(project)
+				.and_then(|id| index.get(&id))
+				.map(|folder| folder.name.as_str()),
+		});
 
 		AssetBrowserView {
 			filter: &self.filter,
 			rows,
+			drop_target,
 			sort: self.sort,
 			can_add_to_timeline,
 		}
@@ -96,7 +148,7 @@ impl AssetBrowserState {
 		index: &HashMap<AssetId, &'a Asset>,
 		only: Option<&HashSet<AssetId>>,
 		depth: usize,
-		rows: &mut Vec<AssetRow<'a>>,
+		rows: &mut Vec<OutlineRow<'a>>,
 	) {
 		let id = asset.id();
 		// 検索中は一致した行だけを並べる
@@ -104,11 +156,12 @@ impl AssetBrowserState {
 			return;
 		}
 
-		let has_children = !asset.children.is_empty();
+		let has_children =
+			!asset.children.is_empty() || self.importing.iter().any(|pending| pending.parent == Some(id));
 		// 検索中は一致を見せるためフォルダを開いた状態で表示する
 		let expanded = has_children && (only.is_some() || self.expanded_ids.contains(&id));
 
-		rows.push(AssetRow {
+		rows.push(OutlineRow::Asset(AssetRow {
 			id,
 			depth,
 			label: &asset.name,
@@ -121,7 +174,7 @@ impl AssetBrowserState {
 				.as_ref()
 				.filter(|draft| draft.id == id)
 				.map(|draft| draft.text.as_str()),
-		});
+		}));
 
 		if !expanded {
 			return;
@@ -136,6 +189,23 @@ impl AssetBrowserState {
 		for child in children {
 			self.push_rows(child, index, only, depth + 1, rows);
 		}
+		self.push_importing(Some(id), depth + 1, rows);
+	}
+
+	/// Appends the placeholders bound for `parent` after its real children.
+	fn push_importing<'a>(&'a self, parent: Option<AssetId>, depth: usize, rows: &mut Vec<OutlineRow<'a>>) {
+		rows.extend(
+			self.importing
+				.iter()
+				.filter(|pending| pending.parent == parent)
+				.map(|pending| {
+					OutlineRow::Importing(ImportingRow {
+						depth,
+						label: &pending.name,
+						kind: pending.kind,
+					})
+				}),
+		);
 	}
 }
 
@@ -168,7 +238,11 @@ mod tests {
 	}
 
 	fn labels<'a>(view: &AssetBrowserView<'a>) -> Vec<&'a str> {
-		view.rows.iter().map(|row| row.label).collect()
+		view.rows.iter().map(OutlineRow::label).collect()
+	}
+
+	fn asset_row<'v, 'a>(view: &'v AssetBrowserView<'a>, index: usize) -> &'v AssetRow<'a> {
+		view.rows[index].asset().expect("asset row")
 	}
 
 	/// A collapsed folder lists only itself, even though it has children.
@@ -182,8 +256,8 @@ mod tests {
 		let view = state.view_model(&project);
 
 		assert_eq!(labels(&view), ["Footage"]);
-		assert!(view.rows[0].has_children);
-		assert!(!view.rows[0].expanded);
+		assert!(asset_row(&view, 0).has_children);
+		assert!(!asset_row(&view, 0).expanded);
 	}
 
 	/// Expanding a folder appends its children one level deeper.
@@ -198,7 +272,7 @@ mod tests {
 		let view = state.view_model(&project);
 
 		assert_eq!(labels(&view), ["Footage", "clip.mov"]);
-		assert_eq!(view.rows[1].depth, 1);
+		assert_eq!(asset_row(&view, 1).depth, 1);
 	}
 
 	/// A matching descendant keeps its folders visible and opens them, without
@@ -216,7 +290,7 @@ mod tests {
 		let view = state.view_model(&project);
 
 		assert_eq!(labels(&view), ["Footage", "clip.mov"]);
-		assert!(view.rows[0].expanded);
+		assert!(asset_row(&view, 0).expanded);
 		assert!(state.expanded_ids.is_empty());
 		assert!(view.is_searching());
 	}
@@ -273,8 +347,73 @@ mod tests {
 
 		let view = state.view_model(&project);
 
-		let drafts: Vec<_> = view.rows.iter().map(|row| row.rename).collect();
+		let drafts: Vec<_> = view
+			.rows
+			.iter()
+			.filter_map(OutlineRow::asset)
+			.map(|row| row.rename)
+			.collect();
 		assert_eq!(drafts, [Some("intro"), None]);
+	}
+
+	/// Placeholders sit after the real children of their destination folder,
+	/// which shows a chevron even while it has no assets yet.
+	#[test]
+	fn importing_rows_appear_at_their_destination() {
+		let mut project = project();
+		let folder = project.create_folder("Footage", None);
+		let mut state = AssetBrowserState {
+			selected_id: Some(folder),
+			..Default::default()
+		};
+		state.begin_import(
+			&project,
+			std::path::Path::new("/tmp/clip.mov"),
+			std::time::Instant::now(),
+		);
+		state.selected_id = None;
+		state.begin_import(
+			&project,
+			std::path::Path::new("/tmp/score.wav"),
+			std::time::Instant::now(),
+		);
+
+		let view = state.view_model(&project);
+
+		assert_eq!(labels(&view), ["Footage", "clip", "score"]);
+		assert!(asset_row(&view, 0).has_children);
+		assert_eq!(
+			view.rows[1],
+			OutlineRow::Importing(ImportingRow {
+				depth: 1,
+				label: "clip",
+				kind: AssetType::Video,
+			})
+		);
+	}
+
+	/// Hovering files names the folder they would land in.
+	#[test]
+	fn drop_target_names_the_destination() {
+		let mut project = project();
+		let folder = project.create_folder("Footage", None);
+		let mut state = AssetBrowserState::default();
+
+		assert_eq!(state.view_model(&project).drop_target, None);
+
+		state.drop_hover = true;
+		assert_eq!(
+			state.view_model(&project).drop_target,
+			Some(DropTarget { folder: None })
+		);
+
+		state.selected_id = Some(folder);
+		assert_eq!(
+			state.view_model(&project).drop_target,
+			Some(DropTarget {
+				folder: Some("Footage"),
+			})
+		);
 	}
 
 	/// Only a selected media asset that is on screen can go to the timeline.

@@ -8,6 +8,6 @@ mod widget;
 
 pub use message::{AssetBrowserMessage, AssetBrowserRequest};
 pub use sort::{SortDirection, SortKey, SortOrder};
-pub use state::{AssetBrowserState, RenameDraft};
-pub use view_model::{AssetBrowserView, AssetRow};
+pub use state::{AssetBrowserState, ImportTicket, PendingImport, RenameDraft};
+pub use view_model::{AssetBrowserView, AssetRow, DropTarget, ImportingRow, OutlineRow};
 pub use widget::{AssetBrowserWidget, rename_input_id};

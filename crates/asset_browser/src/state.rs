@@ -2,6 +2,8 @@ use crate::{AssetBrowserMessage, AssetBrowserRequest, SortOrder};
 use nade_core::AssetId;
 use nade_domain::{AssetType, Project};
 use std::collections::HashSet;
+use std::path::Path;
+use std::time::Instant;
 
 #[derive(Debug, Clone, Default)]
 pub struct AssetBrowserState {
@@ -13,6 +15,27 @@ pub struct AssetBrowserState {
 	pub sort: SortOrder,
 	/// In-place name edit, while one is open.
 	pub rename: Option<RenameDraft>,
+	/// Files still being probed, shown as placeholder rows at their destination.
+	pub importing: Vec<PendingImport>,
+	pub(crate) next_ticket: u64,
+	/// Importable files are being dragged over the window.
+	pub drop_hover: bool,
+}
+
+/// Handle of one file import while its media is being probed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ImportTicket(u64);
+
+/// A file whose import has started but whose asset does not exist yet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingImport {
+	pub ticket: ImportTicket,
+	pub name: String,
+	pub kind: AssetType,
+	/// Destination folder, fixed when the import started so that changing the
+	/// selection meanwhile does not move it.
+	pub parent: Option<AssetId>,
+	pub started: Instant,
 }
 
 /// Name being typed into a row's rename field.
@@ -92,6 +115,49 @@ impl AssetBrowserState {
 		})
 	}
 
+	/// Folder new imports land in: the selected folder, or the selected item's
+	/// folder (root when nothing is selected).
+	pub fn import_parent(&self, project: &Project) -> Option<AssetId> {
+		let selected = self.selected_id?;
+		let asset = project.asset(selected)?;
+		match asset.kind() {
+			AssetType::Folder => Some(selected),
+			_ => asset.parent,
+		}
+	}
+
+	/// Shows a placeholder row for `path` until [`Self::finish_import`].
+	///
+	/// Returns `None` when the file is not a supported media type.
+	pub fn begin_import(&mut self, project: &Project, path: &Path, now: Instant) -> Option<ImportTicket> {
+		let kind = AssetType::from_path(path)?;
+		let parent = self.import_parent(project);
+		// 取り込み先が閉じていると進行中の行が見えないので開いておく
+		if let Some(parent) = parent {
+			self.expanded_ids.insert(parent);
+		}
+		let ticket = ImportTicket(self.next_ticket);
+		self.next_ticket += 1;
+		self.importing.push(PendingImport {
+			ticket,
+			name: path
+				.file_stem()
+				.map(|stem| stem.to_string_lossy().into_owned())
+				.unwrap_or_default(),
+			kind,
+			parent,
+			started: now,
+		});
+		Some(ticket)
+	}
+
+	/// Removes the placeholder of a finished probe. `None` means the import
+	/// was abandoned (e.g. another project was opened meanwhile).
+	pub fn finish_import(&mut self, ticket: ImportTicket) -> Option<PendingImport> {
+		let index = self.importing.iter().position(|pending| pending.ticket == ticket)?;
+		Some(self.importing.remove(index))
+	}
+
 	/// The selection, when it is on screen and can be renamed in place.
 	pub fn renamable_id(&self, project: &Project) -> Option<AssetId> {
 		let id = self.selected_id?;
@@ -99,6 +165,7 @@ impl AssetBrowserState {
 		self.view_model(project)
 			.rows
 			.iter()
+			.filter_map(crate::OutlineRow::asset)
 			.any(|row| row.id == id)
 			.then_some(id)
 	}
@@ -264,6 +331,45 @@ mod tests {
 		);
 		assert!(rename_to(&mut state, "   ").is_empty());
 		assert!(rename_to(&mut state, "clip.mov").is_empty());
+	}
+
+	/// Imports land in the selected folder, or next to the selected item.
+	#[test]
+	fn import_parent_follows_the_selection() {
+		let mut project = project();
+		let folder = project.create_folder("Footage", None);
+		let clip = project.create_asset_in(Some(folder), "clip", AssetType::Video);
+		let mut state = AssetBrowserState::default();
+
+		assert_eq!(state.import_parent(&project), None);
+		state.selected_id = Some(folder);
+		assert_eq!(state.import_parent(&project), Some(folder));
+		state.selected_id = Some(clip);
+		assert_eq!(state.import_parent(&project), Some(folder));
+	}
+
+	/// A started import keeps its destination and opens it; finishing hands
+	/// the placeholder back exactly once.
+	#[test]
+	fn pending_imports_keep_their_destination() {
+		let mut project = project();
+		let folder = project.create_folder("Footage", None);
+		let mut state = AssetBrowserState {
+			selected_id: Some(folder),
+			..Default::default()
+		};
+		let now = Instant::now();
+
+		assert_eq!(state.begin_import(&project, Path::new("/tmp/notes.txt"), now), None);
+		let ticket = state.begin_import(&project, Path::new("/tmp/clip.mov"), now).unwrap();
+		assert!(state.expanded_ids.contains(&folder));
+
+		state.selected_id = None;
+		let pending = state.finish_import(ticket).unwrap();
+		assert_eq!(pending.name, "clip");
+		assert_eq!(pending.kind, AssetType::Video);
+		assert_eq!(pending.parent, Some(folder));
+		assert_eq!(state.finish_import(ticket), None);
 	}
 
 	/// Esc drops the draft without renaming.

@@ -1,23 +1,37 @@
-use crate::{AssetBrowserMessage, AssetBrowserView, AssetRow, SortDirection, SortKey, SortOrder};
+use crate::{
+	AssetBrowserMessage, AssetBrowserView, AssetRow, DropTarget, ImportingRow, OutlineRow, SortDirection, SortKey,
+	SortOrder,
+};
 use iced::widget::text::LineHeight;
-use iced::widget::{button, column, container, mouse_area, row, scrollable, text_input, tooltip};
-use iced::{Alignment, Color, Element, Length};
+use iced::widget::{Space, button, column, container, mouse_area, opaque, row, scrollable, stack, text_input, tooltip};
+use iced::{Alignment, Border, Color, Element, Length};
 use nade_constants::icons::{Icon, icon, icon_transformed};
 use nade_constants::style::*;
 use nade_constants::tree::{Disclosure, TreeRow};
-use nade_constants::widgets::{self, button_body, button_body_center, ui_label};
+use nade_constants::widgets::{self, button_body, button_body_center, mono_label, ui_label};
 use nade_domain::AssetType;
 use std::borrow::Cow;
 
 #[derive(Debug)]
 pub struct AssetBrowserWidget<'a> {
 	view: AssetBrowserView<'a>,
+	spinner_angle: f32,
 }
 
 // -------- Public API ---------------------------------------------------------
 impl<'a> AssetBrowserWidget<'a> {
 	pub fn new(view: AssetBrowserView<'a>) -> Self {
-		Self { view }
+		Self {
+			view,
+			spinner_angle: 0.0,
+		}
+	}
+
+	/// Rotation (radians) of the spinners on importing rows; the caller
+	/// advances it while imports are pending.
+	pub fn spinner_angle(mut self, angle: f32) -> Self {
+		self.spinner_angle = angle;
+		self
 	}
 
 	/// Renders the panel from the state-derived model.
@@ -29,9 +43,11 @@ impl<'a> AssetBrowserWidget<'a> {
 		let AssetBrowserView {
 			filter,
 			rows,
+			drop_target,
 			sort,
 			can_add_to_timeline,
 		} = self.view;
+		let spinner_angle = self.spinner_angle;
 
 		let toolbar = row![
 			text_input("Search", filter)
@@ -56,7 +72,11 @@ impl<'a> AssetBrowserWidget<'a> {
 		let body: Element<'a, AssetBrowserMessage> = if rows.is_empty() {
 			empty_state(searching)
 		} else {
-			let list = scrollable(column(rows.into_iter().map(view_row)).spacing(1).width(Length::Fill))
+			let rows = rows.into_iter().map(|row| match row {
+				OutlineRow::Asset(row) => view_row(row),
+				OutlineRow::Importing(row) => importing_row(row, spinner_angle),
+			});
+			let list = scrollable(column(rows).spacing(1).width(Length::Fill))
 				.height(Length::Fill)
 				.style(widgets::scrollable);
 			// 縦スクロールの中では Fill が 0 に潰れるので、一覧ごと包んで空き領域の押下で解除する。
@@ -66,11 +86,15 @@ impl<'a> AssetBrowserWidget<'a> {
 			column![sort_header(sort), widgets::separator(), list].into()
 		};
 
-		container(column![toolbar, body])
+		let panel = container(column![toolbar, body])
 			.width(Length::Fill)
 			.height(Length::Fill)
-			.style(widgets::panel_surface)
-			.into()
+			.style(widgets::panel_surface);
+
+		match drop_target {
+			Some(target) => stack![panel, drop_overlay(target)].into(),
+			None => panel.into(),
+		}
 	}
 }
 
@@ -177,6 +201,72 @@ fn view_row<'a>(row: AssetRow<'a>) -> Element<'a, AssetBrowserMessage> {
 		on_open: AssetBrowserMessage::OpenItem(row.id),
 	}
 	.view()
+}
+
+/// Placeholder row for a file being probed: same metrics as [`TreeRow`],
+/// muted, with a spinner in the icon slot. Not interactive.
+fn importing_row<'a>(row: ImportingRow<'a>, spinner_angle: f32) -> Element<'a, AssetBrowserMessage> {
+	let content = row![
+		Space::new().width(row.depth as f32 * TREE_INDENT),
+		// 開閉シェブロンの枠
+		Space::new().width(14),
+		icon_transformed(Icon::Spinner, 14.0, kind_glyph(row.kind).1, spinner_angle, 1.0),
+		ui_label(row.label, FONT_LABEL).color(TEXT_SECONDARY_COLOR),
+		Space::new().width(Length::Fill),
+		mono_label("IMPORTING", FONT_TINY).color(TEXT_MUTED_COLOR),
+	]
+	.spacing(SPACE_3)
+	.align_y(Alignment::Center)
+	.height(ROW_HEIGHT);
+
+	// 押しても一覧の「空き領域クリックで選択解除」に抜けないよう、イベントを止める
+	opaque(
+		container(
+			container(content)
+				.width(Length::Fill)
+				.height(ROW_HEIGHT)
+				.padding([0.0, SPACE_2 + 2.0]),
+		)
+		.padding([0.0, SPACE_2 + 2.0]),
+	)
+}
+
+/// Accent frame over the whole panel while files are dragged over the window.
+fn drop_overlay<'a>(target: DropTarget<'a>) -> Element<'a, AssetBrowserMessage> {
+	let destination = match target.folder {
+		Some(folder) => format!("Into “{folder}”"),
+		None => "Into Project".to_owned(),
+	};
+	// 一覧の文字と重ならないよう、案内は不透明なカードに載せる
+	let card = container(
+		column![
+			icon(Icon::Import, 24.0, ACCENT_BRIGHT_COLOR),
+			ui_label("Drop to Import", FONT_UI).color(TEXT_PRIMARY_COLOR),
+			ui_label(destination, FONT_TINY + 1.0).color(TEXT_SECONDARY_COLOR),
+		]
+		.spacing(SPACE_3)
+		.align_x(Alignment::Center),
+	)
+	.padding([SPACE_5, SPACE_6])
+	.style(widgets::hud(1.0));
+	container(card)
+		.center(Length::Fill)
+		.style(|_| container::Style {
+			background: Some(
+				Color {
+					a: 0.12,
+					..ACCENT_COLOR
+				}
+				.into(),
+			),
+			border: Border {
+				color: ACCENT_COLOR,
+				width: 1.5,
+				radius: BORDER_RADIUS.into(),
+			},
+			..Default::default()
+		})
+		.into()
 }
 
 /// In-place name field: Enter commits, Esc (handled by the shell) cancels.
