@@ -281,18 +281,68 @@ fn releasing_outside_the_panels_cancels_the_drag() {
 	assert_eq!(area(&system, 1), (vec![Kind::C], 0));
 }
 
+fn menu_open(system: &PanelSystem<Kind>) -> bool {
+	system
+		.editor_menu
+		.as_ref()
+		.is_some_and(|menu| menu.mode == EditorMenuMode::Replace && menu.to > 0.0)
+}
+
 #[test]
-fn releasing_inside_keeps_the_drop_for_the_overlay() {
+fn window_release_drops_a_tab_the_overlay_missed() {
 	let mut system = system(tabs(0, vec![Kind::A, Kind::B], 0), tabs(1, vec![Kind::C], 0));
 	let (bounds, _) = system.tab_bar_geometry(1).expect("area 1");
 
 	system.update(Msg::MouseMove(Point::new(20.0, 10.0)));
 	system.update(Msg::TabPress(0, 0));
 	system.update(Msg::MouseMove(Point::new(bounds.center_x(), bounds.center_y())));
-	// The window-level release can arrive before the overlay's.
 	system.update(Msg::PointerReleased);
+	assert_eq!(area(&system, 1), (vec![Kind::C, Kind::A], 1));
+	assert!(matches!(system.drag_state, DragState::None));
+
+	// A late overlay release has nothing left to apply.
 	system.update(Msg::TabDragEnd);
 	assert_eq!(area(&system, 1), (vec![Kind::C, Kind::A], 1));
+}
+
+#[test]
+fn window_release_ends_a_click_the_overlay_missed() {
+	// Press and release in one event batch: only the window-level release arrives.
+	let mut system = system(tabs(0, vec![Kind::A, Kind::B], 0), tabs(1, vec![Kind::C], 0));
+	let (bounds, _) = system.tab_bar_geometry(1).expect("area 1");
+
+	system.update(Msg::MouseMove(Point::new(20.0, 10.0)));
+	system.update(Msg::TabPress(0, 0));
+	system.update(Msg::PointerReleased);
+	assert!(menu_open(&system), "the click on the active tab opens the menu");
+	assert!(matches!(system.drag_state, DragState::None));
+
+	// Moving afterwards must not pick the tab up.
+	system.update(Msg::MouseMove(Point::new(bounds.center_x(), bounds.center_y())));
+	system.update(Msg::TabDragEnd);
+	assert_eq!(area(&system, 0), (vec![Kind::A, Kind::B], 0));
+	assert_eq!(area(&system, 1), (vec![Kind::C], 0));
+}
+
+#[test]
+fn window_release_after_the_overlay_does_not_toggle_again() {
+	let mut system = system(tabs(0, vec![Kind::A, Kind::B], 0), tabs(1, vec![Kind::C], 0));
+
+	system.update(Msg::MouseMove(Point::new(20.0, 10.0)));
+	system.update(Msg::TabPress(0, 0));
+	system.update(Msg::TabDragEnd);
+	system.update(Msg::PointerReleased);
+	assert!(menu_open(&system));
+}
+
+#[test]
+fn window_release_ends_a_corner_drag_the_overlay_missed() {
+	let mut system = system(tabs(0, vec![Kind::A], 0), tabs(1, vec![Kind::C], 0));
+
+	system.update(Msg::MouseMove(Point::new(490.0, 990.0)));
+	system.update(Msg::CornerDragStart(0));
+	system.update(Msg::PointerReleased);
+	assert!(matches!(system.drag_state, DragState::None));
 }
 
 #[test]

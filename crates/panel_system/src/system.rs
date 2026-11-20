@@ -472,27 +472,7 @@ impl<C: AreaKind> PanelSystem<C> {
 				};
 			}
 
-			PanelSystemMessage::TabDragEnd => {
-				if let DragState::TabDrag {
-					area_id,
-					tab_index,
-					dragging,
-					was_active,
-					drop,
-					..
-				} = self.drag_state.clone()
-				{
-					match drop {
-						Some(drop) if dragging => self.apply_tab_drop(area_id, tab_index, drop),
-						// Clicking the tab that was already active opens its editor menu.
-						None if !dragging && was_active => {
-							self.toggle_editor_menu(area_id, EditorMenuMode::Replace);
-						}
-						_ => {}
-					}
-				}
-				self.drag_state = DragState::None;
-			}
+			PanelSystemMessage::TabDragEnd => self.end_tab_drag(),
 
 			PanelSystemMessage::CloseTab(area_id, tab_index) => {
 				self.close_editor_menu();
@@ -596,37 +576,7 @@ impl<C: AreaKind> PanelSystem<C> {
 				}
 			}
 
-			PanelSystemMessage::CornerDragEnd => {
-				if let DragState::CornerDrag {
-					area_id,
-					action: Some(action),
-					ratio,
-					target_area_id,
-					direction,
-					new_is_first,
-					..
-				} = self.drag_state.clone()
-				{
-					match action {
-						CornerAction::Move => {
-							if let Some(target) = target_area_id {
-								if let Some(direction) = direction {
-									self.move_area_into(area_id, target, direction, ratio, new_is_first);
-								} else {
-									// 中央ドロップ → 全体移動（入れ替え）
-									self.swap_areas(area_id, target);
-								}
-							}
-						}
-						CornerAction::SplitHorizontal | CornerAction::SplitVertical => {
-							if let Some(direction) = action.direction() {
-								self.split_area(area_id, direction, ratio, false);
-							}
-						}
-					}
-				}
-				self.drag_state = DragState::None;
-			}
+			PanelSystemMessage::CornerDragEnd => self.end_corner_drag(),
 
 			PanelSystemMessage::JoinArea(area_id) => {
 				self.close_editor_menu();
@@ -668,8 +618,18 @@ impl<C: AreaKind> PanelSystem<C> {
 			}
 
 			PanelSystemMessage::PointerReleased => {
-				// Releases inside are handled by the drag overlay; outside it never sees them.
-				if !self.pointer_inside {
+				// Usually the drag overlay already ended the drag. It misses the release when the
+				// press and release reach the UI in one event batch (a trackpad tap, or a busy frame):
+				// the release then hits the tree built before the press, which has no overlay.
+				// Window-level releases arrive after the widget messages of the same batch.
+				if self.pointer_inside {
+					match self.drag_state {
+						DragState::TabDrag { .. } => self.end_tab_drag(),
+						DragState::CornerDrag { .. } => self.end_corner_drag(),
+						_ => self.drag_state = DragState::None,
+					}
+				} else {
+					// Outside the panels a drag has nowhere to land.
 					self.drag_state = DragState::None;
 				}
 			}
@@ -696,6 +656,60 @@ impl<C: AreaKind> PanelSystem<C> {
 					Self::relativize_node(&mut self.root, bounds);
 					self.window_size = size;
 					self.drag_state = DragState::None;
+				}
+			}
+		}
+	}
+
+	/// Ends a tab press: drops a dragged tab, or treats a press without drag as a click.
+	fn end_tab_drag(&mut self) {
+		if let DragState::TabDrag {
+			area_id,
+			tab_index,
+			dragging,
+			was_active,
+			drop,
+			..
+		} = std::mem::take(&mut self.drag_state)
+		{
+			match drop {
+				Some(drop) if dragging => self.apply_tab_drop(area_id, tab_index, drop),
+				// Clicking the tab that was already active opens its editor menu.
+				None if !dragging && was_active => {
+					self.toggle_editor_menu(area_id, EditorMenuMode::Replace);
+				}
+				_ => {}
+			}
+		}
+	}
+
+	/// Ends a corner drag, applying its split or move.
+	fn end_corner_drag(&mut self) {
+		if let DragState::CornerDrag {
+			area_id,
+			action: Some(action),
+			ratio,
+			target_area_id,
+			direction,
+			new_is_first,
+			..
+		} = std::mem::take(&mut self.drag_state)
+		{
+			match action {
+				CornerAction::Move => {
+					if let Some(target) = target_area_id {
+						if let Some(direction) = direction {
+							self.move_area_into(area_id, target, direction, ratio, new_is_first);
+						} else {
+							// 中央ドロップ → 全体移動（入れ替え）
+							self.swap_areas(area_id, target);
+						}
+					}
+				}
+				CornerAction::SplitHorizontal | CornerAction::SplitVertical => {
+					if let Some(direction) = action.direction() {
+						self.split_area(area_id, direction, ratio, false);
+					}
 				}
 			}
 		}
