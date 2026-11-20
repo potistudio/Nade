@@ -8,7 +8,7 @@ use iced::keyboard;
 use iced::time::{Duration, Instant};
 use iced::widget::{column, container, stack};
 use iced::{Animation, Element, Length, Size, Subscription, Task};
-use nade_asset_browser::{AssetBrowserMessage, AssetBrowserState};
+use nade_asset_browser::{AssetBrowserMessage, AssetBrowserRequest, AssetBrowserState};
 use nade_browser_panel::{ObjectId, ProjectPaneMessage, ProjectPaneState};
 use nade_constants::icons::Icon;
 use nade_curve_editor_panel::{CurveEditorMessage, CurveEditorState};
@@ -2922,45 +2922,17 @@ impl NadeApp {
 	}
 
 	fn apply_assets_message(&mut self, msg: AssetBrowserMessage) -> Task<Message> {
-		match msg {
-			AssetBrowserMessage::ToggleExpand(id) => {
-				if self.asset_browser.expanded_ids.contains(&id) {
-					self.asset_browser.expanded_ids.remove(&id);
-				} else {
-					self.asset_browser.expanded_ids.insert(id);
-				}
-				Task::none()
-			}
-			AssetBrowserMessage::Select(id) => {
-				self.asset_browser.selected_id = Some(id);
-				Task::none()
-			}
-			AssetBrowserMessage::ClearSelection => {
-				self.asset_browser.selected_id = None;
-				Task::none()
-			}
-			AssetBrowserMessage::OpenItem(id) => {
-				self.asset_browser.selected_id = Some(id);
-				if let Some(asset) = self.project.asset(id)
-					&& asset.kind() == AssetType::Folder
-				{
-					self.asset_browser.expanded_ids.insert(id);
-				}
-				Task::none()
-			}
-			AssetBrowserMessage::ImportMedia => Self::pick_media_file(),
-			AssetBrowserMessage::NewFolder => {
+		match self.asset_browser.apply(&self.project, msg) {
+			Some(AssetBrowserRequest::ImportMedia) => Self::pick_media_file(),
+			Some(AssetBrowserRequest::NewFolder) => {
 				self.create_asset_folder();
 				Task::none()
 			}
-			AssetBrowserMessage::AddToTimeline => {
+			Some(AssetBrowserRequest::AddToTimeline) => {
 				self.add_selected_asset_to_timeline();
 				Task::none()
 			}
-			AssetBrowserMessage::FilterChanged(filter) => {
-				self.asset_browser.filter = filter;
-				Task::none()
-			}
+			None => Task::none(),
 		}
 	}
 
