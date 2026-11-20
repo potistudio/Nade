@@ -26,7 +26,7 @@ use nade_renderer::Scene;
 
 use crate::history::History;
 use crate::message::{
-	AppPanelMessage, EditCommand, MenuMessage, Message, PreviewMessage, ShellMessage, TransportMessage,
+	AppPanelMessage, EditCommand, MenuMessage, Message, PreviewMessage, ShellMessage, TransportMessage, ViewerRequest,
 };
 use crate::panel_content::PanelContent;
 use crate::panels;
@@ -37,7 +37,7 @@ use crate::shell::menu::{self, Entry, MenuKind, OpenMenu};
 use crate::shell::{self, toast::Toast};
 use crate::theme::{SHELL_GUTTER, STATUS_BAR_HEIGHT, TITLE_BAR_HEIGHT, panel_area};
 use crate::workspace::Workspace;
-use nade_viewer_panel::{LayerBox, Tool, ViewerSettings, Viewport};
+use nade_viewer_panel::{LayerBox, Tool, ViewerState};
 
 // =============================================================================
 // ウィンドウ・キーボードイベント
@@ -260,10 +260,8 @@ pub(super) struct NadeApp {
 	started: Instant,
 	/// ウィンドウの内寸
 	window_size: Size,
-	/// ビューアの表示設定
-	viewer: ViewerSettings,
-	/// ビューア領域のサイズ（倍率表示用）
-	viewer_size: Size,
+	/// ビューアの状態（表示設定とビューポート領域）
+	viewer: ViewerState,
 	/// プロパティパネルの UI 状態
 	inspector_ui: nade_inspector_panel::InspectorUi,
 	/// Undo / Redo 履歴
@@ -328,8 +326,7 @@ impl NadeApp {
 			now: Instant::now(),
 			started: Instant::now(),
 			window_size,
-			viewer: ViewerSettings::default(),
-			viewer_size: Size::new(960.0, 540.0),
+			viewer: ViewerState::default(),
 			inspector_ui: nade_inspector_panel::InspectorUi::default(),
 			history: History::with_snapshot(project_for_history),
 			clipboard: Vec::new(),
@@ -499,7 +496,7 @@ impl NadeApp {
 		let scene = Scene::from_composition(
 			comp,
 			time,
-			self.viewer.resolution.factor(),
+			self.viewer.settings.resolution.factor(),
 			|track| {
 				// タイムライン未作成のトラックは描画する
 				track >= model.tracks.len() || model.is_track_rendered(track)
@@ -2227,83 +2224,47 @@ impl NadeApp {
 	}
 
 	fn apply_preview_message(&mut self, msg: PreviewMessage) {
-		match msg {
-			PreviewMessage::ViewChanged { zoom, offset } => {
-				self.current_model.preview.view_zoom = zoom;
-				self.current_model.preview.view_offset = offset;
-			}
-			PreviewMessage::ViewportSized(size) => self.viewer_size = size,
-			PreviewMessage::FitView => {
-				self.current_model.preview.view_zoom = 1.0;
-				self.current_model.preview.view_offset = [0.0, 0.0];
-			}
-			PreviewMessage::ZoomBy(factor) => {
-				let preview = &mut self.current_model.preview;
-				let zoom = (preview.view_zoom * factor).clamp(
-					nade_viewer_panel::viewport::MIN_ZOOM,
-					nade_viewer_panel::viewport::MAX_ZOOM,
-				);
-				let applied = zoom / preview.view_zoom;
-				preview.view_zoom = zoom;
-				preview.view_offset = [preview.view_offset[0] * applied, preview.view_offset[1] * applied];
-			}
-			PreviewMessage::ActualPixels => {
-				let (width, height) = (self.current_model.preview.width, self.current_model.preview.height);
-				let preview = &mut self.current_model.preview;
-				let viewport = Viewport::new(
-					self.viewer_size,
-					Size::new(width as f32, height as f32),
-					preview.view_zoom,
-					iced::Vector::new(preview.view_offset[0], preview.view_offset[1]),
-				);
-				let (zoom, offset) = viewport.with_magnification(1.0);
-				preview.view_zoom = zoom;
-				preview.view_offset = [offset.x, offset.y];
-			}
-			PreviewMessage::ToggleGrid => self.viewer.show_grid = !self.viewer.show_grid,
-			PreviewMessage::ToggleSafeAreas => self.viewer.show_safe_areas = !self.viewer.show_safe_areas,
-			PreviewMessage::SetResolution(resolution) => {
-				self.viewer.resolution = resolution;
-				self.request_preview_refresh();
-			}
-			PreviewMessage::Transport(transport) => self.apply_transport(transport),
-			PreviewMessage::SelectLayer(Some(instance)) => {
+		match self.viewer.apply(&mut self.current_model.preview, msg) {
+			Some(ViewerRequest::RefreshPreview) => self.request_preview_refresh(),
+			Some(ViewerRequest::Transport(transport)) => self.apply_transport(transport),
+			Some(ViewerRequest::SelectLayer(Some(instance))) => {
 				if let Some(composition) = self.target_composition() {
 					self.select_object(ObjectId::Instance { composition, instance });
 				}
 			}
-			PreviewMessage::SelectLayer(None) => {
+			Some(ViewerRequest::SelectLayer(None)) => {
 				if let Some(composition) = self.target_composition() {
 					self.project_pane.selected_id = Some(ObjectId::Composition(composition));
 					self.timeline.state.clear_selection();
 				}
 			}
-			PreviewMessage::MoveLayer { delta } => {
+			Some(ViewerRequest::MoveLayer { delta }) => {
 				self.edit_selected_property(TransformProperty::PositionX, |value| value + delta[0]);
 				self.edit_selected_property(TransformProperty::PositionY, |value| value + delta[1]);
 				self.request_preview_refresh();
 			}
-			PreviewMessage::ScaleLayer { scale } => {
+			Some(ViewerRequest::ScaleLayer { scale }) => {
 				self.edit_selected_property(TransformProperty::ScaleX, |_| scale[0]);
 				self.edit_selected_property(TransformProperty::ScaleY, |_| scale[1]);
 				self.request_preview_refresh();
 			}
-			PreviewMessage::MoveAnchor { anchor, position } => {
+			Some(ViewerRequest::MoveAnchor { anchor, position }) => {
 				self.edit_selected_property(TransformProperty::AnchorX, |value| value + anchor[0]);
 				self.edit_selected_property(TransformProperty::AnchorY, |value| value + anchor[1]);
 				self.edit_selected_property(TransformProperty::PositionX, |value| value + position[0]);
 				self.edit_selected_property(TransformProperty::PositionY, |value| value + position[1]);
 				self.request_preview_refresh();
 			}
-			PreviewMessage::RotateLayer { degrees } => {
+			Some(ViewerRequest::RotateLayer { degrees }) => {
 				self.edit_selected_property(TransformProperty::RotationZ, |value| value + degrees);
 				self.request_preview_refresh();
 			}
-			PreviewMessage::CreateText { position } => {
+			Some(ViewerRequest::CreateText { position }) => {
 				self.add_text_layer_at(Some(position));
 				self.tool = Tool::Select;
 				self.tool_pill.go_mut(Tool::Select.index() as f32, self.now);
 			}
+			None => {}
 		}
 	}
 
@@ -2473,8 +2434,8 @@ impl NadeApp {
 			tool: self.tool,
 			layers: self.viewer_layers(),
 			selected,
-			settings: self.viewer,
-			viewport_size: self.viewer_size,
+			settings: self.viewer.settings,
+			viewport_size: self.viewer.size,
 			loop_playback: self.loop_playback,
 		}
 	}

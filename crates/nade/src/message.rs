@@ -13,7 +13,7 @@ use nade_core::{FrameData, MediaInfo};
 
 pub use nade_asset_browser::AssetBrowserMessage;
 pub use nade_browser_panel::ProjectPaneMessage;
-pub use nade_viewer_panel::{PreviewMessage, Tool, TransportMessage};
+pub use nade_viewer_panel::{PreviewMessage, Tool, TransportMessage, ViewerRequest};
 
 /// メニューバーとコンテキストメニュー
 #[derive(Debug, Clone)]
