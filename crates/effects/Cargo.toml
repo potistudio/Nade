@@ -5,8 +5,11 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
-anyhow.workspace = true
-env_logger.workspace = true
 log.workspace = true
 core = { path = "../core" }
+domain = { workspace = true }
+rayon = "1.12.0"

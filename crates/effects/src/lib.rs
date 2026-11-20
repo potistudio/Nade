@@ -1,4 +1,18 @@
+//! Pixel effects: the legacy per-pixel [`Effect`] trait and the After
+//! Effects style layer effects ([`apply_stack`]) the compositor runs.
+
+mod blur;
+mod color;
+mod distort;
+mod generate;
+mod stack;
+mod stylize;
+mod surface;
+mod transition;
 pub mod wave;
+
+pub use stack::{EffectContext, apply, apply_stack};
+pub use surface::{Pixel, Surface};
 pub use wave::WaveEffect;
 
 use core::{RenderContext, RgbColor};

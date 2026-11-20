@@ -17,7 +17,7 @@ lto = true
 
 # 未最適化のピクセル・グリフ処理はプレビューを実時間で回すには遅すぎる。
 # 依存クレートは一度ビルドすれば使い回せるのでフル最適化し、自前クレートは
-# ピクセルループを持つ renderer のみ最適化して他はコンパイル速度を優先する。
+# ピクセルループを持つ renderer / effects のみ最適化して他はコンパイル速度を優先する。
 [profile.dev.package."*"]
 opt-level = 3
 debug = false
@@ -26,6 +26,9 @@ debug = false
 opt-level = 3
 
 [profile.dev.package.media]
+opt-level = 3
+
+[profile.dev.package.effects]
 opt-level = 3
 
 [workspace.lints.clippy]
