@@ -62,6 +62,11 @@ pub enum TimelineMessage {
 		origin: f32,
 		time: f32,
 	},
+	/// Right-click on a clip: select it unless it is already selected.
+	ContextClip {
+		track_index: usize,
+		clip_id: usize,
+	},
 }
 
 /// Canvasから通知されるタイムライン入力イベント
@@ -1045,6 +1050,11 @@ impl canvas::Program<TimelineMessage> for TimelineWidget<'_> {
 				mouse::Event::ButtonReleased(mouse::Button::Left) => Some(canvas::Action::publish(
 					TimelineMessage::CanvasEvent(TimelineCanvasEvent::MouseReleased),
 				)),
+				mouse::Event::ButtonPressed(mouse::Button::Right) => cursor_pos
+					.and_then(|position| self.state.find_clip_at(self.model, position, bounds))
+					.map(|(track_index, clip_id)| {
+						canvas::Action::publish(TimelineMessage::ContextClip { track_index, clip_id })
+					}),
 				mouse::Event::CursorMoved { .. } => cursor_pos.map(|position| {
 					canvas::Action::publish(TimelineMessage::CanvasEvent(TimelineCanvasEvent::MouseMoved {
 						position,

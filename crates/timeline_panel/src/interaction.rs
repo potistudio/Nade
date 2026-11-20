@@ -502,6 +502,12 @@ impl TimelineInteraction {
 			TimelineMessage::CanvasEvent(event) => self.handle_canvas_event(model, event, current_time),
 			// アプリ側でキーフレームを動かす
 			TimelineMessage::KeyframeDragged { .. } => TimelineUpdate::default(),
+			TimelineMessage::ContextClip { track_index, clip_id } => {
+				if !self.is_clip_selected(track_index, clip_id) {
+					self.select_clip(track_index, clip_id);
+				}
+				TimelineUpdate::default()
+			}
 			TimelineMessage::ReorderTrack { .. } => {
 				// Handled via pending_reorder in handle_mouse_release
 				TimelineUpdate::default()
