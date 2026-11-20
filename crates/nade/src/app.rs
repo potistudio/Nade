@@ -43,7 +43,10 @@ use nade_viewer_panel::{LayerBox, Tool, ViewerState};
 // ウィンドウ・キーボードイベント
 // =============================================================================
 
-/// ウィンドウイベントをアプリのメッセージへ写像する（キャプチャ済みのキーは無視）
+/// 再生中にシークしたあと、音声を立ち上げ直すまでの待ち時間。
+/// 再生ヘッドのドラッグ中にイベントごとに ffmpeg を起動しないためのデバウンス。
+const AUDIO_SEEK_SETTLE: Duration = Duration::from_millis(100);
+
 /// 最後に見たカーソル位置（右クリックメニューの表示位置）。f32 2 つを詰めて持つ
 static CURSOR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -57,6 +60,7 @@ fn last_cursor() -> iced::Point {
 	iced::Point::new(f32::from_bits((bits >> 32) as u32), f32::from_bits(bits as u32))
 }
 
+/// ウィンドウイベントをアプリのメッセージへ写像する（キャプチャ済みのキーは無視）
 fn on_window_event(event: iced::Event, status: iced::event::Status, _id: iced::window::Id) -> Option<Message> {
 	match event {
 		iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
@@ -274,8 +278,10 @@ pub(super) struct NadeApp {
 	export: Option<ExportTask>,
 	/// 再生中の音声
 	audio: nade_audio::AudioPreview,
-	/// 今回の再生で音声の開始を試みた時刻と再生位置（シーク検出に使う）
+	/// 今回の再生で音声の開始を試みた時刻と再生位置
 	audio_started: Option<(Instant, f32)>,
+	/// 最後にシークした時刻。音声を立ち上げ直すまで映像をこの位置で止める。
+	audio_seek_at: Option<Instant>,
 	/// デバッグ用スクリーンショット（`NADE_SCREENSHOT`）
 	#[cfg(debug_assertions)]
 	capture: Option<crate::devtools::Capture>,
@@ -334,6 +340,7 @@ impl NadeApp {
 			export: None,
 			audio: nade_audio::AudioPreview::new(),
 			audio_started: None,
+			audio_seek_at: None,
 			#[cfg(debug_assertions)]
 			capture: crate::devtools::Capture::from_env(),
 		};
@@ -882,9 +889,9 @@ impl NadeApp {
 				self.last_play_tick = self.current_model.preview.is_playing.then_some(self.now);
 				log::debug!("Toggling play/pause: {}", self.current_model.preview.is_playing);
 			}
-			TransportMessage::GoToStart => self.apply_core_msg(Msg::SetTime(0.0)),
+			TransportMessage::GoToStart => self.seek_to(0.0),
 			TransportMessage::GoToEnd => {
-				self.apply_core_msg(Msg::SetTime(nade_core::timecode::time_of_frame(last_frame, fps)));
+				self.seek_to(nade_core::timecode::time_of_frame(last_frame, fps));
 			}
 			TransportMessage::StepBackward | TransportMessage::StepForward => {
 				let frame = nade_core::timecode::frame_at(time, fps);
@@ -893,7 +900,7 @@ impl NadeApp {
 				} else {
 					frame.saturating_sub(1)
 				};
-				self.apply_core_msg(Msg::SetTime(nade_core::timecode::time_of_frame(target, fps)));
+				self.seek_to(nade_core::timecode::time_of_frame(target, fps));
 			}
 			TransportMessage::ToggleLoop => {
 				self.loop_playback = !self.loop_playback;
@@ -914,7 +921,7 @@ impl NadeApp {
 					// アウトポイントはレイヤー最後のフレーム
 					(layer.end_time() - 1.0 / fps.max(1.0)).max(layer.start_time())
 				};
-				self.apply_core_msg(Msg::SetTime(target.clamp(0.0, duration)));
+				self.seek_to(target.clamp(0.0, duration));
 			}
 			TransportMessage::PreviousEditPoint | TransportMessage::NextEditPoint => {
 				let points = self.edit_points();
@@ -925,7 +932,7 @@ impl NadeApp {
 				};
 				if let Some(target) = target {
 					let frame = nade_core::timecode::frame_at(target.clamp(0.0, duration), fps).min(last_frame);
-					self.apply_core_msg(Msg::SetTime(nade_core::timecode::time_of_frame(frame, fps)));
+					self.seek_to(nade_core::timecode::time_of_frame(frame, fps));
 				}
 			}
 		}
@@ -1062,9 +1069,24 @@ impl NadeApp {
 		}
 	}
 
-	/// 音声の再生位置。音声の起動待ち（0.5 秒まで）は再生ヘッドを止めておく。
+	/// 再生ヘッドを移動する。再生中なら音声を止め、少し待ってから新しい位置で鳴らし直す。
+	fn seek_to(&mut self, time: f32) {
+		self.apply_core_msg(Msg::SetTime(time));
+		if self.current_model.preview.is_playing && self.audio.is_playing() {
+			self.audio.stop();
+			self.audio_started = None;
+			self.audio_seek_at = Some(self.now);
+		} else {
+			self.audio_seek_at = None;
+		}
+	}
+
+	/// 音声の再生位置。起動待ち（0.5 秒まで）とシーク直後は再生ヘッドを止めておく。
 	fn audio_clock(&self) -> Option<f32> {
-		if !self.audio.is_playing() {
+		if self.audio_seek_at.is_some() {
+			return Some(self.current_model.preview.time);
+		}
+		if !self.audio.is_playing() || self.audio.has_ended() {
 			return None;
 		}
 		match self.audio.clock() {
@@ -1086,17 +1108,24 @@ impl NadeApp {
 				self.audio.stop();
 			}
 			self.audio_started = None;
+			self.audio_seek_at = None;
 			return;
 		}
+		// ドラッグ中の連続シークをまとめ、最後の位置で一度だけ鳴らし直す
+		if self
+			.audio_seek_at
+			.is_some_and(|seeked| self.now.duration_since(seeked) < AUDIO_SEEK_SETTLE)
+		{
+			return;
+		}
+		self.audio_seek_at = None;
 		let time = self.current_model.preview.time;
 		if let Some((started, from)) = self.audio_started {
-			// 音声が鳴っていればその位置、無ければ開始からの経過時間と比べる
-			let expected = self
-				.audio
-				.clock()
-				.unwrap_or_else(|| from + self.now.duration_since(started).as_secs_f32());
-			let waiting = self.audio.is_playing() && self.audio.clock().is_none();
-			if waiting || (expected - time).abs() <= 0.3 {
+			// 音声が鳴っていればその位置、まだサンプルが無ければ開始からの経過時間と比べる
+			let elapsed = from + self.now.duration_since(started).as_secs_f32();
+			let clock = self.audio.clock();
+			let waiting = !self.audio.has_ended() && self.audio.is_playing() && clock.is_none();
+			if waiting || (clock.unwrap_or(elapsed) - time).abs() <= 0.3 {
 				return;
 			}
 		}
@@ -1785,7 +1814,7 @@ impl NadeApp {
 			.apply_message(&mut self.timeline.model, msg, current_time);
 
 		if let Some(time) = timeline_update.playhead_time {
-			self.apply_core_msg(Msg::SetTime(time));
+			self.seek_to(time);
 		}
 
 		if let Some((from_index, to_index)) = self.timeline.state.take_reorder()
@@ -2217,7 +2246,7 @@ impl NadeApp {
 			.apply_message(&mut obj.animation, &base, msg, current_time);
 
 		if let Some(time) = update.playhead_time {
-			self.apply_core_msg(Msg::SetTime(time));
+			self.seek_to(time);
 		} else if update.curve_changed {
 			self.request_preview_refresh();
 		}
@@ -2528,7 +2557,7 @@ impl NadeApp {
 			self.show_toast(icon, text);
 		}
 		match outcome.jump {
-			Some(time) => self.apply_core_msg(Msg::SetTime(time)),
+			Some(time) => self.seek_to(time),
 			None => self.request_preview_refresh(),
 		}
 	}
@@ -2617,7 +2646,7 @@ impl NadeApp {
 		// 尺を縮めたら再生ヘッドを範囲内に戻す
 		let duration = self.composition_duration();
 		if self.current_model.preview.time > duration {
-			self.apply_core_msg(Msg::SetTime(duration));
+			self.seek_to(duration);
 		} else {
 			self.request_preview_refresh();
 		}
