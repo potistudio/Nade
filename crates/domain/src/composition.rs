@@ -175,6 +175,27 @@ impl Composition {
 		self.get_mut(id).expect("just inserted")
 	}
 
+	/// `track` が `[start, start+duration)` で空いていればそこへ、埋まっていれば
+	/// 空いているトラックへ新しいインスタンスを追加する
+	pub fn add_instance_on_track(
+		&mut self,
+		node_id: NodeId,
+		name: impl Into<String>,
+		start_time: f32,
+		duration: f32,
+		track: usize,
+	) -> &mut Instance {
+		let name = name.into();
+		let instance = Instance::new(self.next_instance_id(), node_id, &name, start_time, duration);
+		let id = self.insert_instance(instance, Some(track));
+		self.get_mut(id).expect("just inserted")
+	}
+
+	/// `track` に `[start, start+duration)` を置けるか（重なるレイヤーが無いか）
+	pub fn is_track_free_at(&self, track: usize, start_time: f32, duration: f32) -> bool {
+		self.is_track_free(track, start_time, duration, None)
+	}
+
 	/// 削除後も ID が衝突しないよう、既存の最大 ID の次を採番する
 	fn next_instance_id(&self) -> InstanceId {
 		InstanceId::new(
@@ -422,6 +443,25 @@ impl Composition {
 mod tests {
 	use super::*;
 	use nade_core::NodeId;
+
+	/// A free track takes the new layer; an occupied one falls back to a free track.
+	#[test]
+	fn add_instance_on_track_prefers_the_requested_track() {
+		let mut composition = Composition::new(CompositionId::new(0), "Main", 640, 360, 30.0);
+		composition.add_instance_at(NodeId::new(0), "A", 0.0, 2.0);
+
+		assert!(!composition.is_track_free_at(0, 1.0, 1.0));
+		assert!(composition.is_track_free_at(0, 2.0, 1.0));
+
+		let late = composition
+			.add_instance_on_track(NodeId::new(1), "B", 2.0, 1.0, 0)
+			.track_index();
+		assert_eq!(late, 0);
+		let clash = composition
+			.add_instance_on_track(NodeId::new(2), "C", 1.0, 1.0, 0)
+			.track_index();
+		assert_eq!(clash, 1);
+	}
 
 	#[test]
 	fn new_instances_stack_on_free_tracks() {
