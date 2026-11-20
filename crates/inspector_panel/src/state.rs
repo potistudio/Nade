@@ -5,7 +5,7 @@ use iced::time::{Duration, Instant};
 use nade_core::InstanceId;
 use std::collections::HashSet;
 
-use crate::Section;
+use crate::{EffectEdit, InspectorMessage, Section};
 
 /// Panel-local UI state owned by the app (section disclosure, links, drafts).
 #[derive(Debug)]
@@ -44,6 +44,39 @@ impl Default for InspectorUi {
 }
 
 impl InspectorUi {
+	/// Applies panel-local UI messages and returns the rest for the shell.
+	pub fn apply(
+		&mut self,
+		msg: InspectorMessage,
+		now: Instant,
+		selected: Option<InstanceId>,
+	) -> Option<InspectorMessage> {
+		match msg {
+			InspectorMessage::ToggleSection(section) => {
+				self.toggle(section, now);
+				None
+			}
+			InspectorMessage::ToggleScaleLink => {
+				self.scale_linked = !self.scale_linked;
+				None
+			}
+			InspectorMessage::HexEdited(draft) => {
+				self.hex_draft = Some(draft);
+				None
+			}
+			InspectorMessage::Effect {
+				id,
+				edit: EffectEdit::ToggleExpanded,
+			} => {
+				if let Some(instance) = selected {
+					self.toggle_effect(instance, id);
+				}
+				None
+			}
+			other => Some(other),
+		}
+	}
+
 	pub(crate) fn disclosure(&self, section: Section) -> &Animation<bool> {
 		match section {
 			Section::Layer => &self.layer_open,
