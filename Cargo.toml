@@ -43,7 +43,7 @@ iced_wgpu = { path = "vendor/iced_wgpu" }
 anyhow = "1.0.104"
 env_logger = "0.11.11"
 iced = { version = "0.14.0", features = ["advanced", "canvas", "svg"] }
-iced-squircle = { git = "https://github.com/potistudio/iced-squircle", tag = "v0.1.0" }
+iced-squircle = "1.0.0"
 log = "0.4.35"
 nade_audio = { path = "crates/audio" }
 nade_constants = { path = "crates/constants" }

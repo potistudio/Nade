@@ -2172,10 +2172,11 @@ dependencies = [
 
 [[package]]
 name = "iced-squircle"
-version = "0.1.0"
-source = "git+https://github.com/potistudio/iced-squircle?tag=v0.1.0#ee42534deaf9b24d647aab852d85819f14e2dfb4"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5235ec9bcedd833c0c3bc01f4724be76d785f3cb0b0870cacf0d28857556fd98"
 dependencies = [
- "iced",
+ "iced_widget",
 ]
 
 [[package]]
