@@ -53,7 +53,7 @@ pub const RESIZE_HANDLE_VISUAL_WIDTH: f32 = 4.0;
 pub const SCROLL_MULTIPLIER: f32 = 20.0;
 pub const MIN_CLIP_DURATION: f32 = 0.1;
 /// Flat clips (no soft rounded cards).
-pub const CLIP_CORNER_RADIUS: f32 = 5.0;
+pub const CLIP_CORNER_RADIUS: f32 = 11.25;
 pub const TRACK_REORDER_HANDLE_HEIGHT: f32 = 6.0;
 
 // Color constants

@@ -68,7 +68,7 @@ impl TimelineWidget<'_> {
 			height: sel_rect.height,
 		};
 
-		let path = squircle_rect(local_rect, 3.0);
+		let path = squircle_rect(local_rect, 6.75);
 		frame.fill(&path, colors::SELECTION_FILL);
 		frame.stroke(
 			&path,

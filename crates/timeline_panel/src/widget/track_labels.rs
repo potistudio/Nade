@@ -65,7 +65,7 @@ impl TimelineWidget<'_> {
 					width: 4.0,
 					height: TRACK_HEIGHT - 12.0,
 				};
-				frame.fill(&squircle_rect(strip, 2.0), label);
+				frame.fill(&squircle_rect(strip, 4.5), label);
 
 				self.draw_visibility_btn(frame, track_visible_btn_rect(rect.x, y), model.visibility_display(i));
 				self.draw_solo_btn(frame, track_solo_btn_rect(rect.x, y), track.solo, track.visible);
@@ -115,7 +115,7 @@ impl TimelineWidget<'_> {
 						Point::new(rect.x + 2.0, gap_y + 2.0),
 						Size::new(rect.width - 4.0, TRACK_HEIGHT - 4.0),
 					),
-					5.0,
+					11.25,
 				);
 				frame.fill(
 					&gap,

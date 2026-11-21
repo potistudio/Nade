@@ -14,7 +14,8 @@ impl CurveEditorWidget<'_> {
 			&Path::line(Point::new(x, 0.0), Point::new(x, height)),
 			Stroke::default().with_color(ACCENT_COLOR).with_width(1.5),
 		);
-		let head = nade_constants::squircle::path(Rectangle::new(Point::new(x - 5.0, 0.0), Size::new(10.0, 12.0)), 3.0);
+		let head =
+			nade_constants::squircle::path(Rectangle::new(Point::new(x - 5.0, 0.0), Size::new(10.0, 12.0)), 6.75);
 		frame.fill(&head, ACCENT_COLOR);
 	}
 }

@@ -59,7 +59,7 @@ pub fn view<'a>(info: StatusInfo<'a>) -> Element<'a, Message> {
 			.style(|_| container::Style {
 				background: Some(nade_constants::style::ACCENT_COLOR.into()),
 				border: Border {
-					radius: 2.0.into(),
+					radius: 4.5.into(),
 					..Default::default()
 				},
 				..Default::default()
@@ -70,7 +70,7 @@ pub fn view<'a>(info: StatusInfo<'a>) -> Element<'a, Message> {
 		.style(|_| container::Style {
 			background: Some(Color::from_rgba(1.0, 1.0, 1.0, 0.1).into()),
 			border: Border {
-				radius: 2.0.into(),
+				radius: 4.5.into(),
 				..Default::default()
 			},
 			..Default::default()

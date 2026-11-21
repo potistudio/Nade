@@ -21,8 +21,8 @@ use std::collections::HashMap;
 
 const KEYFRAME_RADIUS: f32 = 4.5;
 
-fn squircle_rect(rect: Rectangle, radius: f32) -> Path {
-	nade_constants::squircle::path(rect, radius)
+fn squircle_rect(rect: Rectangle, extent: f32) -> Path {
+	nade_constants::squircle::path(rect, extent)
 }
 
 /// Ghost of a clip about to be dropped in from outside the timeline.

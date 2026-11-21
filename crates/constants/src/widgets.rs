@@ -263,7 +263,7 @@ pub fn segmented_track(_theme: &Theme) -> container::Style {
 		border: Border {
 			color: white(0.04),
 			width: BORDER_THICKNESS,
-			radius: 7.0.into(),
+			radius: 15.75.into(),
 		},
 		..Default::default()
 	}
@@ -283,7 +283,7 @@ pub fn hud(alpha: f32) -> impl Fn(&Theme) -> container::Style {
 		border: Border {
 			color: white(0.10 * alpha),
 			width: BORDER_THICKNESS,
-			radius: 12.0.into(),
+			radius: 27.0.into(),
 		},
 		shadow: float_shadow(alpha),
 		snap: true,
@@ -297,7 +297,7 @@ pub fn tooltip(_theme: &Theme) -> container::Style {
 		border: Border {
 			color: white(0.10),
 			width: BORDER_THICKNESS,
-			radius: 6.0.into(),
+			radius: 13.5.into(),
 		},
 		shadow: float_shadow(0.8),
 		snap: true,
@@ -413,7 +413,7 @@ pub fn button_segment(selected: bool) -> impl Fn(&Theme, button::Status) -> butt
 		button::Style {
 			background,
 			text_color,
-			border: rounded(6.0),
+			border: rounded(13.5),
 			shadow: Shadow::default(),
 			snap: true,
 		}
@@ -483,7 +483,7 @@ pub fn editor_menu_panel_faded(_theme: &Theme, alpha: f32) -> container::Style {
 		border: Border {
 			color: white(0.10 * alpha),
 			width: BORDER_THICKNESS,
-			radius: 9.0.into(),
+			radius: 20.25.into(),
 		},
 		shadow: float_shadow(alpha),
 		snap: true,
@@ -515,7 +515,7 @@ pub fn menu(_theme: &Theme) -> menu::Style {
 		border: Border {
 			color: white(0.10),
 			width: BORDER_THICKNESS,
-			radius: 8.0.into(),
+			radius: 18.0.into(),
 		},
 		text_color: TEXT_PRIMARY_COLOR,
 		selected_text_color: TEXT_PRIMARY_COLOR_INVERTED,
@@ -575,7 +575,7 @@ pub fn search_input(theme: &Theme, status: text_input_widget::Status) -> text_in
 			_ => Background::Color(white(0.06)),
 		},
 		border: Border {
-			radius: 7.0.into(),
+			radius: 15.75.into(),
 			..base.border
 		},
 		..base
@@ -597,7 +597,7 @@ pub fn slider(_theme: &Theme, status: slider_widget::Status) -> slider_widget::S
 			backgrounds: (ACCENT_COLOR.into(), white(0.12).into()),
 			width: 3.0,
 			border: Border {
-				radius: Radius::new(1.5),
+				radius: Radius::new(3.375),
 				width: 0.0,
 				color: Color::TRANSPARENT,
 			},
@@ -621,7 +621,7 @@ pub fn scrollable(_theme: &Theme, status: scrollable_widget::Status) -> scrollab
 		border: Border::default(),
 		scroller: scrollable_widget::Scroller {
 			background: scroller_color.into(),
-			border: rounded(3.0),
+			border: rounded(6.75),
 		},
 	};
 

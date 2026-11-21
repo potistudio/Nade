@@ -6,8 +6,6 @@ use iced::widget::canvas::{Frame, Geometry, Program, Stroke};
 use iced::widget::{Space, column, container, stack};
 use iced::{Border, Color, Element, Length, Point, Rectangle, Theme};
 
-use nade_constants::squircle::EXTENT;
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PanelChrome {
 	pub(crate) header_height: f32,
@@ -42,20 +40,17 @@ pub(crate) fn squircle_panel_stack<'a, Message: 'a>(
 		hovered,
 	} = chrome;
 
-	// The quad shader turns `border.radius` into a continuous corner with a
-	// 2.25x extent. Dividing the extent tokens keeps the panel geometry as it
-	// was before the shader change.
 	let header_radius = Radius {
-		top_left: inner_radius / EXTENT,
-		top_right: inner_radius / EXTENT,
+		top_left: inner_radius,
+		top_right: inner_radius,
 		bottom_right: 0.0,
 		bottom_left: 0.0,
 	};
 	let body_radius = Radius {
 		top_left: 0.0,
 		top_right: 0.0,
-		bottom_right: inner_radius / EXTENT,
-		bottom_left: inner_radius / EXTENT,
+		bottom_right: inner_radius,
+		bottom_left: inner_radius,
 	};
 
 	let header = container(Space::new())
@@ -117,7 +112,7 @@ pub(crate) fn squircle_panel_stack<'a, Message: 'a>(
 		border: Border {
 			color: outline_color,
 			width: outline_width,
-			radius: Radius::new(outer_radius / EXTENT),
+			radius: Radius::new(outer_radius),
 		},
 		..container::Style::default()
 	})

@@ -256,7 +256,7 @@ where
 								height: FONT_LABEL * 1.3,
 							},
 							border: Border {
-								radius: 2.0.into(),
+								radius: 4.5.into(),
 								..Default::default()
 							},
 							..Default::default()

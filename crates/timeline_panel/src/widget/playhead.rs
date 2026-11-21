@@ -42,7 +42,7 @@ impl TimelineWidget<'_> {
 			width: 11.0,
 			height: ruler_rect.height - 6.0,
 		};
-		let head_path = squircle_rect(head, 4.0);
+		let head_path = squircle_rect(head, 9.0);
 		frame.fill(&head_path, colors::PLAYHEAD);
 		frame.stroke(
 			&head_path,

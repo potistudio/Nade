@@ -101,16 +101,16 @@ pub const BORDER_SUBTLE_COLOR: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.07);
 pub const BORDER_ACTIVE_COLOR: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.18);
 
 pub const BORDER_THICKNESS: f32 = 1.0;
-/// Control radius.
-pub const BORDER_RADIUS: f32 = 5.0;
-/// Small chip / tag radius.
-pub const CHIP_RADIUS: f32 = 4.0;
+/// Control corner extent.
+pub const BORDER_RADIUS: f32 = 11.25;
+/// Small chip / tag corner extent.
+pub const CHIP_RADIUS: f32 = 9.0;
 /// Panel outline corner extent (continuous corners).
 pub const PANEL_RADIUS: f32 = 10.0;
 /// Header/body corner extent inside panel outline padding.
 pub const PANEL_INNER_RADIUS: f32 = PANEL_RADIUS - BORDER_THICKNESS;
-/// Inspector section card radius (continuous corners).
-pub const CARD_RADIUS: f32 = 8.0;
+/// Inspector section card corner extent.
+pub const CARD_RADIUS: f32 = 18.0;
 
 // ---------------------------------------------------------------------------
 // Density

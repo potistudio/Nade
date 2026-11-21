@@ -60,7 +60,7 @@ where
 				border: Border {
 					color: Color::from_rgba(1.0, 1.0, 1.0, 0.06),
 					width: 1.0,
-					radius: 6.0.into(),
+					radius: 13.5.into(),
 				},
 				shadow: Shadow {
 					color: Color::from_rgba(0.0, 0.0, 0.0, 0.35),

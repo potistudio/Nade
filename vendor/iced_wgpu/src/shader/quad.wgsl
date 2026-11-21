@@ -32,24 +32,23 @@ fn superellipse_corner(q: vec2<f32>, extent: f32) -> f32 {
 fn rounded_box_sdf(p: vec2<f32>, size: vec2<f32>, corners: vec4<f32>) -> f32 {
     let min_side = min(size.x, size.y);
     let min_corner = min(min(corners.x, corners.y), min(corners.z, corners.w));
+    let max_corner = max(max(corners.x, corners.y), max(corners.z, corners.w));
 
-    // A square quad with fully rounded corners is a circle; keep knobs, color
-    // wells and status dots round instead of turning them into squircles.
-    if (abs(size.x - size.y) < 1.0 && min_corner >= min_side - 0.5) {
+    // A square quad whose corners are all exactly half its side is a circle;
+    // keep knobs, color wells and status dots round. Radii above half are
+    // clamped below and stay squircles.
+    if (abs(size.x - size.y) < 1.0 && abs(min_corner - min_side) < 0.5 && abs(max_corner - min_side) < 0.5) {
         return length(p) - min_side;
     }
 
     var box_half = select(corners.yz, corners.xw, p.x > 0.0);
     var corner = select(box_half.y, box_half.x, p.y > 0.0);
+    corner = min(corner, min_side);
 
     if (corner <= 0.0) {
         let q = abs(p) - size;
         return min(max(q.x, q.y), 0.0);
     }
-
-    // `border_radius` is an iced circular radius. A continuous corner has to
-    // start 2.25x earlier to look as deep as a circular arc of that radius.
-    corner = min(corner * 2.25, min_side);
 
     let q = abs(p) - size + corner;
     return min(max(q.x, q.y), 0.0) + superellipse_corner(q, corner);
